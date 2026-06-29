@@ -104,14 +104,17 @@ export default function Dashboard() {
     await loadRuns();
   }
 
-  function handleDeepDiveComplete(sections: DeepDiveSection[]) {
-    if (!selected) return;
-    const bundle: DeepDiveBundle = {
-      company: selected.subject,
-      generatedAt: new Date().toISOString(),
-      durationMs: 0,
-      sections,
-    };
+ function handleDeepDiveComplete(sections: { title: string; content: string; riskLevel?: string }[]) {
+  if (!selected) return;
+  const bundle: DeepDiveBundle = {
+    company: selected.subject,
+    generatedAt: new Date().toISOString(),
+    durationMs: 0,
+    sections: sections.map(s => ({
+      ...s,
+      riskLevel: s.riskLevel as "high" | "medium" | "low" | undefined,
+    })),
+  };
     setDeepDive(bundle);
     setDeepDiveState("done");
     setActiveTab("deep-dive");
