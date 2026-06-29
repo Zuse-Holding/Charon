@@ -138,11 +138,13 @@ async function selectRun(run: Run) {
             setSelected(null);
             setReport("");
           }}
-          onResearchComplete={async () => {
-            setPending(null);
-            const data = await loadRuns();
-            if (data.length > 0) await selectRun(data[0]);
-          }}
+         onResearchComplete={async () => {
+  setPending(null);
+  // Small delay to let Supabase replicate the new run
+  await new Promise(r => setTimeout(r, 1500));
+  const data = await loadRuns();
+  if (data.length > 0) await selectRun(data[0]);
+}}
         />
 
         <div className={styles.content}>
