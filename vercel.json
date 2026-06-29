@@ -8,14 +8,5 @@
       "source": "/api/research",
       "destination": "/api/research"
     }
-  ],
-  "env": {
-    "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key",
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_role_key",
-    "SERPER_API_KEY": "@serper_api_key",
-    "GROQ_API_KEY": "@groq_api_key",
-    "AGENT_SERVER_URL": "@agent_server_url",
-    "AGENT_SECRET": "@agent_secret"
-  }
+  ]
 }
