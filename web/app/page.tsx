@@ -140,7 +140,6 @@ async function selectRun(run: Run) {
           }}
          onResearchComplete={async () => {
   setPending(null);
-  // Small delay to let Supabase replicate the new run
   await new Promise(r => setTimeout(r, 1500));
   const data = await loadRuns();
   if (data.length > 0) await selectRun(data[0]);
@@ -222,22 +221,25 @@ async function selectRun(run: Run) {
                     <button
                       className={styles.actionBtn}
                       disabled={loading}
-                      onClick={async () => {
-                        if (!selected || loading) return;
-                        setLoading(true);
-                        try {
-                          await fetch("/api/research", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ subject: selected.subject, type: selected.type }),
-                          });
-                          const data = await loadRuns();
-                          const updated = data.find(r => r.subject === selected.subject && r.type === selected.type);
-                          if (updated) await selectRun(updated);
-                        } finally {
-                          setLoading(false);
-                        }
-                      }}
+                  onClick={async () => {
+                    if (!selected || loading) return;
+                    const currentSubject = selected.subject;
+                    const currentType = selected.type;
+                    setLoading(true);
+                    try {
+                      await fetch("/api/research", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ subject: currentSubject, type: currentType }),
+                      });
+                      await new Promise(r => setTimeout(r, 1500));
+                      const data = await loadRuns();
+                      const updated = data.find(r => r.subject === currentSubject && r.type === currentType);
+                      if (updated) await selectRun(updated);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
                     >
                       {loading ? "Running..." : "Re-run"}
                     </button>
