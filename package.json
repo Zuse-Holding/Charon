@@ -3,11 +3,8 @@
   "version": "1.0.0",
   "description": "SELINE INTEL — AI-powered business intelligence research platform",
   "type": "module",
-  "main": "src/cli.ts",
-  "bin": {
-    "seline": "./src/cli.ts"
-  },
   "scripts": {
+    "start": "tsx server/agent-server.ts",
     "diagnose": "tsx src/diagnose-ollama.ts",
     "research": "tsx src/cli.ts research",
     "research-person": "tsx src/cli.ts research-person",
@@ -21,13 +18,15 @@
     "watchlist-refresh": "tsx src/cli.ts watchlist-refresh",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "@types/cors": "^2.8.0",
+    "@types/express": "^5.0.0",
     "commander": "^15.0.0",
     "compromise": "^14.15.1",
+    "cors": "^2.8.5",
     "dotenv": "^17.4.2",
+    "express": "^5.0.0",
     "groq-sdk": "^1.3.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
