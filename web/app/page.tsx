@@ -35,19 +35,20 @@ type ActiveTab = "summary" | "deep-dive";
 type DeepDiveState = "idle" | "confirming" | "running" | "done";
 
 export default function Dashboard() {
-  const [runs, setRuns]               = useState<Run[]>([]);
-  const [selected, setSelected]       = useState<Run | null>(null);
-  const [report, setReport]           = useState<string>("");
-  const [loading, setLoading]         = useState(false);
+  const [runs, setRuns]           = useState<Run[]>([]);
+  const [selected, setSelected]   = useState<Run | null>(null);
+  const [report, setReport]       = useState<string>("");
+  const [loading, setLoading]     = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [activeTab, setActiveTab]     = useState<ActiveTab>("summary");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("summary");
   const [deepDiveState, setDeepDiveState] = useState<DeepDiveState>("idle");
-  const [deepDive, setDeepDive]       = useState<DeepDiveBundle | null>(null);
-  const [pending, setPending]         = useState<{ subject: string; type: "company" | "person" | "product" } | null>(null);
-  const selectedRef                   = useRef<Run | null>(null);
+  const [deepDive, setDeepDive]   = useState<DeepDiveBundle | null>(null);
+  const [pending, setPending]     = useState<{ subject: string; type: "company" | "person" | "product" } | null>(null);
+  const selectedRef               = useRef<Run | null>(null);
 
   const loadRuns = useCallback(async () => {
-const res = await fetch(`/api/report?path=${encodeURIComponent(run.reportPath)}&subject=${encodeURIComponent(run.subject)}`);    if (res.ok) {
+    const res = await fetch("/api/runs");
+    if (res.ok) {
       const data: Run[] = await res.json();
       setRuns(data);
       return data;
@@ -61,7 +62,7 @@ const res = await fetch(`/api/report?path=${encodeURIComponent(run.reportPath)}&
     });
   }, [loadRuns]);
 
-async function selectRun(run: Run) {
+  async function selectRun(run: Run) {
     selectedRef.current = run;
     setSelected(run);
     setActiveTab("summary");
@@ -70,13 +71,10 @@ async function selectRun(run: Run) {
     setLoading(true);
     try {
       const reportUrl = `/api/report?path=${encodeURIComponent(run.reportPath)}&subject=${encodeURIComponent(run.subject)}`;
-      console.log("[selectRun] fetching:", reportUrl);
       const reportRes = await fetch(reportUrl);
-      console.log("[selectRun] report status:", reportRes.status);
       if (reportRes.ok) setReport(await reportRes.text());
-      else setReport(`_Report not available (${reportRes.status}). Re-run to generate._`);
+      else setReport(`_Report not available. Re-run to generate._`);
     } catch (err) {
-      console.error("[selectRun] error:", err);
       setReport("_Error loading report._");
     } finally {
       setLoading(false);
@@ -99,17 +97,17 @@ async function selectRun(run: Run) {
     await loadRuns();
   }
 
- function handleDeepDiveComplete(sections: { title: string; content: string; riskLevel?: string }[]) {
-  if (!selected) return;
-  const bundle: DeepDiveBundle = {
-    company: selected.subject,
-    generatedAt: new Date().toISOString(),
-    durationMs: 0,
-    sections: sections.map(s => ({
-      ...s,
-      riskLevel: s.riskLevel as "high" | "medium" | "low" | undefined,
-    })),
-  };
+  function handleDeepDiveComplete(sections: { title: string; content: string; riskLevel?: string }[]) {
+    if (!selected) return;
+    const bundle: DeepDiveBundle = {
+      company: selected.subject,
+      generatedAt: new Date().toISOString(),
+      durationMs: 0,
+      sections: sections.map(s => ({
+        ...s,
+        riskLevel: s.riskLevel as "high" | "medium" | "low" | undefined,
+      })),
+    };
     setDeepDive(bundle);
     setDeepDiveState("done");
     setActiveTab("deep-dive");
@@ -120,10 +118,6 @@ async function selectRun(run: Run) {
       month: "short", day: "numeric",
       hour: "2-digit", minute: "2-digit",
     });
-  }
-
-  function handlePrint() {
-    window.print();
   }
 
   const isCompany = selected?.type === "company";
@@ -138,12 +132,12 @@ async function selectRun(run: Run) {
             setSelected(null);
             setReport("");
           }}
-         onResearchComplete={async () => {
-  setPending(null);
-  await new Promise(r => setTimeout(r, 1500));
-  const data = await loadRuns();
-  if (data.length > 0) await selectRun(data[0]);
-}}
+          onResearchComplete={async () => {
+            setPending(null);
+            await new Promise(r => setTimeout(r, 1500));
+            const data = await loadRuns();
+            if (data.length > 0) await selectRun(data[0]);
+          }}
         />
 
         <div className={styles.content}>
@@ -221,38 +215,37 @@ async function selectRun(run: Run) {
                     <button
                       className={styles.actionBtn}
                       disabled={loading}
-                  onClick={async () => {
-                    if (!selected || loading) return;
-                    const currentSubject = selected.subject;
-                    const currentType = selected.type;
-                    setLoading(true);
-                    try {
-                      await fetch("/api/research", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ subject: currentSubject, type: currentType }),
-                      });
-                      await new Promise(r => setTimeout(r, 1500));
-                      const data = await loadRuns();
-                      const updated = data.find(r => r.subject === currentSubject && r.type === currentType);
-                      if (updated) await selectRun(updated);
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
+                      onClick={async () => {
+                        if (!selected || loading) return;
+                        const currentSubject = selected.subject;
+                        const currentType = selected.type;
+                        setLoading(true);
+                        try {
+                          await fetch("/api/research", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ subject: currentSubject, type: currentType }),
+                          });
+                          await new Promise(r => setTimeout(r, 1500));
+                          const data = await loadRuns();
+                          const updated = data.find(r => r.subject === currentSubject && r.type === currentType);
+                          if (updated) await selectRun(updated);
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
                     >
                       {loading ? "Running..." : "Re-run"}
                     </button>
                     <button
                       className={`${styles.actionBtn} ${styles.primary}`}
-                      onClick={handlePrint}
+                      onClick={() => window.print()}
                     >
                       Export PDF
                     </button>
                   </div>
                 </div>
 
-                {/* TAB BAR */}
                 {isCompany && (
                   <div className={styles.tabBar}>
                     <button
@@ -276,7 +269,6 @@ async function selectRun(run: Run) {
                 )}
 
                 <div className={styles.reportBody}>
-                  {/* Deep dive progress overlay */}
                   {(deepDiveState === "confirming" || deepDiveState === "running") && selected && (
                     <DeepDiveProgress
                       company={selected.subject}
@@ -285,7 +277,6 @@ async function selectRun(run: Run) {
                     />
                   )}
 
-                  {/* Normal content when not in deep dive flow */}
                   {deepDiveState !== "confirming" && deepDiveState !== "running" && (
                     <>
                       {activeTab === "summary" && (
@@ -300,7 +291,6 @@ async function selectRun(run: Run) {
                           </ErrorBoundary>
                         )
                       )}
-
                       {activeTab === "deep-dive" && deepDive && (
                         <ErrorBoundary>
                           <DeepDiveViewer
