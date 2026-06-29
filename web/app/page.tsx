@@ -47,8 +47,7 @@ export default function Dashboard() {
   const selectedRef                   = useRef<Run | null>(null);
 
   const loadRuns = useCallback(async () => {
-    const res = await fetch("/api/runs");
-    if (res.ok) {
+const res = await fetch(`/api/report?path=${encodeURIComponent(run.reportPath)}&subject=${encodeURIComponent(run.subject)}`);    if (res.ok) {
       const data: Run[] = await res.json();
       setRuns(data);
       return data;

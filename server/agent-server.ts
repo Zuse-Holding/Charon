@@ -91,15 +91,15 @@ app.post("/research", async (req, res) => {
     writeFileSync(outPath, report, "utf-8");
 
     // Write to Supabase
-    const { error } = await supabase.from("research_runs").insert({
-      id: randomUUID(),
-      user_id: userId,
-      type,
-      subject,
-      generated_at: new Date().toISOString(),
-      report_path: outPath,
-      bundle,
-    });
+ const { error } = await supabase.from("research_runs").insert({
+  id: randomUUID(),
+  user_id: userId,
+  type,
+  subject,
+  generated_at: new Date().toISOString(),
+  report_path: outPath,
+  bundle: { ...(bundle as object), reportMarkdown: report },
+});
 
     if (error) throw error;
     res.json({ ok: true, reportPath: outPath });
