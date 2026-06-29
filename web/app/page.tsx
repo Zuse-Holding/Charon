@@ -61,7 +61,7 @@ const res = await fetch(`/api/report?path=${encodeURIComponent(run.reportPath)}&
     });
   }, [loadRuns]);
 
-  async function selectRun(run: Run) {
+async function selectRun(run: Run) {
     selectedRef.current = run;
     setSelected(run);
     setActiveTab("summary");
@@ -69,19 +69,15 @@ const res = await fetch(`/api/report?path=${encodeURIComponent(run.reportPath)}&
     setDeepDive(null);
     setLoading(true);
     try {
-      const [reportRes, deepDiveRes] = await Promise.all([
-        fetch(`/api/report?path=${encodeURIComponent(run.reportPath)}`),
-        run.type === "company"
-          ? fetch(`/api/deep-dive?company=${encodeURIComponent(run.subject)}`)
-          : Promise.resolve(null),
-      ]);
+      const reportUrl = `/api/report?path=${encodeURIComponent(run.reportPath)}&subject=${encodeURIComponent(run.subject)}`;
+      console.log("[selectRun] fetching:", reportUrl);
+      const reportRes = await fetch(reportUrl);
+      console.log("[selectRun] report status:", reportRes.status);
       if (reportRes.ok) setReport(await reportRes.text());
-      else setReport("_Report file not found._");
-      if (deepDiveRes?.ok) {
-        const dd = await deepDiveRes.json();
-        setDeepDive(dd);
-        setDeepDiveState("done");
-      }
+      else setReport(`_Report not available (${reportRes.status}). Re-run to generate._`);
+    } catch (err) {
+      console.error("[selectRun] error:", err);
+      setReport("_Error loading report._");
     } finally {
       setLoading(false);
     }
