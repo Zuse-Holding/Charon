@@ -1,0 +1,108 @@
+.topbarWrap { display: flex; flex-direction: column; flex-shrink: 0; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.searchWrap {
+  flex: 1;
+  max-width: 480px;
+  position: relative;
+}
+
+.pulse {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--orange);
+}
+.pulsing { animation: scan-pulse 1s ease-in-out infinite; }
+
+.input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 12px 9px 32px;
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input::placeholder { color: var(--muted); }
+.input:focus { border-color: var(--orange); }
+
+.pills {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.pill {
+  padding: 8px 13px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  border: none;
+  background: none;
+  transition: all 0.15s;
+}
+.pill.active { background: var(--orange); color: white; }
+
+.runBtn {
+  padding: 9px 18px;
+  background: var(--orange);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.runBtn:hover { opacity: 0.88; }
+.runBtn.loading { opacity: 0.6; cursor: not-allowed; }
+
+.right { margin-left: auto; }
+
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+}
+.badgeDot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.statusBar {
+  padding: 6px 28px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.statusError   { color: var(--red);   background: rgba(255,68,85,0.08);  }
+.statusSuccess { color: var(--green); background: rgba(0,255,148,0.06); }

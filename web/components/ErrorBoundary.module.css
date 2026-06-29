@@ -1,0 +1,24 @@
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  text-align: center;
+}
+.icon { font-size: 28px; color: var(--red); }
+.title { font-family: var(--font-display); font-size: 14px; font-weight: 600; color: var(--text); }
+.message { font-family: var(--font-mono); font-size: 10px; color: var(--muted); max-width: 400px; line-height: 1.6; }
+.retry {
+  margin-top: 8px;
+  padding: 7px 16px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.retry:hover { color: var(--text); border-color: var(--text); }

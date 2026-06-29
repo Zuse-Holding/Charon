@@ -1,0 +1,197 @@
+.viewer { max-width: 760px; }
+
+.section { margin-bottom: 28px; }
+
+.sectionLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--orange);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.placeholder {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 8px 0;
+}
+
+.summaryText {
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text);
+}
+
+/* Key-value grid */
+.kvGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.kvCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+.kvLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.kvValue { font-size: 13px; font-weight: 500; color: var(--text); }
+
+/* Leadership / people */
+.personList { display: flex; flex-direction: column; gap: 8px; }
+.personCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--orange), #c44a10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+.personName { font-size: 13px; font-weight: 500; }
+.personRole { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* Competitors */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  padding: 6px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  transition: all 0.12s;
+  cursor: default;
+}
+.chip:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* Risks / Opportunities */
+.roList { display: flex; flex-direction: column; gap: 6px; }
+.roItem {
+  display: flex;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.roItem.risk { border-left: 2px solid var(--red); }
+.roItem.opp  { border-left: 2px solid var(--green); }
+.roBullet { flex-shrink: 0; }
+.risk .roBullet { color: var(--red); }
+.opp  .roBullet { color: var(--green); }
+
+/* News */
+.newsList { display: flex; flex-direction: column; gap: 8px; }
+.newsCard {
+  display: block;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: border-color 0.12s;
+  text-decoration: none;
+}
+.newsCard:hover { border-color: var(--muted); }
+.newsHeadline { font-size: 12px; font-weight: 500; color: var(--text); line-height: 1.4; }
+.newsSub { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+
+/* Sources */
+.sourcesList { display: flex; flex-direction: column; gap: 4px; }
+.sourceItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background 0.1s;
+}
+.sourceItem:hover { background: var(--surface); }
+.sourceNum {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  width: 18px;
+  flex-shrink: 0;
+}
+.sourceText { font-size: 11px; color: var(--muted); flex: 1; }
+.sourceItem:hover .sourceText { color: var(--text); }
+.sourceArrow { font-size: 10px; color: var(--muted); }
+
+/* Products / Specs */
+.productList { display: flex; flex-direction: column; gap: 6px; }
+.productRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--text);
+}
+.productDot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--cyan);
+  flex-shrink: 0;
+}
+
+/* Funding */
+.fundingList { display: flex; flex-direction: column; gap: 6px; }
+.fundingRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.fundingDot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+.fundingText { font-size: 12px; color: var(--text); }
+
+/* Generic */
+.genericList { display: flex; flex-direction: column; gap: 5px; }
+.genericItem {
+  font-size: 12px;
+  color: var(--text);
+  padding: 7px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  line-height: 1.5;
+}

@@ -1,0 +1,106 @@
+.viewer { max-width: 760px; }
+
+.reportMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.metaLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--orange);
+}
+.metaRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.metaDot { color: var(--border); }
+
+.section { margin-bottom: 4px; }
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.sectionIcon {
+  font-size: 18px;
+  color: var(--orange);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.sectionNum {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.sectionTitle {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.riskBadge {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+  background: transparent;
+}
+
+.sectionBody { padding-left: 32px; }
+
+.prose {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.prose:last-child { margin-bottom: 0; }
+.prose strong { color: var(--text); font-weight: 600; }
+
+.placeholder {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 28px 0;
+}
+
+/* Print / PDF styles */
+@media print {
+  .viewer {
+    max-width: 100%;
+    color: #000;
+    background: #fff;
+  }
+  .sectionTitle { color: #000; }
+  .prose { color: #111; }
+  .metaLabel { color: #333; }
+  .divider { background: #ddd; }
+  .sectionIcon { color: #333; }
+  .sectionNum { color: #666; }
+  .metaRight { color: #666; }
+}
