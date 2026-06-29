@@ -46,7 +46,7 @@ function authCheck(req: express.Request, res: express.Response): boolean {
 
 // Supabase service role client — bypasses RLS for writing results
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
