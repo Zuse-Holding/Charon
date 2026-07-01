@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SELINE INTEL",
-  description: "AI-powered business intelligence — Zuse Holdings",
+  title: "Charon — Business Intelligence",
+  description: "AI-powered research on any company, person, or product. Analyst-grade reports in seconds.",
 };
 
 export default function RootLayout({
