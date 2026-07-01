@@ -1,0 +1,475 @@
+/*!******************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[14].oneOf[5].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[14].oneOf[5].use[3]!./app/landing.module.css ***!
+  \******************************************************************************************************************************************************************************************************************************************************************/
+.landing_page__ttWtt {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  overflow-y: auto;
+}
+
+/* Override global overflow:hidden for the landing page */
+body:has(.landing_page__ttWtt) {
+  overflow: auto !important;
+}
+
+/* NAV */
+.landing_nav__Cldps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 48px;
+  border-bottom: 1px solid var(--border);
+}
+.landing_navLogo__jp10L { display: flex; align-items: baseline; gap: 8px; }
+.landing_navLogoMark__FjI3J {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--orange);
+}
+.landing_navLogoSub__V_W_q {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.landing_navCta__3hV9e {
+  padding: 8px 18px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-display);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.landing_navCta__3hV9e:hover { border-color: var(--orange); color: var(--orange); }
+
+/* HERO */
+.landing_hero__IFqnw {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 100px 32px 60px;
+  text-align: center;
+}
+.landing_heroBadge__b_94_ {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--orange);
+  background: rgba(255,107,43,0.1);
+  border: 1px solid rgba(255,107,43,0.3);
+  padding: 4px 12px;
+  border-radius: 4px;
+  margin-bottom: 28px;
+}
+.landing_heroTitle__E6Dij {
+  font-family: var(--font-display);
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: 22px;
+}
+.landing_heroSub__v9d08 {
+  font-size: 16px;
+  color: var(--muted);
+  line-height: 1.7;
+  max-width: 560px;
+  margin: 0 auto 36px;
+}
+.landing_heroCtas__97oYX {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.landing_ctaPrimary__iXJld {
+  padding: 13px 28px;
+  border-radius: 8px;
+  border: none;
+  background: var(--orange);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.landing_ctaPrimary__iXJld:hover { opacity: 0.88; }
+.landing_ctaSecondary__oUmAV {
+  padding: 13px 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font-display);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.landing_ctaSecondary__oUmAV:hover { border-color: var(--muted); }
+
+/* PREVIEW CARD */
+.landing_previewSection__O4j_k {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 32px 100px;
+}
+.landing_previewCard__wD_FS {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 30px 60px -20px rgba(0,0,0,0.5);
+}
+.landing_previewHeader__87fp_ {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.landing_previewDots__J4u9n { display: flex; gap: 6px; }
+.landing_previewDots__J4u9n span {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.landing_previewUrl__4HyNb {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.landing_previewBody__5igFk { padding: 24px; }
+.landing_previewSearch__FUDmQ {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.landing_previewSearchDot__hTGEO {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--orange);
+  animation: landing_scan-pulse__k9y0j 1.2s ease-in-out infinite;
+}
+.landing_previewSearchText__5fCzM {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.landing_previewResult__4iXOJ { display: flex; flex-direction: column; gap: 10px; }
+.landing_previewResultRow__qx7FH {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.landing_previewLabel__rXfje {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--orange);
+  letter-spacing: 0.08em;
+}
+
+/* FEATURES */
+.landing_featuresSection__IF9TO {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 60px 32px;
+}
+.landing_sectionLabel__sgymn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--orange);
+  text-align: center;
+  margin-bottom: 32px;
+}
+.landing_featuresGrid__sDNrY {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-gap: 16px;
+  gap: 16px;
+}
+.landing_featureCard__rZm_H {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+}
+.landing_featureIcon__cCq_V { font-size: 22px; color: var(--orange); margin-bottom: 12px; }
+.landing_featureTitle__O7Rz9 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.landing_featureDesc__aBT_s {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+/* COMPARISON */
+.landing_comparisonSection__POLIE {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 60px 32px;
+}
+.landing_comparisonTable__BUiic {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.landing_comparisonRow__WYuHs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.3fr 1fr;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  align-items: center;
+}
+.landing_comparisonRow__WYuHs:last-child { border-bottom: none; }
+.landing_comparisonHighlight__eSEgd {
+  background: rgba(255,107,43,0.06);
+}
+.landing_comparisonTool__ztJTi {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+.landing_comparisonHighlight__eSEgd .landing_comparisonTool__ztJTi { color: var(--orange); }
+.landing_comparisonPrice__LX_fp, .landing_comparisonDepth__ZSqK9 { color: var(--muted); }
+.landing_comparisonVerdict__0JvfL {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.landing_comparisonHighlight__eSEgd .landing_comparisonVerdict__0JvfL { color: var(--green); }
+
+/* FINAL CTA */
+.landing_finalCta__QfpVD {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 60px 32px 100px;
+  text-align: center;
+}
+.landing_finalCtaTitle__y5QXA {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.landing_finalCtaSub__dnJKc {
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 28px;
+}
+
+/* FOOTER */
+.landing_footer__NntD6 {
+  display: flex;
+  justify-content: space-between;
+  padding: 24px 48px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .landing_heroTitle__E6Dij { font-size: 30px; }
+  .landing_featuresGrid__sDNrY { grid-template-columns: 1fr; }
+  .landing_comparisonRow__WYuHs { grid-template-columns: 1fr 1fr; gap: 4px; }
+  .landing_comparisonDepth__ZSqK9 { display: none; }
+  .landing_nav__Cldps { padding: 18px 20px; }
+  .landing_footer__NntD6 { flex-direction: column; gap: 6px; padding: 20px; }
+}
+
+/* NAV right side */
+.landing_navRight__H1qvL { display: flex; align-items: center; gap: 10px; }
+.landing_navRight__H1qvL .landing_ctaPrimary__iXJld { padding: 8px 16px; font-size: 13px; }
+
+/* PRICING SECTION */
+.landing_pricingSection__hCW9M {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 60px 32px;
+  text-align: center;
+}
+.landing_pricingTitle__JGOSr {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 14px;
+  line-height: 1.3;
+}
+.landing_pricingSub__AmTA6 {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.7;
+  max-width: 560px;
+  margin: 0 auto 40px;
+}
+
+.landing_pricingGrid__sB18Q {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-gap: 14px;
+  gap: 14px;
+  text-align: left;
+}
+
+.landing_pricingCard__0QifE {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.landing_pricingHighlight__308yG {
+  border-color: var(--orange);
+  background: rgba(255,107,43,0.04);
+}
+.landing_pricingEnterprise__VV5Hd {
+  border-style: dashed;
+}
+
+.landing_popularBadge__Qp6xX {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--orange);
+  color: white;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  padding: 3px 10px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.landing_planTier__MAkdQ {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.landing_pricingHighlight__308yG .landing_planTier__MAkdQ { color: var(--orange); }
+
+.landing_planPriceRow__DSbIt {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+.landing_planPrice__UhiD2 {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--text);
+}
+.landing_planPeriod__Ip0mf {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.landing_planDesc__84sW0 {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.landing_planDivider__xY5OY {
+  height: 1px;
+  background: var(--border);
+  margin-bottom: 16px;
+}
+
+.landing_planFeatures__R6kb0 {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1;
+  margin-bottom: 20px;
+}
+.landing_planFeature__YfCsm {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.landing_planCheck__tbZBM {
+  color: var(--green);
+  flex-shrink: 0;
+  font-size: 11px;
+  margin-top: 1px;
+}
+
+.landing_planCta__yJVOI {
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+.landing_planCta__yJVOI:hover { border-color: var(--muted); }
+.landing_planCtaHighlight__o6FJL {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: white;
+}
+.landing_planCtaHighlight__o6FJL:hover { opacity: 0.88; }
+.landing_planCtaEnterprise__xqHbu {
+  border-style: dashed;
+  color: var(--muted);
+}
+.landing_planCtaEnterprise__xqHbu:hover { color: var(--text); border-color: var(--text); border-style: solid; }
+
+.landing_pricingNote__zHvmI {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 24px;
+  letter-spacing: 0.04em;
+}
+
+/* FOOTER link */
+.landing_footerLink__GUNut {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.12s;
+}
+.landing_footerLink__GUNut:hover { color: var(--orange); }
+
+@media (max-width: 900px) {
+  .landing_pricingGrid__sB18Q { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .landing_pricingGrid__sB18Q { grid-template-columns: 1fr; }
+  .landing_pricingTitle__JGOSr { font-size: 22px; }
+}
+

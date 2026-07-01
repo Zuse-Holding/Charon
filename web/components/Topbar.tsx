@@ -66,6 +66,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
           />
         </div>
 
+        {/* Desktop pills */}
         <div className={styles.pills}>
           {(["company", "person", "product"] as ResearchType[]).map((t) => (
             <button
@@ -78,12 +79,23 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
           ))}
         </div>
 
+        {/* Mobile type selector */}
+        <select
+          className={styles.mobileSelect}
+          value={type}
+          onChange={(e) => setType(e.target.value as ResearchType)}
+        >
+          <option value="company">Company</option>
+          <option value="person">Person</option>
+          <option value="product">Product</option>
+        </select>
+
         <button
           className={`${styles.runBtn} ${loading ? styles.loading : ""}`}
           onClick={handleRun}
           disabled={loading}
         >
-          {loading ? "RESEARCHING..." : "RUN RESEARCH"}
+          {loading ? "..." : "RUN RESEARCH"}
         </button>
 
         <div className={styles.right}>

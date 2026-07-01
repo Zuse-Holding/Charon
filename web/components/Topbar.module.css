@@ -106,3 +106,32 @@
 }
 .statusError   { color: var(--red);   background: rgba(255,68,85,0.08);  }
 .statusSuccess { color: var(--green); background: rgba(0,255,148,0.06); }
+
+@media (max-width: 768px) {
+  .topbar { padding: 10px 14px; gap: 8px; }
+  .searchWrap { max-width: unset; }
+  .right { display: none; }
+  .pills { display: none; }
+  .runBtn {
+    padding: 9px 12px;
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+}
+
+.mobileSelect {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text);
+  font-family: var(--font-body);
+  outline: none;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .mobileSelect { display: block; flex-shrink: 0; }
+}

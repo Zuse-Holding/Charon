@@ -1,314 +1,262 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
-import Sidebar from "../components/Sidebar";
-import Topbar from "../components/Topbar";
-import EntityTag from "../components/EntityTag";
-import ReportViewer from "../components/ReportViewer";
-import DeepDiveProgress from "../components/DeepDiveProgress";
-import DeepDiveViewer from "../components/DeepDiveViewer";
-import ErrorBoundary from "../components/ErrorBoundary";
-import ResearchSkeleton from "../components/ResearchSkeleton";
-import styles from "./page.module.css";
+import { useRouter } from "next/navigation";
+import styles from "./landing.module.css";
 
-interface Run {
-  id: string;
-  type: "company" | "person" | "product";
-  subject: string;
-  generatedAt: string;
-  reportPath: string;
-}
+const FEATURES = [
+  {
+    icon: "◈",
+    title: "Multi-Agent Research",
+    desc: "Seven specialized agents work in parallel — website, news, competitors, corporate filings, leadership, and product data — synthesized into one report.",
+  },
+  {
+    icon: "◆",
+    title: "Deep Dive Analysis",
+    desc: "Go beyond the quick profile with a 10-section analyst-grade report: founding history, leadership red flags, funding, market sizing, and a clear strategic verdict.",
+  },
+  {
+    icon: "◎",
+    title: "Watchlist & Alerts",
+    desc: "Track companies, people, and products over time. Get notified when something material changes — funding, leadership, or news.",
+  },
+  {
+    icon: "◉",
+    title: "Knowledge Graph",
+    desc: "Every entity you research connects into a queryable relationship graph — see who's tied to who across your entire research history.",
+  },
+];
 
-interface DeepDiveSection {
-  title: string;
-  content: string;
-  riskLevel?: "high" | "medium" | "low";
-}
+const PRICING = [
+  {
+    tier: "Basic",
+    price: "$19",
+    period: "/mo",
+    desc: "For individuals who need fast answers.",
+    features: [
+      "Unlimited quick profiles",
+      "Company, person & product research",
+      "Watchlist (up to 10 entities)",
+      "Export to Markdown",
+    ],
+    cta: "Get Started",
+    highlight: false,
+  },
+  {
+    tier: "Pro",
+    price: "$49",
+    period: "/mo",
+    desc: "For operators who need real depth.",
+    features: [
+      "Everything in Basic",
+      "Deep Dive — 10-section analyst reports",
+      "Unlimited Watchlist",
+      "PDF export",
+      "Knowledge Graph access",
+      "Priority research queue",
+    ],
+    cta: "Start Pro",
+    highlight: true,
+  },
+  {
+    tier: "Team",
+    price: "$149",
+    period: "/mo",
+    desc: "For teams that research together.",
+    features: [
+      "Everything in Pro",
+      "3 seats included ($40/seat after)",
+      "Shared workspace & watchlists",
+      "Team research history",
+      "API access",
+    ],
+    cta: "Start Team",
+    highlight: false,
+  },
+  {
+    tier: "Enterprise",
+    price: "Custom",
+    period: "",
+    desc: "For organizations that need more.",
+    features: [
+      "White-label deployment",
+      "Custom data feeds & integrations",
+      "Dedicated research infrastructure",
+      "Advanced team management",
+      "SLA & dedicated support",
+      "Scoped to your exact needs",
+    ],
+    cta: "Let's Talk →",
+    highlight: false,
+    isEnterprise: true,
+  },
+];
 
-interface DeepDiveBundle {
-  company: string;
-  generatedAt: string;
-  durationMs: number;
-  sections: DeepDiveSection[];
-}
-
-type ActiveTab = "summary" | "deep-dive";
-type DeepDiveState = "idle" | "confirming" | "running" | "done";
-
-export default function Dashboard() {
-  const [runs, setRuns]           = useState<Run[]>([]);
-  const [selected, setSelected]   = useState<Run | null>(null);
-  const [report, setReport]       = useState<string>("");
-  const [loading, setLoading]     = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>("summary");
-  const [deepDiveState, setDeepDiveState] = useState<DeepDiveState>("idle");
-  const [deepDive, setDeepDive]   = useState<DeepDiveBundle | null>(null);
-  const [pending, setPending]     = useState<{ subject: string; type: "company" | "person" | "product" } | null>(null);
-  const selectedRef               = useRef<Run | null>(null);
-
-  const loadRuns = useCallback(async () => {
-    const res = await fetch("/api/runs");
-    if (res.ok) {
-      const data: Run[] = await res.json();
-      setRuns(data);
-      return data;
-    }
-    return [];
-  }, []);
-
-  useEffect(() => {
-    loadRuns().then(async (data) => {
-      if (data.length > 0) await selectRun(data[0]);
-    });
-  }, [loadRuns]);
-
-  async function selectRun(run: Run) {
-    selectedRef.current = run;
-    setSelected(run);
-    setActiveTab("summary");
-    setDeepDiveState("idle");
-    setDeepDive(null);
-    setLoading(true);
-    try {
-      const reportUrl = `/api/report?path=${encodeURIComponent(run.reportPath)}&subject=${encodeURIComponent(run.subject)}`;
-      const reportRes = await fetch(reportUrl);
-      if (reportRes.ok) setReport(await reportRes.text());
-      else setReport(`_Report not available. Re-run to generate._`);
-    } catch (err) {
-      setReport("_Error loading report._");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function confirmDelete(id: string) {
-    if (deleteConfirm !== id) {
-      setDeleteConfirm(id);
-      setTimeout(() => setDeleteConfirm(null), 3000);
-      return;
-    }
-    setDeleteConfirm(null);
-    await fetch("/api/runs", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    if (selected?.id === id) { setSelected(null); setReport(""); setDeepDive(null); }
-    await loadRuns();
-  }
-
-  function handleDeepDiveComplete(sections: { title: string; content: string; riskLevel?: string }[]) {
-    if (!selected) return;
-    const bundle: DeepDiveBundle = {
-      company: selected.subject,
-      generatedAt: new Date().toISOString(),
-      durationMs: 0,
-      sections: sections.map(s => ({
-        ...s,
-        riskLevel: s.riskLevel as "high" | "medium" | "low" | undefined,
-      })),
-    };
-    setDeepDive(bundle);
-    setDeepDiveState("done");
-    setActiveTab("deep-dive");
-  }
-
-  function formatDate(iso: string) {
-    return new Date(iso).toLocaleString("en-US", {
-      month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
-  }
-
-  const isCompany = selected?.type === "company";
+export default function Landing() {
+  const router = useRouter();
 
   return (
-    <div className={styles.shell}>
-      <Sidebar />
-      <main className={styles.main}>
-        <Topbar
-          onResearchStart={(subject, type) => {
-            setPending({ subject, type });
-            setSelected(null);
-            setReport("");
-          }}
-          onResearchComplete={async () => {
-            setPending(null);
-            await new Promise(r => setTimeout(r, 1500));
-            const data = await loadRuns();
-            if (data.length > 0) await selectRun(data[0]);
-          }}
-        />
+    <div className={styles.page}>
+      {/* NAV */}
+      <nav className={styles.nav}>
+        <div className={styles.navLogo}>
+          <span className={styles.navLogoMark}>CHARON</span>
+          <span className={styles.navLogoSub}>· Powered by Selene</span>
+        </div>
+        <div className={styles.navRight}>
+          <button className={styles.navCta} onClick={() => router.push("/login")}>
+            Sign In
+          </button>
+          <button className={styles.ctaPrimary} onClick={() => router.push("/login")}>
+            Get Started
+          </button>
+        </div>
+      </nav>
 
-        <div className={styles.content}>
-          {/* FEED */}
-          <div className={styles.feed}>
-            <div className={styles.feedHeader}>
-              <span className={styles.panelTitle}>Recent Research</span>
-              <span className={styles.count}>{runs.length}</span>
+      {/* HERO */}
+      <section className={styles.hero}>
+        <div className={styles.heroBadge}>ZUSE HOLDINGS · INTELLIGENCE PLATFORM</div>
+        <h1 className={styles.heroTitle}>
+          Business intelligence research,<br />without the enterprise price tag.
+        </h1>
+        <p className={styles.heroSub}>
+          Charon researches companies, people, and products in seconds — pulling
+          funding, leadership, competitors, and news into one clean report.
+          Built for founders, operators, and BD teams who need real answers fast.
+        </p>
+        <div className={styles.heroCtas}>
+          <button className={styles.ctaPrimary} onClick={() => router.push("/login")}>
+            Get Started Free →
+          </button>
+          <button className={styles.ctaSecondary} onClick={() => {
+            document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
+          }}>
+            See how it works
+          </button>
+        </div>
+      </section>
+
+      {/* DEMO PREVIEW */}
+      <section className={styles.previewSection}>
+        <div className={styles.previewCard}>
+          <div className={styles.previewHeader}>
+            <div className={styles.previewDots}>
+              <span /><span /><span />
             </div>
-            <div className={styles.feedList}>
-              {runs.length === 0 && (
-                <div className={styles.empty}>
-                  No research yet. Run your first query above.
-                </div>
-              )}
-              {pending && (
-                <div className={`${styles.feedItem} ${styles.feedItemPending}`}>
-                  <div className={styles.itemHeader}>
-                    <span className={styles.pendingDot} />
-                    <span className={styles.itemName}>{pending.subject}</span>
-                  </div>
-                  <div className={styles.itemTime}>Researching...</div>
-                </div>
-              )}
-              {runs.map((run) => (
-                <div
-                  key={run.id}
-                  className={`${styles.feedItem} ${selected?.id === run.id ? styles.selected : ""}`}
-                  onClick={() => selectRun(run)}
-                >
-                  <div className={styles.itemHeader}>
-                    <EntityTag type={run.type} />
-                    <span className={styles.itemName}>{run.subject}</span>
-                    <button
-                      className={`${styles.deleteBtn} ${deleteConfirm === run.id ? styles.deleteBtnConfirm : ""}`}
-                      onClick={(e) => { e.stopPropagation(); confirmDelete(run.id); }}
-                      title={deleteConfirm === run.id ? "Click again to confirm" : "Delete"}
-                    >
-                      {deleteConfirm === run.id ? "Sure?" : "✕"}
-                    </button>
-                  </div>
-                  <div className={styles.itemTime}>{formatDate(run.generatedAt)}</div>
-                </div>
-              ))}
-            </div>
+            <span className={styles.previewUrl}>charon.zuseholdings.com</span>
           </div>
-
-          {/* REPORT PANEL */}
-          <div className={styles.reportPanel}>
-            {pending ? (
-              <div className={styles.reportBody} style={{ paddingTop: 32 }}>
-                <ResearchSkeleton subject={pending.subject} type={pending.type} />
+          <div className={styles.previewBody}>
+            <div className={styles.previewSearch}>
+              <span className={styles.previewSearchDot} />
+              <span className={styles.previewSearchText}>Researching "Stripe"...</span>
+            </div>
+            <div className={styles.previewResult}>
+              <div className={styles.previewResultRow}>
+                <span className={styles.previewLabel}>FOUNDED</span>
+                <span>2010</span>
               </div>
-            ) : !selected ? (
-              <div className={styles.emptyState}>
-                <div className={styles.emptyIcon}>◈</div>
-                <div className={styles.emptyTitle}>Select a research report</div>
-                <div className={styles.emptyText}>
-                  Run a search above or pick an item from the feed
-                </div>
+              <div className={styles.previewResultRow}>
+                <span className={styles.previewLabel}>LEADERSHIP</span>
+                <span>Patrick Collison, John Collison</span>
               </div>
-            ) : (
-              <>
-                <div className={styles.reportHeader}>
-                  <div>
-                    <div className={styles.reportTitleRow}>
-                      <EntityTag type={selected.type} />
-                      <h1 className={styles.reportTitle}>{selected.subject}</h1>
-                    </div>
-                    <div className={styles.reportMeta}>
-                      GENERATED {formatDate(selected.generatedAt)}
-                    </div>
-                  </div>
-                  <div className={styles.reportActions}>
-                    <button
-                      className={styles.actionBtn}
-                      disabled={loading}
-                      onClick={async () => {
-                        if (!selected || loading) return;
-                        const currentSubject = selected.subject;
-                        const currentType = selected.type;
-                        setLoading(true);
-                        try {
-                          await fetch("/api/research", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ subject: currentSubject, type: currentType }),
-                          });
-                          await new Promise(r => setTimeout(r, 1500));
-                          const data = await loadRuns();
-                          const updated = data.find(r => r.subject === currentSubject && r.type === currentType);
-                          if (updated) await selectRun(updated);
-                        } finally {
-                          setLoading(false);
-                        }
-                      }}
-                    >
-                      {loading ? "Running..." : "Re-run"}
-                    </button>
-                    <button
-                      className={`${styles.actionBtn} ${styles.primary}`}
-                      onClick={() => window.print()}
-                    >
-                      Export PDF
-                    </button>
-                  </div>
-                </div>
-
-                {isCompany && (
-                  <div className={styles.tabBar}>
-                    <button
-                      className={`${styles.tab} ${activeTab === "summary" ? styles.tabActive : ""}`}
-                      onClick={() => setActiveTab("summary")}
-                    >
-                      Summary
-                    </button>
-                    <button
-                      className={`${styles.tab} ${activeTab === "deep-dive" ? styles.tabActive : ""} ${deepDiveState === "idle" ? styles.tabLocked : ""}`}
-                      onClick={() => {
-                        if (deepDiveState === "idle") setDeepDiveState("confirming");
-                        else if (deepDiveState === "done") setActiveTab("deep-dive");
-                      }}
-                    >
-                      Deep Dive
-                      {deepDiveState === "idle" && <span className={styles.tabBadge}>NEW</span>}
-                      {deepDiveState === "done" && <span className={styles.tabBadgeDone}>✓</span>}
-                    </button>
-                  </div>
-                )}
-
-                <div className={styles.reportBody}>
-                  {(deepDiveState === "confirming" || deepDiveState === "running") && selected && (
-                    <DeepDiveProgress
-                      company={selected.subject}
-                      onComplete={handleDeepDiveComplete}
-                      onCancel={() => setDeepDiveState("idle")}
-                    />
-                  )}
-
-                  {deepDiveState !== "confirming" && deepDiveState !== "running" && (
-                    <>
-                      {activeTab === "summary" && (
-                        loading ? (
-                          <div className={styles.reportLoading}>
-                            <span className={styles.loadingDot} />
-                            Loading report...
-                          </div>
-                        ) : (
-                          <ErrorBoundary>
-                            <ReportViewer markdown={report} />
-                          </ErrorBoundary>
-                        )
-                      )}
-                      {activeTab === "deep-dive" && deepDive && (
-                        <ErrorBoundary>
-                          <DeepDiveViewer
-                            company={deepDive.company}
-                            generatedAt={deepDive.generatedAt}
-                            durationMs={deepDive.durationMs}
-                            sections={deepDive.sections}
-                          />
-                        </ErrorBoundary>
-                      )}
-                    </>
-                  )}
-                </div>
-              </>
-            )}
+              <div className={styles.previewResultRow}>
+                <span className={styles.previewLabel}>VALUATION</span>
+                <span>$70B</span>
+              </div>
+              <div className={styles.previewResultRow}>
+                <span className={styles.previewLabel}>COMPETITORS</span>
+                <span>PayPal, Adyen, Square</span>
+              </div>
+            </div>
           </div>
         </div>
-      </main>
+      </section>
+
+      {/* FEATURES */}
+      <section id="how-it-works" className={styles.featuresSection}>
+        <div className={styles.sectionLabel}>WHAT YOU GET</div>
+        <div className={styles.featuresGrid}>
+          {FEATURES.map((f) => (
+            <div key={f.title} className={styles.featureCard}>
+              <div className={styles.featureIcon}>{f.icon}</div>
+              <div className={styles.featureTitle}>{f.title}</div>
+              <div className={styles.featureDesc}>{f.desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* PRICING */}
+      <section className={styles.pricingSection}>
+        <div className={styles.sectionLabel}>PRICING</div>
+        <h2 className={styles.pricingTitle}>
+          Between Crunchbase and PitchBook.<br />In price and depth.
+        </h2>
+        <p className={styles.pricingSub}>
+          Crunchbase gives you shallow profiles at $49/mo.
+          PitchBook gives you depth at $20,000+/yr.
+          Charon gives you analyst-grade research at a price that makes sense.
+        </p>
+        <div className={styles.pricingGrid}>
+          {PRICING.map((plan) => (
+            <div
+              key={plan.tier}
+              className={`${styles.pricingCard} ${plan.highlight ? styles.pricingHighlight : ""} ${(plan as any).isEnterprise ? styles.pricingEnterprise : ""}`}
+            >
+              {plan.highlight && (
+                <div className={styles.popularBadge}>MOST POPULAR</div>
+              )}
+              <div className={styles.planTier}>{plan.tier}</div>
+              <div className={styles.planPriceRow}>
+                <span className={styles.planPrice}>{plan.price}</span>
+                {plan.period && <span className={styles.planPeriod}>{plan.period}</span>}
+              </div>
+              <div className={styles.planDesc}>{plan.desc}</div>
+              <div className={styles.planDivider} />
+              <ul className={styles.planFeatures}>
+                {plan.features.map((f) => (
+                  <li key={f} className={styles.planFeature}>
+                    <span className={styles.planCheck}>✓</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <button
+                className={`${styles.planCta} ${plan.highlight ? styles.planCtaHighlight : ""} ${(plan as any).isEnterprise ? styles.planCtaEnterprise : ""}`}
+                onClick={() => {
+                  if ((plan as any).isEnterprise) {
+                    window.location.href = "mailto:hello@zuseholdings.com?subject=Charon Enterprise";
+                  } else {
+                    router.push("/login");
+                  }
+                }}
+              >
+                {plan.cta}
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className={styles.pricingNote}>
+          All plans include a free trial period. No credit card required to start.
+        </div>
+      </section>
+
+      {/* FINAL CTA */}
+      <section className={styles.finalCta}>
+        <h2 className={styles.finalCtaTitle}>Start researching in under a minute.</h2>
+        <p className={styles.finalCtaSub}>No credit card. No sales call. Just answers.</p>
+        <button className={styles.ctaPrimary} onClick={() => router.push("/login")}>
+          Create Free Account →
+        </button>
+      </section>
+
+      <footer className={styles.footer}>
+        <span>© 2026 Zuse Holdings</span>
+        <span>
+          <a href="mailto:hello@zuseholdings.com" className={styles.footerLink}>
+            hello@zuseholdings.com
+          </a>
+        </span>
+        <span>Powered by Selene</span>
+      </footer>
     </div>
   );
 }

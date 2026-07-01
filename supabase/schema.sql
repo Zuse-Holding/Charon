@@ -63,7 +63,57 @@ CREATE POLICY "Users manage own deep dives"
   WITH CHECK (auth.uid() = user_id);
 
 -- ============================================================
--- Indexes for query performance
+-- Knowledge Graph (Phase 1) — entity extraction storage
+-- Populated automatically after each research run completes.
+-- No UI yet — this just accumulates relationship data so the
+-- graph visualization (Phase 2+) has real data to work with.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS kg_entities (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name         TEXT        NOT NULL,
+  type         TEXT        NOT NULL CHECK (type IN ('company', 'person', 'product')),
+  first_seen_at TIMESTAMPTZ DEFAULT NOW(),
+  source_run_id UUID        REFERENCES research_runs(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, name, type)
+);
+
+CREATE TABLE IF NOT EXISTS kg_relationships (
+  id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id           UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  from_entity_id    UUID        NOT NULL REFERENCES kg_entities(id) ON DELETE CASCADE,
+  to_entity_id      UUID        NOT NULL REFERENCES kg_entities(id) ON DELETE CASCADE,
+  relationship_type TEXT        NOT NULL, -- e.g. FOUNDED, COMPETES_WITH, ACQUIRED, PARTNERED_WITH, WORKS_AT
+  source_run_id     UUID        REFERENCES research_runs(id) ON DELETE SET NULL,
+  created_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE kg_entities      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kg_relationships ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users manage own entities"
+  ON kg_entities FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own relationships"
+  ON kg_relationships FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_kg_entities_user_name
+  ON kg_entities (user_id, name);
+
+CREATE INDEX IF NOT EXISTS idx_kg_relationships_user_from
+  ON kg_relationships (user_id, from_entity_id);
+
+CREATE INDEX IF NOT EXISTS idx_kg_relationships_user_to
+  ON kg_relationships (user_id, to_entity_id);
+
+-- ============================================================
+-- Indexes for core tables (research_runs, watchlist, deep_dives)
 -- ============================================================
 
 CREATE INDEX IF NOT EXISTS idx_runs_user_date

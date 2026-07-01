@@ -12,36 +12,36 @@ export async function GET(req: NextRequest) {
     return new NextResponse(content, { headers: { "Content-Type": "text/plain" } });
   }
 
-  // Fall back to Supabase
+  // Fall back to Supabase bundle (works in production on Vercel)
   try {
     const supabase = await createServerSupabaseClient();
-
-    let data, error;
+    
+    // Try to find by subject or by report_path
+    const query = supabase
+      .from("research_runs")
+      .select("bundle, subject")
+      .order("generated_at", { ascending: false })
+      .limit(1);
 
     if (subject) {
-      ({ data, error } = await supabase
-        .from("research_runs")
-        .select("bundle")
-        .ilike("subject", subject)
-        .order("generated_at", { ascending: false })
-        .limit(1)
-        .single());
+      query.ilike("subject", subject);
     } else if (path) {
-      ({ data, error } = await supabase
-        .from("research_runs")
-        .select("bundle")
-        .eq("report_path", path)
-        .order("generated_at", { ascending: false })
-        .limit(1)
-        .single());
-    } else {
-      return new NextResponse("subject or path required", { status: 400 });
+      // Extract subject from path slug
+      query.eq("report_path", path);
     }
 
-    if (error || !data) return new NextResponse("Report not found", { status: 404 });
+    const { data, error } = await query.single();
 
-    const markdown = (data.bundle as Record<string, unknown>)?.reportMarkdown as string;
-    if (!markdown) return new NextResponse("Report content not available — re-run to generate", { status: 404 });
+    if (error || !data) {
+      return new NextResponse("Report not found", { status: 404 });
+    }
+
+    const bundle = data.bundle as Record<string, unknown>;
+    const markdown = bundle?.reportMarkdown as string;
+
+    if (!markdown) {
+      return new NextResponse("Report content not available", { status: 404 });
+    }
 
     return new NextResponse(markdown, { headers: { "Content-Type": "text/plain" } });
   } catch (err) {
