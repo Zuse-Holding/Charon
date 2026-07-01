@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import "dotenv/config";
 import { ResearchOrchestrator } from "./agents/orchestrator/index.js";
+import { findEasterEgg } from "./easter-eggs/index.js";
 import {
   recordRun,
   listRecent,
@@ -45,13 +46,35 @@ program
   .argument("<company>")
   .description("Research a company")
   .action(async (company: string) => {
+    const dir = join(process.cwd(), "reports");
+    mkdirSync(dir, { recursive: true });
+    const outPath = join(dir, `${slugify(company)}.md`);
+
+    // Easter egg short-circuit — skip the real pipeline entirely
+    const egg = findEasterEgg(company);
+    if (egg && egg.type === "company") {
+      writeFileSync(outPath, egg.markdown, "utf-8");
+      const generatedAt = new Date().toISOString();
+      recordRun({
+        id: randomUUID(),
+        type: "company",
+        subject: company,
+        generatedAt,
+        reportPath: outPath,
+        bundle: {
+          query: company, generatedAt, company: { name: company },
+          leadership: [], products: [], news: [], funding: [],
+          competitors: [], sources: [],
+        },
+      });
+      console.log(`Report written to ${outPath} (easter egg)`);
+      return;
+    }
+
     console.log(`Researching company "${company}"...`);
     warnIfNoSearchKey(); logLLMProvider();
     const orchestrator = new ResearchOrchestrator();
     const { bundle, report } = await orchestrator.researchCompany(company);
-    const dir = join(process.cwd(), "reports");
-    mkdirSync(dir, { recursive: true });
-    const outPath = join(dir, `${slugify(company)}.md`);
     writeFileSync(outPath, report, "utf-8");
     recordRun({ id: randomUUID(), type: "company", subject: company, generatedAt: bundle.generatedAt, reportPath: outPath, bundle });
     console.log(`Report written to ${outPath}`);
@@ -63,13 +86,33 @@ program
   .argument("<name>")
   .description("Research a person")
   .action(async (name: string) => {
+    const dir = join(process.cwd(), "reports", "people");
+    mkdirSync(dir, { recursive: true });
+    const outPath = join(dir, `${slugify(name)}.md`);
+
+    const egg = findEasterEgg(name);
+    if (egg && egg.type === "person") {
+      writeFileSync(outPath, egg.markdown, "utf-8");
+      const generatedAt = new Date().toISOString();
+      recordRun({
+        id: randomUUID(),
+        type: "person",
+        subject: name,
+        generatedAt,
+        reportPath: outPath,
+        bundle: {
+          query: name, generatedAt, person: { name },
+          careerHistory: [], news: [], sources: [],
+        },
+      });
+      console.log(`Report written to ${outPath} (easter egg)`);
+      return;
+    }
+
     console.log(`Researching person "${name}"...`);
     warnIfNoSearchKey(); logLLMProvider();
     const orchestrator = new ResearchOrchestrator();
     const { bundle, report } = await orchestrator.researchPerson(name);
-    const dir = join(process.cwd(), "reports", "people");
-    mkdirSync(dir, { recursive: true });
-    const outPath = join(dir, `${slugify(name)}.md`);
     writeFileSync(outPath, report, "utf-8");
     recordRun({ id: randomUUID(), type: "person", subject: name, generatedAt: bundle.generatedAt, reportPath: outPath, bundle });
     console.log(`Report written to ${outPath}`);

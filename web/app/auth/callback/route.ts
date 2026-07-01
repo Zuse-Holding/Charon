@@ -9,7 +9,7 @@ import { createServerSupabaseClient } from "../../../lib/supabase/server";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  const next = searchParams.get("next") ?? "/app";
 
   if (code) {
     const supabase = await createServerSupabaseClient();

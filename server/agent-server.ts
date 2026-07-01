@@ -20,11 +20,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ResearchOrchestrator } from "../src/agents/orchestrator/index.js";
 import { DeepDiveAgent } from "../src/agents/deep-dive/index.js";
+import { EntityExtractionAgent } from "../src/agents/entity-extraction/index.js";
+import { findEasterEgg } from "../src/easter-eggs/index.js";
+import { saveEntityExtraction } from "../src/database/knowledge-graph.js";
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { createClient } from "@supabase/supabase-js";
 
 const app  = express();
-const PORT = process.env.PORT ?? process.env.AGENT_PORT ?? 4000;
+const PORT = process.env.AGENT_PORT ?? 4000;
 
 // Allow requests from your Vercel frontend domain
 const ALLOWED_ORIGIN = process.env.FRONTEND_URL ?? "http://localhost:3000";
@@ -69,40 +72,68 @@ app.post("/research", async (req, res) => {
   }
 
   try {
-    const orchestrator = new ResearchOrchestrator();
     let bundle: unknown;
     let report: string;
     let outPath: string;
 
-    if (type === "company") {
-      const result = await orchestrator.researchCompany(subject);
-      bundle = result.bundle; report = result.report;
-      outPath = join(REPORTS_DIR, `${slugify(subject)}.md`);
-    } else if (type === "person") {
-      const result = await orchestrator.researchPerson(subject);
-      bundle = result.bundle; report = result.report;
-      outPath = join(REPORTS_DIR, "people", `${slugify(subject)}.md`);
+    // Easter egg short-circuit — skip the real pipeline for known fictional entities
+    const egg = findEasterEgg(subject);
+    if (egg && egg.type === type) {
+      report = egg.markdown;
+      bundle = { query: subject, generatedAt: new Date().toISOString() };
+      outPath =
+        type === "person"
+          ? join(REPORTS_DIR, "people", `${slugify(subject)}.md`)
+          : type === "product"
+          ? join(REPORTS_DIR, "products", `${slugify(subject)}.md`)
+          : join(REPORTS_DIR, `${slugify(subject)}.md`);
     } else {
-      const result = await orchestrator.researchProduct(subject);
-      bundle = result.bundle; report = result.report;
-      outPath = join(REPORTS_DIR, "products", `${slugify(subject)}.md`);
+      const orchestrator = new ResearchOrchestrator();
+      if (type === "company") {
+        const result = await orchestrator.researchCompany(subject);
+        bundle = result.bundle; report = result.report;
+        outPath = join(REPORTS_DIR, `${slugify(subject)}.md`);
+      } else if (type === "person") {
+        const result = await orchestrator.researchPerson(subject);
+        bundle = result.bundle; report = result.report;
+        outPath = join(REPORTS_DIR, "people", `${slugify(subject)}.md`);
+      } else {
+        const result = await orchestrator.researchProduct(subject);
+        bundle = result.bundle; report = result.report;
+        outPath = join(REPORTS_DIR, "products", `${slugify(subject)}.md`);
+      }
     }
 
     writeFileSync(outPath, report, "utf-8");
 
-    // Write to Supabase
- const { error } = await supabase.from("research_runs").insert({
-  id: randomUUID(),
-  user_id: userId,
-  type,
-  subject,
-  generated_at: new Date().toISOString(),
-  report_path: outPath,
-  bundle: { ...(bundle as object), reportMarkdown: report },
-});
+    const runId = randomUUID();
+
+    // Write to Supabase — report markdown stored in bundle so it can be
+    // read back on Vercel (which has no access to this server's filesystem)
+    const { error } = await supabase.from("research_runs").insert({
+      id: runId,
+      user_id: userId,
+      type,
+      subject,
+      generated_at: new Date().toISOString(),
+      report_path: outPath,
+      bundle: { ...(bundle as object), reportMarkdown: report },
+    });
 
     if (error) throw error;
     res.json({ ok: true, reportPath: outPath });
+
+    // Fire-and-forget entity extraction — runs after response is sent so
+    // it never adds latency to the user-facing request. Failures here
+    // are logged but never surface to the user; this is best-effort
+    // enrichment for the Knowledge Graph, not a critical path.
+    if (type === "company" || type === "person" || type === "product") {
+      const entityAgent = new EntityExtractionAgent();
+      entityAgent
+        .extract(report, { name: subject, type })
+        .then((extraction) => saveEntityExtraction(userId, runId, extraction))
+        .catch((err) => console.error("[entity-extraction] failed:", err));
+    }
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

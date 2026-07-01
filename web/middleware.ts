@@ -37,6 +37,7 @@ export async function middleware(request: NextRequest) {
 
   // Public routes — always accessible
   const isPublicRoute =
+    pathname === "/" ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/_next") ||
@@ -52,7 +53,7 @@ export async function middleware(request: NextRequest) {
   // Already logged in — don't show the login page
   if (user && pathname === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/app";
     return NextResponse.redirect(url);
   }
 

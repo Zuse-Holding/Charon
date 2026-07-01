@@ -4,7 +4,7 @@ import { createClient } from "../lib/supabase/client";
 import styles from "./Sidebar.module.css";
 
 const NAV = [
-  { label: "Dashboard",       icon: "◈", href: "/" },
+  { label: "Dashboard",       icon: "◈", href: "/app" },
   { label: "Reports",         icon: "⊞", href: "/reports" },
   { label: "Watchlist",       icon: "◎", href: "/watchlist" },
 ];
@@ -27,8 +27,8 @@ export default function Sidebar() {
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.logo}>
-        <div className={styles.logoMark}>SELINE INTEL</div>
+      <div className={styles.logo} onClick={() => router.push("/")} style={{ cursor: "pointer" }}>
+        <div className={styles.logoMark}>CHARON</div>
         <div className={styles.logoSub}>ZUSE HOLDINGS // v0.1</div>
       </div>
 
