@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Charon — Business Intelligence",
+  title: "SELINE INTEL",
   description: "AI-powered business intelligence — Zuse Holdings",
 };
 

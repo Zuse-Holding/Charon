@@ -3,7 +3,7 @@ import {
   CompetitorEntry,
   Source,
 } from "../../types/research.js";
-import { FetchProvider, SearchProvider } from "../../lib/providers.js";
+import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractOrganizations } from "../../lib/nlp.js";
 import { CompetitorExtractionSchema, extractStructured } from "../../lib/llm.js";
 
@@ -24,10 +24,10 @@ const NON_COMPETITOR_ENTITIES = new Set([
 
 /**
  * Competitor Agent
- * Collects: named rivals/alternatives for the researched company.
- * Only returns direct market competitors — not media platforms, social
- * networks, or generic enterprise software unless the company being
- * researched is itself in one of those categories.
+ * Fetches full page text from the top competitor comparison article
+ * for much richer context than snippets alone. Only returns direct
+ * market competitors — not media platforms, social networks, or
+ * generic enterprise software.
  */
 export class CompetitorAgent {
   constructor(
@@ -48,9 +48,19 @@ export class CompetitorAgent {
       usedFor: ["competitors"],
     }));
 
-    const combinedText = results
+    // Fetch full text from the top result — competitor comparison articles
+    // are usually rich with named competitors that snippets miss
+    const topPageText = results.length > 0
+      ? await fetchPageText(results[0].url, this.fetcher, 3000)
+      : null;
+
+    const snippetText = results
       .map((r) => `${r.title}: ${r.snippet ?? ""}`)
       .join("\n");
+
+    const combinedText = topPageText
+      ? `FULL ARTICLE:\n${topPageText}\n\nSEARCH SNIPPETS:\n${snippetText}`
+      : snippetText;
 
     let competitors: CompetitorEntry[] = [];
 
@@ -62,7 +72,7 @@ STRICT RULES:
 - Only include companies that directly compete for the same customers in the same market segment as "${companyName}"
 - NEVER include: social media platforms (Facebook, YouTube, Instagram, TikTok, Twitter/X, LinkedIn), news/media publishers (Bloomberg, Forbes, TechCrunch), general search engines (Google), general cloud/infrastructure providers (AWS, Azure, GCP) unless "${companyName}" IS one of those categories
 - NEVER include "${companyName}" itself
-- NEVER include companies that are merely mentioned in an article alongside "${companyName}" without being a direct competitor
+- NEVER include companies that are merely mentioned in an article without being a direct competitor
 - If you are not confident a company is a direct competitor, exclude it
 - Return 3-8 genuine direct competitors only`,
         combinedText,
@@ -79,7 +89,6 @@ STRICT RULES:
 
     if (competitors.length === 0) {
       const nameCounts = new Map<string, { count: number; sourceUrl: string }>();
-
       for (const r of results) {
         const text = `${r.title}. ${r.snippet ?? ""}`;
         const names = extractOrganizations(text, companyName);
