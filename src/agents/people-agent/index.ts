@@ -5,7 +5,7 @@ import {
   PersonProfile,
   Source,
 } from "../../types/research.js";
-import { FetchProvider, SearchProvider } from "../../lib/providers.js";
+import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractRoleAndCompany, splitSentences } from "../../lib/nlp.js";
 import { PersonExtractionSchema, extractStructured } from "../../lib/llm.js";
 
@@ -13,11 +13,8 @@ import { PersonExtractionSchema, extractStructured } from "../../lib/llm.js";
  * People Agent
  * Collects: current role/company, best-effort career history, recent
  * news mentions for a named individual.
- *
- * Tries a local LLM (Ollama) first for the bio/role/career fields —
- * generalizes across phrasing the regex patterns weren't written for.
- * Falls back to sentence-scoped regex extraction (lib/nlp.ts) if Ollama
- * isn't available.
+ * Now fetches full bio pages for richer context — fixes the "wrong CEO"
+ * issue caused by stale snippets.
  */
 export class PeopleAgent {
   constructor(
@@ -49,9 +46,21 @@ export class PeopleAgent {
     const person: PersonProfile = { name: personName };
     let careerHistory: CareerEntry[] = [];
 
-    const combinedText = bioResults
+    // Fetch full text from top 2 bio results for richer career context
+    const fetchedBios = await Promise.all(
+      bioResults.slice(0, 2).map(r => fetchPageText(r.url, this.fetcher, 2500))
+    );
+
+    const snippetText = bioResults
       .map((r) => `${r.title}: ${r.snippet ?? ""}`)
       .join("\n");
+
+    const combinedText = [
+      ...fetchedBios
+        .filter((t): t is string => t !== null)
+        .map((t, i) => `SOURCE (${bioResults[i].url}):\n${t}`),
+      `SNIPPETS:\n${snippetText}`,
+    ].filter(Boolean).join("\n\n") || snippetText;
 
     let usedLLM = false;
     if (combinedText.length > 0) {

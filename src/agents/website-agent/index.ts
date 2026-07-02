@@ -9,6 +9,7 @@ import {
   FetchProvider,
   SearchProvider,
   resolveAndFetch,
+  extractBestChunk,
 } from "../../lib/providers.js";
 import {
   extractPeopleWithTitles,
@@ -155,7 +156,7 @@ export class WebsiteAgent {
 
     // Combine everything gathered into one block for a single LLM call
     const combinedText = [
-      page ? `OFFICIAL SITE TEXT:\n${cleanPageText(page.text).slice(0, 1500)}` : "",
+      page ? `OFFICIAL SITE TEXT:\n${extractBestChunk(cleanPageText(page.text), 2000)}` : "",
       overviewResults.length
         ? `OVERVIEW SEARCH:\n${overviewResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}`
         : "",
