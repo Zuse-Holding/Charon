@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-typescriptexport const metadata: Metadata = {
+export const metadata: Metadata = {
   title: "Charon — Business Intelligence",
   description: "AI-powered business intelligence — Zuse Holdings",
 };
