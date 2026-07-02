@@ -47,10 +47,6 @@ export class ReportAgent {
     if (bundle.products.length === 0) {
       lines.push(`_No product data collected in this pass._`);
     } else {
-      lines.push(
-        `_Best-effort extraction — may include false positives (marketing copy mistaken for product names)._`
-      );
-      lines.push(``);
       for (const p of bundle.products) {
         lines.push(
           `- **${p.name}**${p.category ? ` (${p.category})` : ""}${
@@ -111,9 +107,7 @@ export class ReportAgent {
         lines.push(`- ${risk}`);
       }
     } else {
-      lines.push(
-        `_Requires LLM synthesis — not available this run (Ollama not running, or no model pulled). See README for setup._`
-      );
+      lines.push(`_Insufficient data for risk analysis on this run._`);
     }
     lines.push(``);
 
@@ -123,9 +117,7 @@ export class ReportAgent {
         lines.push(`- ${opp}`);
       }
     } else {
-      lines.push(
-        `_Requires LLM synthesis — not available this run (Ollama not running, or no model pulled). See README for setup._`
-      );
+      lines.push(`_Insufficient data for opportunity analysis on this run._`);
     }
     lines.push(``);
 
@@ -165,10 +157,6 @@ export class ReportAgent {
 
     lines.push(`## Current Role`);
     if (bundle.person.currentRole && bundle.person.currentCompany) {
-      lines.push(
-        `_Best-effort, based on the top-ranked search result — verify before relying on this._`
-      );
-      lines.push(``);
       lines.push(`- **Role:** ${bundle.person.currentRole}`);
       lines.push(`- **Company:** ${bundle.person.currentCompany}`);
     } else {
@@ -180,10 +168,6 @@ export class ReportAgent {
     if (bundle.careerHistory.length === 0) {
       lines.push(`_No career history collected in this pass._`);
     } else {
-      lines.push(
-        `_Best-effort extraction from search snippets — not necessarily in chronological order._`
-      );
-      lines.push(``);
       for (const c of bundle.careerHistory) {
         lines.push(`- ${c.title}${c.company ? ` at ${c.company}` : ""}`);
       }
@@ -267,7 +251,7 @@ export class ReportAgent {
     if (bundle.risks && bundle.risks.length > 0) {
       for (const r of bundle.risks) lines.push(`- ${r}`);
     } else {
-      lines.push(`_Requires LLM synthesis._`);
+      lines.push(`_Insufficient data for risk analysis on this run._`);
     }
     lines.push(``);
 
@@ -275,7 +259,7 @@ export class ReportAgent {
     if (bundle.opportunities && bundle.opportunities.length > 0) {
       for (const o of bundle.opportunities) lines.push(`- ${o}`);
     } else {
-      lines.push(`_Requires LLM synthesis._`);
+      lines.push(`_Insufficient data for opportunity analysis on this run._`);
     }
     lines.push(``);
 

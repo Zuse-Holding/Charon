@@ -1,10 +1,10 @@
 "use client";
-import { useState, Suspense } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import styles from "./page.module.css";
 
-function LoginPage() {
+export default function LoginPage() {
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode]         = useState<"signin" | "signup">("signin");
@@ -20,17 +20,22 @@ function LoginPage() {
     if (!email || !password) { setError("Email and password required."); return; }
     setLoading(true); setError(null); setMessage(null);
     try {
+      console.log("[login] supabase url:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+      console.log("[login] mode:", mode);
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        console.log("[login] signup result:", { data, error });
         if (error) throw error;
         setMessage("Check your email to confirm your account, or sign in directly if confirmation is disabled.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        console.log("[login] signin result:", { data, error });
         if (error) throw error;
         router.push(next);
         router.refresh();
       }
     } catch (err: unknown) {
+      console.error("[login] error:", err);
       setError((err as Error).message ?? "Authentication failed.");
     } finally {
       setLoading(false);
@@ -50,7 +55,7 @@ function LoginPage() {
     <div className={styles.shell}>
       <div className={styles.card}>
         <div className={styles.logo}>
-          <div className={styles.logoMark}>CHARON</div>
+          <div className={styles.logoMark}>SELINE INTEL</div>
           <div className={styles.logoSub}>ZUSE HOLDINGS // INTELLIGENCE PLATFORM</div>
         </div>
 
@@ -108,13 +113,5 @@ function LoginPage() {
         </button>
       </div>
     </div>
-  );
-}
-
-export default function LoginPageWrapper() {
-  return (
-    <Suspense>
-      <LoginPage />
-    </Suspense>
   );
 }

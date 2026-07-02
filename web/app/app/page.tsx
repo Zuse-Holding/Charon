@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import EntityTag from "../../components/EntityTag";
@@ -44,7 +45,9 @@ const SUGGESTIONS: { name: string; type: "company" | "person" | "product" }[] = 
   { name: "Patrick Collison", type: "person" },
 ];
 
-export default function Dashboard() {
+function Dashboard() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [runs, setRuns]           = useState<Run[]>([]);
   const [selected, setSelected]   = useState<Run | null>(null);
   const [report, setReport]       = useState<string>("");
@@ -71,6 +74,16 @@ export default function Dashboard() {
       if (data.length > 0) await selectRun(data[0]);
     });
   }, [loadRuns]);
+
+  // Handle ?research=CompanyName from Intel Feed "Research X →" button
+  useEffect(() => {
+    const subject = searchParams.get("research");
+    if (!subject) return;
+    // Clear the param from URL without reload
+    router.replace("/app");
+    // Trigger research automatically
+    runSuggestion(subject, "company");
+  }, [searchParams]);
 
   async function selectRun(run: Run) {
     selectedRef.current = run;
@@ -352,5 +365,17 @@ export default function Dashboard() {
         </div>
       </main>
     </div>
+  );
+}
+
+
+// Re-export wrapped in Suspense because useSearchParams requires it
+const DashboardPage = Dashboard;
+
+export default function DashboardWrapper() {
+  return (
+    <Suspense>
+      <Dashboard />
+    </Suspense>
   );
 }
