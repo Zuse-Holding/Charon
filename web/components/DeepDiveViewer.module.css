@@ -120,10 +120,9 @@
     padding-bottom: 12px !important;
   }
 
-  /* No blank page from overflow containers */
-  * {
+ /* No blank page from overflow containers */
+  .viewer * {
     overflow: visible !important;
     height: auto !important;
     max-height: none !important;
   }
-}
