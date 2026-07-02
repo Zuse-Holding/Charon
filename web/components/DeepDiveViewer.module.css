@@ -93,14 +93,37 @@
 @media print {
   .viewer {
     max-width: 100%;
-    color: #000;
-    background: #fff;
+    color: #000 !important;
+    background: #fff !important;
   }
-  .sectionTitle { color: #000; }
-  .prose { color: #111; }
-  .metaLabel { color: #333; }
-  .divider { background: #ddd; }
-  .sectionIcon { color: #333; }
-  .sectionNum { color: #666; }
-  .metaRight { color: #666; }
+
+  /* Force all text to be visible */
+  .sectionTitle { color: #000 !important; }
+  .prose { color: #111 !important; font-size: 11pt !important; line-height: 1.6 !important; }
+  .metaLabel { color: #c44a10 !important; }
+  .divider { background: #ddd !important; margin: 16px 0 !important; }
+  .sectionIcon { color: #c44a10 !important; font-size: 14px !important; }
+  .sectionNum { color: #666 !important; }
+  .metaRight { color: #666 !important; }
+  .placeholder { color: #888 !important; }
+  .riskBadge { border-color: #999 !important; color: #333 !important; }
+
+  /* Section breaks — avoid cutting mid-section */
+  .section { page-break-inside: avoid; margin-bottom: 24px !important; }
+  .sectionHeader { page-break-after: avoid; }
+  .sectionBody { page-break-before: avoid; padding-left: 16px !important; }
+
+  /* Meta at top of doc */
+  .reportMeta {
+    border-bottom: 1px solid #ddd !important;
+    margin-bottom: 24px !important;
+    padding-bottom: 12px !important;
+  }
+
+  /* No blank page from overflow containers */
+  * {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
 }

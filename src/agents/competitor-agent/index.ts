@@ -8,19 +8,26 @@ import { extractOrganizations } from "../../lib/nlp.js";
 import { CompetitorExtractionSchema, extractStructured } from "../../lib/llm.js";
 
 const NON_COMPETITOR_ENTITIES = new Set([
-  "youtube", "bloomberg", "tiktok", "twitter", "x", "facebook", "instagram",
-  "linkedin", "reddit", "medium", "forbes", "techcrunch", "business insider",
-  "wikipedia", "google",
+  // Social media platforms
+  "youtube", "facebook", "instagram", "tiktok", "twitter", "x", "linkedin",
+  "reddit", "pinterest", "snapchat", "whatsapp", "telegram", "discord",
+  // Media / publishers
+  "bloomberg", "forbes", "techcrunch", "business insider", "the verge",
+  "wired", "cnn", "bbc", "reuters", "ap", "wsj", "new york times",
+  "medium", "substack", "crunchbase", "wikipedia",
+  // General tech platforms / infrastructure
+  "google", "apple", "microsoft", "amazon", "meta", "netflix", "spotify",
+  "uber", "airbnb", "salesforce", "oracle", "sap", "ibm", "adobe",
+  // Generic non-company terms
+  "app store", "play store", "github", "slack", "zoom", "notion",
 ]);
 
 /**
  * Competitor Agent
  * Collects: named rivals/alternatives for the researched company.
- *
- * Tries a local LLM (Ollama) first — better recall than the NLP
- * org-tagging heuristic (which is conservative and misses real
- * competitors), without the false positives of raw regex. Falls back
- * to NLP org-tagging if Ollama isn't available.
+ * Only returns direct market competitors — not media platforms, social
+ * networks, or generic enterprise software unless the company being
+ * researched is itself in one of those categories.
  */
 export class CompetitorAgent {
   constructor(
@@ -49,7 +56,15 @@ export class CompetitorAgent {
 
     if (combinedText.length > 0) {
       const llmResult = await extractStructured(
-        `You are a business research assistant identifying real competitor/alternative companies to "${companyName}" from search results. Do not include media platforms, publishers, or "${companyName}" itself.`,
+        `You are a business research assistant identifying direct competitor companies to "${companyName}" from search results.
+
+STRICT RULES:
+- Only include companies that directly compete for the same customers in the same market segment as "${companyName}"
+- NEVER include: social media platforms (Facebook, YouTube, Instagram, TikTok, Twitter/X, LinkedIn), news/media publishers (Bloomberg, Forbes, TechCrunch), general search engines (Google), general cloud/infrastructure providers (AWS, Azure, GCP) unless "${companyName}" IS one of those categories
+- NEVER include "${companyName}" itself
+- NEVER include companies that are merely mentioned in an article alongside "${companyName}" without being a direct competitor
+- If you are not confident a company is a direct competitor, exclude it
+- Return 3-8 genuine direct competitors only`,
         combinedText,
         CompetitorExtractionSchema
       );

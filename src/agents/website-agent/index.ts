@@ -179,17 +179,17 @@ export class WebsiteAgent {
 
     if (combinedText.length > 0) {
       const llmResult = await extractStructured(
-        `You are a business research assistant extracting facts about the company "${companyName}" from search results and website text.
+        `You are a business research assistant extracting verified facts about "${companyName}" from search results and website text.
 
-For the "leadership" field, extract ALL named executives mentioned — including when phrased as "${companyName} CEO [Name]", "[Name], CEO of ${companyName}", or "[Name] said..." in a business context. Include the CEO, founders, presidents, CFOs, CTOs, and any other named c-suite executives you can find.
+CRITICAL RULES — violations undermine credibility:
+- description: 1-2 sentences maximum. State what the company DOES and who it serves. No filler phrases like "well-positioned", "leading provider", "innovative solutions", "leverages cutting-edge". Use plain, specific language. If you can't describe what they do specifically, return a blank description rather than a generic one.
+- founded: year only, as a string (e.g. "2012"). If unknown, omit.
+- headquarters: city and state/country only. If unknown, omit.
+- industry: specific sector (e.g. "Revenue-Based Financing" not just "Fintech"). Be precise.
+- leadership: extract ALL named executives with their exact titles. Include CEO, founders, presidents, CFOs, CTOs. Only include people explicitly named in the source text — do NOT invent or guess names.
+- products: only include named products or services explicitly mentioned. Do NOT include generic descriptions like "cloud platform" or "SaaS solution" unless a specific product name is given.
 
-Return a JSON object with these fields:
-- description: 1-2 sentence summary of what the company does
-- founded: year founded as a string
-- headquarters: city and state/country
-- industry: industry or sector
-- leadership: array of {name, title} objects for all executives found
-- products: array of {name, description} for main products/services`,
+Return only facts that are explicitly stated in the source text. Omit fields where the data is absent or ambiguous rather than filling them with guesses.`,
         combinedText,
         CompanyExtractionSchema
       );

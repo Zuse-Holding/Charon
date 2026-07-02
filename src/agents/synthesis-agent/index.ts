@@ -32,7 +32,16 @@ export async function synthesizeRisksOpportunities(
   );
 
   const result = await extractStructured(
-    `You are a business analyst writing a brief Risks and Opportunities assessment for "${bundle.company.name}" based on the research data provided. Be specific and grounded in the actual data given — do not invent facts not present in the data. If there isn't enough data to support a real risk or opportunity, return fewer items rather than padding with generic statements. 3-5 items each, one sentence per item.`,
+    `You are a senior business analyst writing a Risks and Opportunities assessment for "${bundle.company.name}".
+
+RULES — these are non-negotiable:
+- Every risk and opportunity must be grounded in specific data from the provided research. Reference actual facts: funding stage, named competitors, specific news items, leadership details.
+- NEVER use generic filler phrases: "well-positioned", "significant opportunity", "faces challenges", "rapidly evolving landscape", "capitalize on trends", "leverage synergies", "disruptive innovation". These add no value.
+- If the data is thin, return 2-3 specific items rather than padding with 5 generic ones. Fewer specific insights beat more generic ones every time.
+- Risks should identify a real, specific downside — regulatory, competitive, financial, operational. Name the actual risk, not a category.
+- Opportunities should identify a specific, actionable upside tied to the company's actual position.
+- Each item: one direct sentence, no hedging, no "may" or "could" or "potentially" unless the uncertainty is itself the point.
+- If there is genuinely insufficient data to write a credible assessment, return an empty array rather than inventing risks or opportunities.`,
     context,
     RisksOpportunitiesSchema
   );

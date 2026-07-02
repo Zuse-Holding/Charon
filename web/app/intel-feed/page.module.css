@@ -1,0 +1,124 @@
+.shell { display: flex; height: 100vh; overflow: hidden; }
+.main  { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.content { flex: 1; overflow-y: auto; padding: 28px 36px 60px; }
+
+.header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 28px; gap: 16px;
+}
+.title {
+  font-family: var(--font-display); font-size: 22px; font-weight: 700;
+  letter-spacing: -0.02em; margin-bottom: 4px;
+}
+.subtitle {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--muted); letter-spacing: 0.08em;
+}
+.headerRight { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.loadProgress { font-family: var(--font-mono); font-size: 13px; }
+.loadNum { color: var(--orange); font-weight: 600; }
+.loadDen { color: var(--muted); }
+.refreshBtn {
+  padding: 7px 14px; border-radius: 6px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--muted); font-size: 12px; font-family: var(--font-mono);
+  cursor: pointer; transition: all 0.15s; letter-spacing: 0.04em;
+}
+.refreshBtn:hover { border-color: var(--orange); color: var(--orange); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px;
+  display: flex; flex-direction: column; min-height: 200px;
+}
+
+.cardHeader {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 14px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.cardIcon { font-size: 14px; color: var(--orange); flex-shrink: 0; }
+.cardLabel {
+  font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text); flex: 1;
+}
+.cardLoading {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--orange);
+  animation: pulse 1.2s ease-in-out infinite; flex-shrink: 0;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+.cardError {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--red); letter-spacing: 0.08em;
+}
+
+.skeletons { display: flex; flex-direction: column; gap: 12px; }
+.skeleton { display: flex; flex-direction: column; gap: 5px; }
+.skeletonLine {
+  height: 8px; border-radius: 4px;
+  background: var(--surface2);
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+@keyframes shimmer { 0%,100% { opacity: 0.4; } 50% { opacity: 0.8; } }
+
+.items { display: flex; flex-direction: column; gap: 0; flex: 1; }
+.item {
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.item:last-child { border-bottom: none; }
+
+.itemHeadline {
+  display: block; font-size: 12px; font-weight: 500;
+  color: var(--text); line-height: 1.4; margin-bottom: 4px;
+  text-decoration: none; transition: color 0.12s;
+}
+.itemHeadline:hover { color: var(--orange); }
+
+.itemSummary {
+  font-size: 11px; color: var(--muted); line-height: 1.5; margin-bottom: 6px;
+}
+
+.itemFooter {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.itemSource {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.researchBtn {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em;
+  color: var(--orange); background: transparent; border: none;
+  cursor: pointer; padding: 0; transition: opacity 0.12s; white-space: nowrap;
+}
+.researchBtn:hover { opacity: 0.7; }
+
+.emptyFeed {
+  font-size: 12px; color: var(--muted); padding: 20px 0; text-align: center;
+}
+
+.errorState {
+  display: flex; align-items: center; justify-content: center;
+  flex: 1; padding: 20px 0;
+}
+.retryBtn {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em;
+  color: var(--muted); background: transparent;
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px 12px; cursor: pointer; transition: all 0.12s;
+}
+.retryBtn:hover { border-color: var(--orange); color: var(--orange); }
+
+@media (max-width: 1100px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 800px)  { .grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 500px)  {
+  .grid { grid-template-columns: 1fr; }
+  .content { padding: 16px; }
+  .header { flex-direction: column; }
+}

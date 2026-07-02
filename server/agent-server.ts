@@ -27,7 +27,7 @@ import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.
 import { createClient } from "@supabase/supabase-js";
 
 const app  = express();
-const PORT = process.env.PORT ?? process.env.AGENT_PORT ?? 4000;
+const PORT = process.env.AGENT_PORT ?? 4000;
 
 // Allow requests from your Vercel frontend domain
 const ALLOWED_ORIGIN = process.env.FRONTEND_URL ?? "http://localhost:3000";

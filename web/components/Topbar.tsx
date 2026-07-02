@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { detectEntityType } from "../lib/detect-entity-type";
 import styles from "./Topbar.module.css";
 
 type ResearchType = "company" | "person" | "product";
@@ -61,7 +62,12 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
             type="text"
             placeholder="Research a company, person, or product..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (e.target.value.trim().length > 2) {
+                setType(detectEntityType(e.target.value.trim()));
+              }
+            }}
             onKeyDown={(e) => e.key === "Enter" && handleRun()}
           />
         </div>

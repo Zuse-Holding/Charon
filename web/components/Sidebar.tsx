@@ -5,6 +5,7 @@ import styles from "./Sidebar.module.css";
 
 const NAV = [
   { label: "Dashboard",       icon: "◈", href: "/app" },
+  { label: "Intel Feed",      icon: "◆", href: "/intel-feed" },
   { label: "Reports",         icon: "⊞", href: "/reports" },
   { label: "Watchlist",       icon: "◎", href: "/watchlist" },
 ];

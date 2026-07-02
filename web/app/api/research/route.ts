@@ -24,18 +24,66 @@ function getReportPath(subject: string, type: string): string {
   return join(root, "reports", `${slugify(subject)}.md`);
 }
 
+// In-memory rate limiter — per user, resets hourly
+// Simple enough for current scale; swap for Redis when needed
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX     = 20;  // max runs per window
+const RATE_LIMIT_WINDOW  = 60 * 60 * 1000; // 1 hour in ms
+
+function checkRateLimit(userId: string): { allowed: boolean; remaining: number; resetIn: number } {
+  const now    = Date.now();
+  const record = rateLimitMap.get(userId);
+
+  if (!record || now > record.resetAt) {
+    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return { allowed: true, remaining: RATE_LIMIT_MAX - 1, resetIn: RATE_LIMIT_WINDOW };
+  }
+
+  if (record.count >= RATE_LIMIT_MAX) {
+    return { allowed: false, remaining: 0, resetIn: record.resetAt - now };
+  }
+
+  record.count += 1;
+  return { allowed: true, remaining: RATE_LIMIT_MAX - record.count, resetIn: record.resetAt - now };
+}
+
 export async function POST(req: NextRequest) {
-  const { subject, type } = await req.json();
+  // Validate input
+  const body = await req.json();
+  const { subject, type } = body;
   if (!subject || !type || !CLI_COMMANDS[type]) {
     return NextResponse.json({ error: "subject and valid type required" }, { status: 400 });
   }
 
-  // Production: proxy to VPS
+  // Sanitize subject — cap length, no control characters
+  const sanitizedSubject = String(subject).trim().slice(0, 200).replace(/[\x00-\x1f]/g, "");
+  if (!sanitizedSubject) {
+    return NextResponse.json({ error: "Invalid subject" }, { status: 400 });
+  }
+
+  // Production: proxy to Railway agent server
   const agentUrl = process.env.AGENT_SERVER_URL;
   if (agentUrl) {
     const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+    // Rate limit check
+    const limit = checkRateLimit(user.id);
+    if (!limit.allowed) {
+      const resetMinutes = Math.ceil(limit.resetIn / 60000);
+      return NextResponse.json(
+        { error: `Rate limit reached. You can run more research in ${resetMinutes} minutes.` },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit":     String(RATE_LIMIT_MAX),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset":     String(Math.ceil((Date.now() + limit.resetIn) / 1000)),
+          },
+        }
+      );
+    }
 
     const res = await fetch(`${agentUrl}/research`, {
       method: "POST",
@@ -43,19 +91,22 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         "x-agent-secret": process.env.AGENT_SECRET ?? "",
       },
-      body: JSON.stringify({ subject, type, userId: user.id }),
+      body: JSON.stringify({ subject: sanitizedSubject, type, userId: user.id }),
     });
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json(data, {
+      status: res.status,
+      headers: {
+        "X-RateLimit-Limit":     String(RATE_LIMIT_MAX),
+        "X-RateLimit-Remaining": String(limit.remaining),
+      },
+    });
   }
 
-  // Development: spawn CLI, then save to Supabase
+  // Development: spawn CLI
   const PROJECT_ROOT = join(process.cwd(), "..");
-  const safeSubject = subject.replace(/"/g, '\\"');
+  const safeSubject  = sanitizedSubject.replace(/"/g, '\\"');
   const cmd = `npx tsx src/cli.ts ${CLI_COMMANDS[type]} "${safeSubject}"`;
-
-  console.log(`[research] cwd: ${PROJECT_ROOT}`);
-  console.log(`[research] cmd: ${cmd}`);
 
   try {
     const { stdout, stderr } = await execAsync(cmd, {
@@ -63,20 +114,17 @@ export async function POST(req: NextRequest) {
       timeout: 120_000,
       env: { ...process.env },
     });
-    console.log("[research] stdout:", stdout);
-    if (stderr) console.log("[research] stderr:", stderr);
 
-    // Save to Supabase so the dashboard can see it
     try {
       const supabase = await createServerSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const reportPath = getReportPath(subject, type);
+        const reportPath = getReportPath(sanitizedSubject, type);
         await supabase.from("research_runs").insert({
           id: randomUUID(),
           user_id: user.id,
           type,
-          subject,
+          subject: sanitizedSubject,
           generated_at: new Date().toISOString(),
           report_path: reportPath,
           bundle: {},
@@ -84,13 +132,11 @@ export async function POST(req: NextRequest) {
       }
     } catch (dbErr) {
       console.error("[research] Supabase write failed:", dbErr);
-      // Don't fail the request — report was written to disk successfully
     }
 
     return NextResponse.json({ ok: true, output: stdout + stderr });
   } catch (err: unknown) {
     const error = err as { message?: string; stdout?: string; stderr?: string };
-    console.error("[research] failed:", error.message);
     return NextResponse.json(
       { error: error.message, stderr: error.stderr, stdout: error.stdout },
       { status: 500 }

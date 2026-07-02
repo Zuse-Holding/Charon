@@ -69,17 +69,19 @@ export class DeepDiveAgent {
     context: string
   ): Promise<SectionResult> {
     const result = await extractStructured(
-      `You are a senior business analyst writing the "${sectionTitle}" section of a professional deep dive report on ${company}.
+      `You are a senior business analyst writing the "${sectionTitle}" section of a deep dive report on ${company}.
 
 ${prompt}
 
-REQUIREMENTS:
-- Write in professional analyst prose, not bullet points
-- Be specific — cite actual numbers, names, and dates from the sources
-- If data is missing or unclear, say so explicitly rather than speculating
-- Length: 150-300 words for this section
-- Return JSON with a "content" field containing your markdown prose
-- For Risk Flags only: also return a "riskLevel" field ("high", "medium", or "low") for each flag`,
+WRITING STANDARDS — mandatory:
+- Write in direct analyst prose. No bullet points unless the section explicitly calls for a list.
+- Be specific: cite actual numbers, named people, real dates, specific products. Vague claims are worthless.
+- Do NOT use these phrases or anything like them: "well-positioned", "rapidly evolving", "innovative solutions", "cutting-edge", "leverages", "synergies", "capitalize on", "significant opportunity", "faces challenges in the competitive landscape", "it is worth noting", "it should be noted", "in conclusion", "in summary"
+- If data is thin, say so directly: "Limited public data is available on X." Do not pad thin data with generic analysis.
+- Confident where the data supports it. Honest where it doesn't.
+- Length: 150-300 words. Shorter is fine if you've said everything that needs saying.
+- Return JSON with a "content" field containing your prose.
+- For Risk Flags only: also return a "riskLevel" field ("high", "medium", or "low").`,
       `RESEARCH DATA:\n\n${context}`,
       SectionSchema
     );

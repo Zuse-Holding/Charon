@@ -26,11 +26,11 @@ export class PeopleAgent {
   ) {}
 
   async run(personName: string): Promise<PersonAgentResult> {
+    const currentYear = new Date().getFullYear();
     const [bioResults, newsResults] = await Promise.all([
-      this.searcher.search(`${personName} biography current role`, 5),
-      this.searcher.search(`${personName} news`, 5),
+      this.searcher.search(`${personName} current role position ${currentYear}`, 5),
+      this.searcher.search(`${personName} news ${currentYear}`, 5),
     ]);
-
     const sources: Source[] = [
       ...bioResults.map((r) => ({
         url: r.url,
@@ -56,7 +56,14 @@ export class PeopleAgent {
     let usedLLM = false;
     if (combinedText.length > 0) {
       const llmResult = await extractStructured(
-        `You are a research assistant extracting career/bio facts about the person "${personName}" from search results.`,
+        `You are a research assistant extracting career and biographical facts about "${personName}" from search results. Today's year is ${currentYear}.
+
+RULES:
+- currentRole and currentCompany must reflect their MOST RECENT position as of ${currentYear}. If sources conflict, prefer the most recently dated source.
+- If you see a past role mentioned (e.g. "former CEO") do NOT list it as the current role
+- careerHistory should be in reverse chronological order (most recent first)
+- summary should be 1-2 sentences maximum, factual only
+- If you cannot confidently determine the current role from the sources, leave currentRole blank rather than guessing`,
         combinedText,
         PersonExtractionSchema
       );
