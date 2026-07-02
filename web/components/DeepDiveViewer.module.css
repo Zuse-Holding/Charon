@@ -97,7 +97,6 @@
     background: #fff !important;
   }
 
-  /* Force all text to be visible */
   .sectionTitle { color: #000 !important; }
   .prose { color: #111 !important; font-size: 11pt !important; line-height: 1.6 !important; }
   .metaLabel { color: #c44a10 !important; }
@@ -108,21 +107,19 @@
   .placeholder { color: #888 !important; }
   .riskBadge { border-color: #999 !important; color: #333 !important; }
 
-  /* Section breaks — avoid cutting mid-section */
   .section { page-break-inside: avoid; margin-bottom: 24px !important; }
   .sectionHeader { page-break-after: avoid; }
   .sectionBody { page-break-before: avoid; padding-left: 16px !important; }
 
-  /* Meta at top of doc */
   .reportMeta {
     border-bottom: 1px solid #ddd !important;
     margin-bottom: 24px !important;
     padding-bottom: 12px !important;
   }
 
- /* No blank page from overflow containers */
   .viewer * {
     overflow: visible !important;
     height: auto !important;
     max-height: none !important;
   }
+}
