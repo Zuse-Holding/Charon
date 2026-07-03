@@ -83,8 +83,8 @@ export default function Watchlist() {
               <div className={styles.emptyIcon}>◎</div>
               <div className={styles.emptyTitle}>Your Watchlist is empty</div>
               <div className={styles.emptyText}>
-                Research a company, person, or product — then use the CLI<br />
-                <code>npm run watch -- "Company Name"</code>
+                Research a company, person, or product from the dashboard,<br />
+                then click <strong>Watch</strong> on any report to track it here.
               </div>
             </div>
           ) : (

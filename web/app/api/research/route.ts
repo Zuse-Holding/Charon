@@ -28,7 +28,7 @@ function getReportPath(subject: string, type: string): string {
 // Add your Supabase user UUID here to get unlimited access.
 // Find your UUID at: Supabase Dashboard → Authentication → Users
 const ADMIN_USER_IDS = new Set<string>([
-  "251f3f4f-9878-4264-8335-2c191a937428",
+  // "your-supabase-user-id-here",  ← replace with your actual UUID
 ]);
 
 // In-memory rate limiter — per user, resets hourly
