@@ -124,15 +124,16 @@ app.post("/research", async (req, res) => {
     res.json({ ok: true, reportPath: outPath });
 
     // Fire-and-forget entity extraction — runs after response is sent so
-    // it never adds latency to the user-facing request. Failures here
-    // are logged but never surface to the user; this is best-effort
-    // enrichment for the Knowledge Graph, not a critical path.
+    // it never adds latency to the user-facing request. Delay slightly
+    // to avoid hitting Groq rate limits right after the main pipeline.
     if (type === "company" || type === "person" || type === "product") {
       const entityAgent = new EntityExtractionAgent();
-      entityAgent
-        .extract(report, { name: subject, type })
-        .then((extraction) => saveEntityExtraction(userId, runId, extraction))
-        .catch((err) => console.error("[entity-extraction] failed:", err));
+      setTimeout(() => {
+        entityAgent
+          .extract(report, { name: subject, type })
+          .then((extraction) => saveEntityExtraction(userId, runId, extraction))
+          .catch((err) => console.error("[entity-extraction] failed:", err));
+      }, 3000); // 3 second delay
     }
   } catch (err) {
     res.status(500).json({ error: String(err) });
