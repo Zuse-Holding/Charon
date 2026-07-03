@@ -37,7 +37,7 @@ import Groq from "groq-sdk";
 const LLM_PROVIDER = process.env.LLM_PROVIDER ??
   (process.env.GROQ_API_KEY ? "groq" : "ollama");
 
-const GROQ_MODEL   = process.env.GROQ_MODEL   ?? "llama-3.1-8b-instant";
+const GROQ_MODEL   = process.env.GROQ_MODEL   ?? "llama-3.3-70b-versatile";
 const OLLAMA_URL   = process.env.OLLAMA_URL   ?? "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.1:8b";
 
