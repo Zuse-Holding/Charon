@@ -24,9 +24,10 @@ export class PeopleAgent {
 
   async run(personName: string): Promise<PersonAgentResult> {
     const currentYear = new Date().getFullYear();
-    const [bioResults, newsResults] = await Promise.all([
+    const [bioResults, newsResults, backgroundResults] = await Promise.all([
       this.searcher.search(`${personName} current role position ${currentYear}`, 5),
       this.searcher.search(`${personName} news ${currentYear}`, 5),
+      this.searcher.search(`${personName} education net worth background biography`, 4),
     ]);
     const sources: Source[] = [
       ...bioResults.map((r) => ({
@@ -34,6 +35,12 @@ export class PeopleAgent {
         title: r.title,
         retrievedAt: new Date().toISOString(),
         usedFor: ["bio"],
+      })),
+      ...backgroundResults.map((r) => ({
+        url: r.url,
+        title: r.title,
+        retrievedAt: new Date().toISOString(),
+        usedFor: ["background"],
       })),
       ...newsResults.map((r) => ({
         url: r.url,
@@ -55,33 +62,50 @@ export class PeopleAgent {
       .map((r) => `${r.title}: ${r.snippet ?? ""}`)
       .join("\n");
 
+    const backgroundText = backgroundResults
+      .map((r) => `${r.title}: ${r.snippet ?? ""}`)
+      .join("\n");
+
     const combinedText = [
       ...fetchedBios
         .filter((t): t is string => t !== null)
         .map((t, i) => `SOURCE (${bioResults[i].url}):\n${t}`),
-      `SNIPPETS:\n${snippetText}`,
+      `CAREER SNIPPETS:\n${snippetText}`,
+      `BACKGROUND & NET WORTH:\n${backgroundText}`,
     ].filter(Boolean).join("\n\n") || snippetText;
 
     let usedLLM = false;
     if (combinedText.length > 0) {
       const llmResult = await extractStructured(
-        `You are a research assistant extracting career and biographical facts about "${personName}" from search results. Today's year is ${currentYear}.
+        `You are a research assistant extracting biographical facts about "${personName}" from search results. Today's year is ${currentYear}.
+
+Extract these fields:
+- summary: 2-3 sentences describing who this person is, what they're known for, and why they matter. Write it like the opening of a Wikipedia article — specific, confident, factual. No filler.
+- currentRole: their most recent job title as of ${currentYear}
+- currentCompany: the organization they currently work for
+- education: where they studied, what degree, if available (e.g. "BS Computer Science, Stanford")
+- netWorth: estimated net worth if publicly available (e.g. "$4.5B as of 2024")
+- knownFor: one sentence on what they're most notable for (invention, company, achievement, controversy)
+- nationality: their nationality or country of origin if mentioned
+- careerHistory: array of {title, company} in reverse chronological order (most recent first)
 
 RULES:
-- currentRole and currentCompany must reflect their MOST RECENT position as of ${currentYear}. If sources conflict, prefer the most recently dated source.
-- If you see a past role mentioned (e.g. "former CEO") do NOT list it as the current role
-- careerHistory should be in reverse chronological order (most recent first)
-- summary should be 1-2 sentences maximum, factual only
-- If you cannot confidently determine the current role from the sources, leave currentRole blank rather than guessing`,
+- currentRole must reflect their position as of ${currentYear}. If a source says "former", do NOT list it as current.
+- If you cannot confidently determine a field, omit it rather than guessing.
+- Be specific — name actual companies, schools, dollar figures where available.`,
         combinedText,
         PersonExtractionSchema
       );
 
       if (llmResult) {
         usedLLM = true;
-        if (llmResult.summary) person.summary = llmResult.summary;
-        if (llmResult.currentRole) person.currentRole = llmResult.currentRole;
+        if (llmResult.summary)        person.summary        = llmResult.summary;
+        if (llmResult.currentRole)    person.currentRole    = llmResult.currentRole;
         if (llmResult.currentCompany) person.currentCompany = llmResult.currentCompany;
+        if (llmResult.education)      person.education      = llmResult.education;
+        if (llmResult.netWorth)       person.netWorth       = llmResult.netWorth;
+        if (llmResult.knownFor)       person.knownFor       = llmResult.knownFor;
+        if (llmResult.nationality)    person.nationality    = llmResult.nationality;
         if (llmResult.careerHistory) {
           careerHistory = llmResult.careerHistory.map((c) => ({
             title: c.title,

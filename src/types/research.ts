@@ -106,6 +106,9 @@ export interface ProductResearchBundle {
   news: NewsEntry[];
   risks?: string[];
   opportunities?: string[];
+  pros?: string[];
+  cons?: string[];
+  verdict?: string;
   sources: Source[];
 }
 
@@ -116,6 +119,10 @@ export interface PersonProfile {
   currentRole?: string;
   currentCompany?: string;
   summary?: string;
+  education?: string;
+  netWorth?: string;
+  knownFor?: string;
+  nationality?: string;
 }
 
 export interface CareerEntry {

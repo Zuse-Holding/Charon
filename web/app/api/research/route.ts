@@ -24,6 +24,13 @@ function getReportPath(subject: string, type: string): string {
   return join(root, "reports", `${slugify(subject)}.md`);
 }
 
+// Admin user IDs — these accounts bypass rate limiting entirely.
+// Add your Supabase user UUID here to get unlimited access.
+// Find your UUID at: Supabase Dashboard → Authentication → Users
+const ADMIN_USER_IDS = new Set<string>([
+  // "your-supabase-user-id-here",  ← replace with your actual UUID
+]);
+
 // In-memory rate limiter — per user, resets hourly
 // Simple enough for current scale; swap for Redis when needed
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -68,21 +75,23 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-    // Rate limit check
-    const limit = checkRateLimit(user.id);
-    if (!limit.allowed) {
-      const resetMinutes = Math.ceil(limit.resetIn / 60000);
-      return NextResponse.json(
-        { error: `Rate limit reached. You can run more research in ${resetMinutes} minutes.` },
-        {
-          status: 429,
-          headers: {
-            "X-RateLimit-Limit":     String(RATE_LIMIT_MAX),
-            "X-RateLimit-Remaining": "0",
-            "X-RateLimit-Reset":     String(Math.ceil((Date.now() + limit.resetIn) / 1000)),
-          },
-        }
-      );
+    // Rate limit check — admins bypass
+    if (!ADMIN_USER_IDS.has(user.id)) {
+      const limit = checkRateLimit(user.id);
+      if (!limit.allowed) {
+        const resetMinutes = Math.ceil(limit.resetIn / 60000);
+        return NextResponse.json(
+          { error: `Rate limit reached. You can run more research in ${resetMinutes} minutes.` },
+          {
+            status: 429,
+            headers: {
+              "X-RateLimit-Limit":     String(RATE_LIMIT_MAX),
+              "X-RateLimit-Remaining": "0",
+              "X-RateLimit-Reset":     String(Math.ceil((Date.now() + limit.resetIn) / 1000)),
+            },
+          }
+        );
+      }
     }
 
     const res = await fetch(`${agentUrl}/research`, {
@@ -94,11 +103,12 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({ subject: sanitizedSubject, type, userId: user.id }),
     });
     const data = await res.json();
+    const remaining = ADMIN_USER_IDS.has(user.id) ? 999 : checkRateLimit(user.id).remaining;
     return NextResponse.json(data, {
       status: res.status,
       headers: {
         "X-RateLimit-Limit":     String(RATE_LIMIT_MAX),
-        "X-RateLimit-Remaining": String(limit.remaining),
+        "X-RateLimit-Remaining": String(remaining),
       },
     });
   }

@@ -107,7 +107,7 @@
 .statusError   { color: var(--red);   background: rgba(255,68,85,0.08);  }
 .statusSuccess { color: var(--green); background: rgba(0,255,148,0.06); }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .topbar { padding: 10px 14px; gap: 8px; }
   .searchWrap { max-width: unset; }
   .right { display: none; }
@@ -132,6 +132,6 @@
   cursor: pointer;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .mobileSelect { display: block; flex-shrink: 0; }
 }
