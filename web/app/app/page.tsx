@@ -269,6 +269,20 @@ function Dashboard() {
                   <div className={styles.reportActions}>
                     <button
                       className={styles.actionBtn}
+                      onClick={async () => {
+                        if (!selected) return;
+                        await fetch("/api/watchlist", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ subject: selected.subject, type: selected.type }),
+                        });
+                      }}
+                      title="Add to watchlist"
+                    >
+                      ◎ Watch
+                    </button>
+                    <button
+                      className={styles.actionBtn}
                       disabled={loading}
                       onClick={async () => {
                         if (!selected || loading) return;

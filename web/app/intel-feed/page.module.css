@@ -122,3 +122,15 @@
   .content { padding: 16px; }
   .header { flex-direction: column; }
 }
+
+@media (max-width: 900px) {
+  .content { padding: 16px; }
+  .header { flex-direction: column; gap: 10px; }
+  .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .card { min-height: unset; }
+}
+
+@media (max-width: 500px) {
+  .grid { grid-template-columns: 1fr; }
+  .headerRight { width: 100%; justify-content: space-between; }
+}
