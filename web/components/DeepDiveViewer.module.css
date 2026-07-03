@@ -89,7 +89,26 @@
   margin: 28px 0;
 }
 
-/* Print / PDF styles */
+/* Print watermark footer */
+.printFooter {
+  display: none;
+}
+
+@media print {
+  .printFooter {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-family: monospace;
+    font-size: 8pt;
+    color: #aaa;
+    padding: 8px;
+    border-top: 1px solid #eee;
+  }
+}
 @media print {
   .viewer {
     max-width: 100%;

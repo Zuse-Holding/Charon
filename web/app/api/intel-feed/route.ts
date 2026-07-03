@@ -38,18 +38,21 @@ const COMMON_WORDS = new Set([
 ]);
 
 function extractCompanyName(headline: string): string | null {
-  // Look for patterns like "CompanyName raises", "CompanyName launches", "CompanyName acquires"
-  const patterns = [
-    /^([A-Z][a-zA-Z0-9]+(?:\s[A-Z][a-zA-Z0-9]+)?)\s(?:raises|launches|acquires|announces|closes|files|lands|partners|expands|debuts)/,
-    /([A-Z][a-zA-Z0-9]+(?:\s[A-Z][a-zA-Z0-9]+)?)\s(?:raises|launches|acquires|announces|closes|files|lands)\s/,
-  ];
+  // Pattern 1: "CompanyName raises/launches/acquires/announces..."
+  const actionPattern = /^([A-Z][a-zA-Z0-9]+(?:\s[A-Z][a-zA-Z0-9]+)?)\s+(?:raises|launches|acquires|announces|closes|files|lands|partners|expands|debuts|secures|unveils|releases|reports|cuts|hires|names|appoints)/;
+  const m1 = headline.match(actionPattern);
+  if (m1 && !COMMON_WORDS.has(m1[1].toLowerCase())) return m1[1];
 
-  for (const pattern of patterns) {
-    const match = headline.match(pattern);
-    if (match && match[1] && !COMMON_WORDS.has(match[1].toLowerCase())) {
-      return match[1];
-    }
-  }
+  // Pattern 2: "$XM/XB funding" — company name before dollar amount
+  const fundingPattern = /^([A-Z][a-zA-Z0-9]+(?:\s[A-Z][a-zA-Z0-9]+)?)\s+(?:raises?|secures?|closes?)\s+\$[\d.]+[BMK]/i;
+  const m2 = headline.match(fundingPattern);
+  if (m2 && !COMMON_WORDS.has(m2[1].toLowerCase())) return m2[1];
+
+  // Pattern 3: "CompanyName IPO/acquisition/merger"
+  const corpPattern = /^([A-Z][a-zA-Z0-9]+(?:\s[A-Z][a-zA-Z0-9]+)?)\s+(?:IPO|acquisition|merger|deal|funding|round|valuation)/i;
+  const m3 = headline.match(corpPattern);
+  if (m3 && !COMMON_WORDS.has(m3[1].toLowerCase())) return m3[1];
+
   return null;
 }
 

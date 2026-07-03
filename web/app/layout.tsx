@@ -3,7 +3,18 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Charon — Business Intelligence",
-  description: "AI-powered business intelligence — Zuse Holdings",
+  description: "AI-powered business intelligence research on any company, person, or product. Analyst-grade reports in seconds. Built for founders, operators, and BD teams.",
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+  },
+  openGraph: {
+    title: "Charon — Business Intelligence",
+    description: "AI-powered research on any company, person, or product. Analyst-grade reports in seconds.",
+    url: "https://charonv1-silk.vercel.app",
+    siteName: "Charon",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
