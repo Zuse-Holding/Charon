@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { detectEntityType } from "../lib/detect-entity-type";
+import { useResearch } from "../lib/research-context";
 import styles from "./Topbar.module.css";
 
 type ResearchType = "company" | "person" | "product";
@@ -12,11 +13,13 @@ interface TopbarProps {
 }
 
 export default function Topbar({ onResearchStart, onResearchComplete }: TopbarProps) {
-  const [query, setQuery]     = useState("");
-  const [type, setType]       = useState<ResearchType>("company");
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus]   = useState<string>("");
+  const [query, setQuery]       = useState("");
+  const [type, setType]         = useState<ResearchType>("company");
+  const [loading, setLoading]   = useState(false);
+  const [status, setStatus]     = useState<string>("");
+  const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
+  const { startResearch, completeResearch } = useResearch();
 
   async function handleRun() {
     if (!query.trim() || loading) return;
@@ -25,7 +28,8 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
     setStatus(`Researching "${subject}"...`);
     setQuery("");
 
-    // Notify parent immediately so it can show skeleton
+    // Update global context so other pages can see research in progress
+    startResearch(subject, type);
     onResearchStart?.(subject, type);
 
     try {
@@ -37,15 +41,18 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
       const data = await res.json();
       if (res.ok) {
         setStatus(`✓ Done — "${subject}" added to feed`);
+        completeResearch();
         onResearchComplete?.();
         router.refresh();
         setTimeout(() => setStatus(""), 4000);
       } else {
         setStatus(`✗ Error: ${data.error ?? "unknown error"}`);
+        completeResearch();
         setTimeout(() => setStatus(""), 6000);
       }
     } catch {
       setStatus(`✗ Network error`);
+      completeResearch();
       setTimeout(() => setStatus(""), 4000);
     } finally {
       setLoading(false);
@@ -110,10 +117,45 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
             LLM ONLINE
           </div>
         </div>
+
+        {/* Mobile hamburger */}
+        <button className={styles.hamburger} onClick={() => setMenuOpen(true)}>
+          ☰
+        </button>
       </div>
+
       {status && (
         <div className={`${styles.statusBar} ${status.startsWith("✗") ? styles.statusError : status.startsWith("✓") ? styles.statusSuccess : ""}`}>
           {status}
+        </div>
+      )}
+
+      {/* Mobile nav drawer */}
+      {menuOpen && (
+        <div className={styles.drawerOverlay} onClick={() => setMenuOpen(false)}>
+          <div className={styles.drawer} onClick={e => e.stopPropagation()}>
+            <div className={styles.drawerHeader}>
+              <span className={styles.drawerLogo}>CHARON</span>
+              <button className={styles.drawerClose} onClick={() => setMenuOpen(false)}>✕</button>
+            </div>
+            {[
+              { label: "Dashboard",      href: "/app",             icon: "◈" },
+              { label: "Intel Feed",     href: "/intel-feed",      icon: "◆" },
+              { label: "Reports",        href: "/reports",         icon: "⊞" },
+              { label: "Watchlist",      href: "/watchlist",       icon: "◎" },
+              { label: "Knowledge Graph",href: "/knowledge-graph", icon: "◉" },
+              { label: "Settings",       href: "/settings",        icon: "⊙" },
+            ].map(item => (
+              <button
+                key={item.href}
+                className={styles.drawerItem}
+                onClick={() => { router.push(item.href); setMenuOpen(false); }}
+              >
+                <span className={styles.drawerIcon}>{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

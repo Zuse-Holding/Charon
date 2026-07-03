@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { extractStructured } from "../../lib/llm.js";
+import { extractStructured, extractViaOpenRouter } from "../../lib/llm.js";
 
 /**
  * Entity Extraction Agent (Knowledge Graph — Phase 1)
@@ -48,8 +48,10 @@ export class EntityExtractionAgent {
   ): Promise<EntityExtractionResult> {
     const truncated = reportMarkdown.slice(0, 4000);
 
-    const result = await extractStructured(
-      `You are extracting named entities and relationships from a business research report about "${primarySubject.name}" for a knowledge graph.
+    // Use gpt-oss-120b via OpenRouter for better structured extraction
+    // Falls back to Groq llama if OpenRouter key not set
+    const GPT_OSS = "openai/gpt-oss-120b:free";
+    const prompt = `You are extracting named entities and relationships from a business research report about "${primarySubject.name}" for a knowledge graph.
 
 The primary subject is: "${primarySubject.name}" (${primarySubject.type})
 
@@ -65,10 +67,13 @@ ENTITY NAMING RULES — critical for deduplication:
 
 Relationship types: FOUNDED, CO_FOUNDED, CEO_OF, WORKS_AT, COMPETES_WITH, ACQUIRED, INVESTED_IN, PARTNERED_WITH, SUBSIDIARY_OF, MAKES
 
-Always include "${primarySubject.name}" in entities. If it is a person, add CEO_OF or WORKS_AT relationships to their company. If it is a company, add FOUNDED or CEO_OF relationships to named founders/executives.`,
-      truncated,
-      ExtractionResultSchema
-    );
+Always include "${primarySubject.name}" in entities. If it is a person, add CEO_OF or WORKS_AT relationships to their company. If it is a company, add FOUNDED or CEO_OF relationships to named founders/executives.`;
+
+    // Try OpenRouter first, fall back to Groq
+    let result = await extractViaOpenRouter(prompt, truncated, ExtractionResultSchema, GPT_OSS);
+    if (!result) {
+      result = await extractStructured(prompt, truncated, ExtractionResultSchema);
+    }
 
     console.log(`[entity-extraction] ${primarySubject.name}: found ${result?.entities?.length ?? 0} entities, ${result?.relationships?.length ?? 0} relationships`);
 

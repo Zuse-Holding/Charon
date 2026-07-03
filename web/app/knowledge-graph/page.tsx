@@ -98,7 +98,7 @@ export default function KnowledgeGraph() {
       relCount.set(r.to_entity_id,   (relCount.get(r.to_entity_id)   ?? 0) + 1);
     }
     const sorted = [...entities].sort((a, b) => (relCount.get(b.id) ?? 0) - (relCount.get(a.id) ?? 0));
-    const visible = sorted.slice(0, 35);
+    const visible = sorted.slice(0, 50);
 
     const nodes: NodeData[] = visible.map((e, i) => {
       const angle  = (i / Math.min(visible.length, 35)) * Math.PI * 2;
@@ -428,6 +428,27 @@ export default function KnowledgeGraph() {
                         );
                       })
                     }
+                  </div>
+                  <div className={styles.nodeActions}>
+                    <button
+                      className={styles.nodeResearchBtn}
+                      onClick={() => {
+                        window.location.href = `/app?research=${encodeURIComponent(selected.name)}`;
+                      }}
+                    >
+                      ◈ Research {selected.name} →
+                    </button>
+                    <button
+                      className={styles.nodeRemoveBtn}
+                      onClick={async () => {
+                        await fetch(`/api/knowledge-graph/entities/${selected.id}`, { method: "DELETE" });
+                        setEntities(prev => prev.filter(e => e.id !== selected.id));
+                        setRelationships(prev => prev.filter(r => r.from_entity_id !== selected.id && r.to_entity_id !== selected.id));
+                        setSelected(null);
+                      }}
+                    >
+                      Remove from graph
+                    </button>
                   </div>
                 </div>
               )}

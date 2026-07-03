@@ -99,13 +99,14 @@ async function extractViaGroq<T>(
   systemPrompt: string,
   userContent: string,
   schema: z.ZodType<T>,
-  retryCount = 0
+  retryCount = 0,
+  modelOverride?: string
 ): Promise<T | null> {
   if (!process.env.GROQ_API_KEY) return null;
   try {
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
     const completion = await groq.chat.completions.create({
-      model: GROQ_MODEL,
+      model: modelOverride ?? GROQ_MODEL,
       messages: [
         {
           role: "system",
@@ -142,10 +143,69 @@ async function extractViaGroq<T>(
         : (retryCount + 1) * 8000;
       console.error(`[llm:groq] Rate limited — waiting ${Math.round(waitMs / 1000)}s before retry ${retryCount + 1}/3`);
       await new Promise(r => setTimeout(r, waitMs));
-      return extractViaGroq(systemPrompt, userContent, schema, retryCount + 1);
+      return extractViaGroq(systemPrompt, userContent, schema, retryCount + 1, modelOverride);
     }
 
     console.error(`[llm:groq] Error: ${message}`);
+    return null;
+  }
+}
+
+// --- OpenRouter provider ---
+// Used for entity extraction via gpt-oss-120b:free
+// OpenRouter is OpenAI-API compatible — no extra SDK needed
+async function extractViaOpenRouter<T>(
+  systemPrompt: string,
+  userContent: string,
+  schema: z.ZodType<T>,
+  model = "openai/gpt-oss-120b:free"
+): Promise<T | null> {
+  if (!process.env.OPENROUTER_API_KEY) return null;
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://charonv1-silk.vercel.app",
+        "X-Title": "Charon Intelligence",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content: `${systemPrompt}\n\nIMPORTANT: Respond with ONLY valid JSON matching the requested schema. No markdown, no backticks, no explanation.`,
+          },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.1,
+        max_tokens: 1024,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    if (!res.ok) {
+      console.error(`[llm:openrouter] HTTP ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = data.choices?.[0]?.message?.content;
+    if (!raw) { console.error("[llm:openrouter] No content"); return null; }
+
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); }
+    catch { console.error(`[llm:openrouter] Invalid JSON: ${raw.slice(0, 200)}`); return null; }
+
+    const result = schema.safeParse(parsed);
+    if (!result.success) {
+      console.error(`[llm:openrouter] Schema mismatch: ${result.error.message.slice(0, 200)}`);
+      return null;
+    }
+    return result.data;
+  } catch (err) {
+    console.error(`[llm:openrouter] Error: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
@@ -209,7 +269,8 @@ async function extractViaOllama<T>(
 export async function extractStructured<T>(
   systemPrompt: string,
   userContent: string,
-  schema: z.ZodType<T>
+  schema: z.ZodType<T>,
+  modelOverride?: string
 ): Promise<T | null> {
   if (LLM_PROVIDER === "none") return null;
 
@@ -223,8 +284,7 @@ export async function extractStructured<T>(
   let result: T | null = null;
 
   if (LLM_PROVIDER === "groq") {
-    result = await extractViaGroq(systemPrompt, userContent, schema);
-    // Fall back to Ollama if Groq fails and Ollama is available
+    result = await extractViaGroq(systemPrompt, userContent, schema, 0, modelOverride);
     if (!result) result = await extractViaOllama(systemPrompt, userContent, schema);
   } else {
     result = await extractViaOllama(systemPrompt, userContent, schema);
@@ -234,7 +294,7 @@ export async function extractStructured<T>(
   return result;
 }
 
-// --- Schemas ---
+export { extractViaOpenRouter };
 
 // --- Schema helpers ---
 // Rather than trying to enumerate every shape an LLM might return,

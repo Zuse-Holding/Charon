@@ -1,6 +1,7 @@
 "use client";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "../lib/supabase/client";
+import { useResearch } from "../lib/research-context";
 import styles from "./Sidebar.module.css";
 
 const NAV = [
@@ -19,6 +20,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
   const supabase = createClient();
+  const { pending } = useResearch();
 
   async function signOut() {
     router.push("/logout");
@@ -56,9 +58,18 @@ export default function Sidebar() {
         ))}
       </nav>
 
+      {pending && (
+        <div className={styles.researchToast} onClick={() => router.push("/app")}>
+          <span className={styles.toastDot} />
+          <span className={styles.toastText}>
+            Researching {pending.subject}...
+          </span>
+        </div>
+      )}
+
       <div className={styles.footer}>
         <span className={styles.dot} />
-        <span className={styles.footerText}>GROQ · llama-3.1-8b</span>
+        <span className={styles.footerText}>GROQ · Selene</span>
         <button className={styles.signOut} onClick={signOut} title="Sign out">⏻</button>
       </div>
     </aside>

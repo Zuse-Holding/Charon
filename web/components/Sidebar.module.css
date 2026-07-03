@@ -95,3 +95,39 @@
 @media (max-width: 900px) {
   .sidebar { display: none; }
 }
+
+.researchToast {
+  margin: 8px 12px;
+  padding: 8px 12px;
+  background: rgba(255,107,43,0.1);
+  border: 1px solid rgba(255,107,43,0.3);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.researchToast:hover { background: rgba(255,107,43,0.15); }
+
+.toastDot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--orange);
+  flex-shrink: 0;
+  animation: toastPulse 1s ease-in-out infinite;
+}
+@keyframes toastPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.toastText {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--orange);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
