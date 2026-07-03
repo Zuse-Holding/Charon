@@ -451,10 +451,28 @@ export const PersonExtractionSchema = AnyObject.transform((obj) => ({
 }));
 export type PersonExtraction = z.infer<typeof PersonExtractionSchema>;
 
-export const RisksOpportunitiesSchema = AnyObject.transform((obj) => ({
-  risks: toStringArray(obj.risks),
-  opportunities: toStringArray(obj.opportunities),
-}));
+export const RisksOpportunitiesSchema = AnyObject.transform((obj) => {
+  function toFlexibleStringArray(val: unknown): string[] {
+    if (!val) return [];
+    const arr = Array.isArray(val) ? val : [val];
+    return arr
+      .map((item: unknown) => {
+        if (typeof item === "string") return item;
+        if (typeof item === "object" && item !== null) {
+          // Handle {risk: "..."}, {opportunity: "..."}, {description: "..."}, etc.
+          const o = item as Record<string, unknown>;
+          const val = o.risk ?? o.opportunity ?? o.description ?? o.text ?? o.item ?? Object.values(o)[0];
+          return typeof val === "string" ? val : null;
+        }
+        return null;
+      })
+      .filter((s): s is string => s !== null && s.length > 0);
+  }
+  return {
+    risks: toFlexibleStringArray(obj.risks ?? obj.risk),
+    opportunities: toFlexibleStringArray(obj.opportunities ?? obj.opportunity),
+  };
+});
 export type RisksOpportunities = z.infer<typeof RisksOpportunitiesSchema>;
 
 export const ProConsVerdictSchema = AnyObject.transform((obj) => ({
