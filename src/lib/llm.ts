@@ -283,6 +283,45 @@ export async function extractStructured<T>(
 
   let result: T | null = null;
 
+  // Try OpenRouter first — single provider to manage, generous pay-as-you-go
+  if (process.env.OPENROUTER_API_KEY) {
+    result = await extractViaOpenRouter(
+      systemPrompt,
+      userContent,
+      schema,
+      modelOverride ?? "meta-llama/llama-3.3-70b-instruct"
+    );
+  }
+
+  // Fall back to Groq if OpenRouter fails or isn't configured
+  if (!result && LLM_PROVIDER === "groq") {
+    result = await extractViaGroq(systemPrompt, userContent, schema, 0, modelOverride);
+  }
+
+  // Final fallback — Ollama (local dev only)
+  if (!result) {
+    result = await extractViaOllama(systemPrompt, userContent, schema);
+  }
+
+  if (result !== null) cacheSet(key, result);
+  return result;
+}
+
+  let result: T | null = null;
+
+  if (LLM_PROVIDER === "groq") {
+    result = await extractViaGroq(systemPrompt, userContent, schema, 0, modelOverride);
+    if (!result) result = await extractViaOllama(systemPrompt, userContent, schema);
+  } else {
+    result = await extractViaOllama(systemPrompt, userContent, schema);
+  }
+
+  if (result !== null) cacheSet(key, result);
+  return result;
+}
+
+  let result: T | null = null;
+
   if (LLM_PROVIDER === "groq") {
     result = await extractViaGroq(systemPrompt, userContent, schema, 0, modelOverride);
     if (!result) result = await extractViaOllama(systemPrompt, userContent, schema);
