@@ -335,6 +335,8 @@ function Dashboard() {
     [class*="riskBadge"] { border: 1px solid currentColor !important; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-family: 'JetBrains Mono', monospace; }
     [class*="sectionIcon"] { display: none; }
     [class*="printFooter"] { display: none; }
+    [class*="metaRight"] { display: none; }
+    [class*="reportMeta"] { display: none; }
   </style>
 </head>
 <body>
