@@ -1,244 +1,197 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./DeepDiveProgress.module.css";
 
-const SECTION_ESTIMATES: Record<string, number> = {
-  "Executive Brief": 15,
-  "Founding & History": 20,
-  "Leadership Deep Dive": 25,
-  "Funding & Financials": 25,
-  "Products & Traction": 25,
-  "Risk Flags": 20,
-  "Competitive Context": 25,
-  "Market Sizing": 20,
-  "Strategic Options": 20,
-  "Verdict": 15,
-};
-
-const SECTION_ORDER = Object.keys(SECTION_ESTIMATES);
-const TOTAL_ESTIMATED_SECONDS = Object.values(SECTION_ESTIMATES).reduce((a, b) => a + b, 0);
-
-type SectionStatus = "queued" | "running" | "done";
+interface Section {
+  title: string;
+  content: string;
+  riskLevel?: string;
+}
 
 interface Props {
   company: string;
-  onComplete: (sections: { title: string; content: string; riskLevel?: string }[]) => void;
+  onComplete: (sections: Section[]) => void;
   onCancel: () => void;
 }
 
+const SECTION_TITLES = [
+  "Executive Brief",
+  "Founding & History",
+  "Leadership Deep Dive",
+  "Business Model",
+  "Products & Traction",
+  "Funding & Financials",
+  "Competitive Context",
+  "Risk Flags",
+  "Strategic Options",
+  "Verdict",
+];
+
 export default function DeepDiveProgress({ company, onComplete, onCancel }: Props) {
-  const [started, setStarted]         = useState(false);
-  const [statuses, setStatuses]       = useState<SectionStatus[]>(
-    SECTION_ORDER.map(() => "queued")
-  );
-  const [currentSection, setCurrentSection] = useState<string | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(TOTAL_ESTIMATED_SECONDS);
+  const [confirming, setConfirming]   = useState(true);
+  const [running, setRunning]         = useState(false);
+  const [sections, setSections]       = useState<Section[]>([]);
+  const [currentSection, setCurrentSection] = useState<string>("");
+  const [progress, setProgress]       = useState(0);
   const [error, setError]             = useState<string | null>(null);
-  const sections = useRef<{ title: string; content: string; riskLevel?: string }[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  function completedCount() {
-    return statuses.filter(s => s === "done").length;
-  }
-
-  function progressPercent() {
-    return Math.round((completedCount() / SECTION_ORDER.length) * 100);
-  }
+  const [deepDiveId, setDeepDiveId]   = useState<string | null>(null);
+  const abortRef                      = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (!started) return;
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
+  async function startDeepDive() {
+    setConfirming(false);
+    setRunning(true);
+    setError(null);
 
     abortRef.current = new AbortController();
 
-    timerRef.current = setInterval(() => {
-      setSecondsLeft(s => Math.max(0, s - 1));
-    }, 1000);
+    try {
+      const res = await fetch(`/api/deep-dive?company=${encodeURIComponent(company)}`, {
+        signal: abortRef.current.signal,
+      });
 
-    async function run() {
-      try {
-        const res = await fetch("/api/deep-dive", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ company }),
-          signal: abortRef.current?.signal,
-        });
-
-        if (!res.ok || !res.body) {
-          setError("Server error — please try again.");
-          return;
-        }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const event = JSON.parse(line.slice(6));
-
-              if (event.type === "section_start") {
-                setCurrentSection(event.section);
-                setStatuses(prev => {
-                  const next = [...prev];
-                  next[event.sectionIndex] = "running";
-                  return next;
-                });
-                // Adjust time remaining based on remaining sections
-                const remaining = SECTION_ORDER
-                  .slice(event.sectionIndex)
-                  .reduce((acc, s) => acc + (SECTION_ESTIMATES[s] ?? 20), 0);
-                setSecondsLeft(remaining);
-              }
-
-              if (event.type === "section_done") {
-                setStatuses(prev => {
-                  const next = [...prev];
-                  next[event.sectionIndex] = "done";
-                  return next;
-                });
-                sections.current.push({
-                  title: event.section,
-                  content: event.content ?? "",
-                });
-              }
-
-              if (event.type === "complete") {
-                if (timerRef.current) clearInterval(timerRef.current);
-                setSecondsLeft(0);
-                setStatuses(SECTION_ORDER.map(() => "done"));
-                setTimeout(() => onComplete(sections.current), 600);
-              }
-
-              if (event.type === "error") {
-                setError(event.error ?? "Unknown error");
-              }
-            } catch {
-              // Malformed event — skip
-            }
-          }
-        }
-      } catch (err: unknown) {
-        if ((err as Error).name !== "AbortError") {
-          setError((err as Error).message ?? "Connection failed");
-        }
-      } finally {
-        if (timerRef.current) clearInterval(timerRef.current);
+      if (!res.ok || !res.body) {
+        throw new Error("Deep dive request failed");
       }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      const collectedSections: Section[] = [];
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const json = line.slice(6).trim();
+          if (!json || json === "[DONE]") continue;
+
+          try {
+            const event = JSON.parse(json);
+            if (event.type === "section") {
+              const section: Section = {
+                title: event.title,
+                content: event.content,
+                riskLevel: event.riskLevel,
+              };
+              collectedSections.push(section);
+              setSections([...collectedSections]);
+              setCurrentSection(event.title);
+              setProgress(Math.round((collectedSections.length / 10) * 100));
+            } else if (event.type === "complete") {
+              setProgress(100);
+              setRunning(false);
+
+              // Save to Supabase
+              try {
+                const saveRes = await fetch("/api/deep-dives", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    company,
+                    sections: collectedSections,
+                    durationMs: event.durationMs ?? 0,
+                  }),
+                });
+                if (saveRes.ok) {
+                  const saved = await saveRes.json();
+                  setDeepDiveId(saved.id);
+                }
+              } catch {
+                // Save failure is non-fatal
+              }
+
+              onComplete(collectedSections);
+            } else if (event.type === "error") {
+              throw new Error(event.message ?? "Unknown error");
+            }
+          } catch { /* skip malformed events */ }
+        }
+      }
+    } catch (err: unknown) {
+      if ((err as Error).name === "AbortError") return;
+      setError((err as Error).message ?? "Something went wrong");
+      setRunning(false);
     }
-
-    run();
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      abortRef.current?.abort();
-    };
-  }, [started]);
-
-  function formatTime(s: number) {
-    if (s < 60) return `${s}s`;
-    const m = Math.floor(s / 60);
-    const rem = s % 60;
-    return `${m}m ${rem}s`;
   }
 
-  // Pre-start confirmation state
-  if (!started) {
+  if (confirming) {
     return (
-      <div className={styles.modal}>
-        <div className={styles.modalHeader}>
-          <span className={styles.modalIcon}>◉</span>
-          <div>
-            <div className={styles.modalTitle}>Deep Dive Analysis</div>
-            <div className={styles.modalSub}>{company}</div>
-          </div>
-        </div>
-
-        <div className={styles.estimate}>
-          Estimated time: <strong>~{formatTime(TOTAL_ESTIMATED_SECONDS)}</strong>
-        </div>
-
-        <div className={styles.sectionList}>
-          {SECTION_ORDER.map((section, i) => (
-            <div key={i} className={styles.sectionQueued}>
-              <span className={styles.dot}>○</span>
-              <span className={styles.sectionName}>{section}</span>
-              <span className={styles.sectionTime}>~{SECTION_ESTIMATES[section]}s</span>
-            </div>
-          ))}
-        </div>
-
-        <div className={styles.modalFooter}>
-          <button className={styles.cancelBtn} onClick={onCancel}>Cancel</button>
-          <button className={styles.startBtn} onClick={() => setStarted(true)}>
+      <div className={styles.confirm}>
+        <div className={styles.confirmIcon}>◆</div>
+        <h3 className={styles.confirmTitle}>Start Deep Dive on {company}?</h3>
+        <p className={styles.confirmDesc}>
+          Generates a 10-section analyst report. Takes 3-5 minutes.
+          Please stay on this page until it completes.
+        </p>
+        <div className={styles.confirmActions}>
+          <button className={styles.confirmBtn} onClick={startDeepDive}>
             Start Deep Dive →
+          </button>
+          <button className={styles.cancelBtn} onClick={onCancel}>
+            Cancel
           </button>
         </div>
       </div>
     );
   }
 
-  // Running state
   return (
-    <div className={styles.running}>
-      <div className={styles.runHeader}>
-        <span className={`${styles.modalIcon} ${styles.pulse}`}>◉</span>
-        <div>
-          <div className={styles.modalTitle}>Analyzing {company}</div>
-          <div className={styles.modalSub}>
-            {error
-              ? `Error: ${error}`
-              : progressPercent() === 100
-              ? "Complete — loading report..."
-              : `${currentSection ?? "Starting..."} — ~${formatTime(secondsLeft)} remaining`
-            }
-          </div>
-        </div>
+    <div className={styles.progress}>
+      <div className={styles.progressHeader}>
+        <span className={styles.progressTitle}>Deep Dive — {company}</span>
+        <span className={styles.progressPct}>{progress}%</span>
       </div>
 
-      <div className={styles.progressTrack}>
-        <div
-          className={`${styles.progressFill} ${progressPercent() === 100 ? styles.complete : ""}`}
-          style={{ width: `${progressPercent()}%` }}
-        />
-      </div>
-      <div className={styles.progressLabel}>
-        {progressPercent()}% — {completedCount()} of {SECTION_ORDER.length} sections
+      <div className={styles.progressBar}>
+        <div className={styles.progressFill} style={{ width: `${progress}%` }} />
       </div>
 
       <div className={styles.sectionList}>
-        {SECTION_ORDER.map((section, i) => {
-          const status = statuses[i];
+        {SECTION_TITLES.map((title, i) => {
+          const done = sections.find(s => s.title === title);
+          const active = currentSection === title && running;
           return (
             <div
-              key={i}
-              className={`${styles.sectionRow} ${styles[status]}`}
+              key={title}
+              className={`${styles.sectionItem} ${done ? styles.done : ""} ${active ? styles.active : ""}`}
             >
-              <span className={styles.dot}>
-                {status === "done" ? "✓" : status === "running" ? "◉" : "○"}
-              </span>
-              <span className={styles.sectionName}>{section}</span>
-              {status === "running" && (
-                <span className={styles.runningLabel}>running...</span>
-              )}
+              <span className={styles.sectionCheck}>{done ? "✓" : active ? "◉" : "○"}</span>
+              <span className={styles.sectionName}>{title}</span>
             </div>
           );
         })}
       </div>
 
-      {error && (
-        <button className={styles.cancelBtn} onClick={onCancel}>
-          Close
-        </button>
+      {error && <div className={styles.errorMsg}>✗ {error}</div>}
+
+      {running && (
+        <div className={styles.navWarning}>
+          ⚠ Deep Dive in progress — please don't navigate away
+        </div>
+      )}
+
+      {!running && !error && deepDiveId && (
+        <div className={styles.savedNote}>
+          ✓ Deep Dive saved ·{" "}
+          <a
+            href={`/print/${deepDiveId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.printLink}
+          >
+            Export clean PDF →
+          </a>
+        </div>
       )}
     </div>
   );
