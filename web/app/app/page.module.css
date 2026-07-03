@@ -301,44 +301,79 @@
   color: var(--cyan);
 }
 
+@media (max-width: 900px) {
+  /* Hide sidebar completely on all mobile/tablet */
+  /* Sidebar has its own media query, this ensures shell adjusts */
+  .shell { overflow: hidden; }
+}
+
 @media (max-width: 768px) {
-  /* Stack content vertically */
+  /* Stack content vertically in portrait */
   .content { flex-direction: column; overflow-y: auto; }
 
-  /* Feed becomes a horizontal scrollable strip at top */
+  /* Feed strip at top — compact */
   .feed {
     width: 100%;
     min-width: unset;
     border-right: none;
     border-bottom: 1px solid var(--border);
-    max-height: 160px;
+    max-height: 140px;
     flex-shrink: 0;
   }
 
-  /* Report panel takes remaining space */
-  .reportPanel { flex: 1; min-height: 0; }
+  /* Report panel fills remaining space */
+  .reportPanel { flex: 1; min-height: 0; overflow-y: auto; }
 
-  /* Smaller title on mobile */
+  /* Smaller title */
   .reportTitle { font-size: 16px; }
 
-  /* Report header stacks on small screens */
+  /* Report header stacks */
   .reportHeader {
     flex-direction: column;
-    gap: 12px;
-    padding: 14px 16px;
+    gap: 10px;
+    padding: 12px 14px;
   }
+  .reportActions { width: 100%; justify-content: flex-end; }
+  .actionBtn { font-size: 11px; }
 
-  .reportActions { width: 100%; }
-  .actionBtn { flex: 1; text-align: center; }
-
-  /* Report body full width */
-  .reportBody { padding: 16px; }
+  /* Report body */
+  .reportBody { padding: 14px 14px 40px; }
 
   /* Tab bar scrollable */
-  .tabBar { padding: 0 16px; overflow-x: auto; }
+  .tabBar { padding: 0 14px; overflow-x: auto; }
 
-  /* Suggestion chips wrap tighter */
+  /* Empty state — reduce dead space */
+  .emptyState { justify-content: flex-start; padding-top: 40px; }
+
+  /* Suggestion chips */
   .suggestionRow { max-width: 100%; padding: 0 16px; }
+}
+
+/* Landscape mobile — biggest issue from screenshots */
+@media (max-width: 900px) and (orientation: landscape) {
+  .shell { height: 100dvh; overflow: hidden; }
+  .main { overflow: hidden; }
+
+  /* Side by side layout but compact */
+  .content { flex-direction: row; overflow: hidden; }
+
+  /* Narrow feed strip on the left */
+  .feed {
+    width: 200px;
+    min-width: 200px;
+    max-height: unset;
+    border-right: 1px solid var(--border);
+    border-bottom: none;
+    overflow-y: auto;
+  }
+
+  /* Report panel scrolls vertically */
+  .reportPanel { flex: 1; overflow-y: auto; min-width: 0; }
+  .reportBody { overflow-y: auto; }
+
+  /* Smaller report header in landscape */
+  .reportHeader { padding: 10px 14px; }
+  .reportTitle { font-size: 15px; }
 }
 
 /* Tab bar */

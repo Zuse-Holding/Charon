@@ -147,20 +147,33 @@ export class ReportAgent {
     lines.push(`*Generated ${bundle.generatedAt}*`);
     lines.push(``);
 
-    lines.push(`## Executive Summary`);
+    lines.push(`## About`);
     lines.push(
       bundle.person.summary
         ? bundle.person.summary
-        : `_No summary data found for ${bundle.person.name}. Try a more specific name (e.g. add a company or title) to disambiguate._`
+        : `_No summary data found for ${bundle.person.name}._`
     );
     lines.push(``);
+
+    // Quick facts row
+    const facts: string[] = [];
+    if (bundle.person.nationality) facts.push(`**Nationality:** ${bundle.person.nationality}`);
+    if (bundle.person.education)   facts.push(`**Education:** ${bundle.person.education}`);
+    if (bundle.person.netWorth)    facts.push(`**Net Worth:** ${bundle.person.netWorth}`);
+    if (bundle.person.knownFor)    facts.push(`**Known For:** ${bundle.person.knownFor}`);
+    if (facts.length > 0) {
+      for (const f of facts) lines.push(`- ${f}`);
+      lines.push(``);
+    }
 
     lines.push(`## Current Role`);
     if (bundle.person.currentRole && bundle.person.currentCompany) {
       lines.push(`- **Role:** ${bundle.person.currentRole}`);
       lines.push(`- **Company:** ${bundle.person.currentCompany}`);
+    } else if (bundle.person.currentRole) {
+      lines.push(`- **Role:** ${bundle.person.currentRole}`);
     } else {
-      lines.push(`_No current role/company data collected in this pass._`);
+      lines.push(`_No current role data collected in this pass._`);
     }
     lines.push(``);
 
@@ -247,19 +260,27 @@ export class ReportAgent {
     }
     lines.push(``);
 
-    lines.push(`## Risks`);
-    if (bundle.risks && bundle.risks.length > 0) {
-      for (const r of bundle.risks) lines.push(`- ${r}`);
+    lines.push(`## Pros`);
+    if (bundle.pros && bundle.pros.length > 0) {
+      for (const p of bundle.pros) lines.push(`- ${p}`);
     } else {
-      lines.push(`_Insufficient data for risk analysis on this run._`);
+      lines.push(`_Insufficient review data for this run._`);
     }
     lines.push(``);
 
-    lines.push(`## Opportunities`);
-    if (bundle.opportunities && bundle.opportunities.length > 0) {
-      for (const o of bundle.opportunities) lines.push(`- ${o}`);
+    lines.push(`## Cons`);
+    if (bundle.cons && bundle.cons.length > 0) {
+      for (const c of bundle.cons) lines.push(`- ${c}`);
     } else {
-      lines.push(`_Insufficient data for opportunity analysis on this run._`);
+      lines.push(`_Insufficient review data for this run._`);
+    }
+    lines.push(``);
+
+    lines.push(`## Verdict`);
+    if (bundle.verdict) {
+      lines.push(bundle.verdict);
+    } else {
+      lines.push(`_Insufficient data for a verdict on this run._`);
     }
     lines.push(``);
 

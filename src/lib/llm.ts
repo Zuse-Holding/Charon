@@ -366,6 +366,10 @@ export const PersonExtractionSchema = AnyObject.transform((obj) => ({
   summary: toStringOrUndefined(obj.summary),
   currentRole: toStringOrUndefined(obj.currentRole ?? obj.role ?? obj.current_role),
   currentCompany: toStringOrUndefined(obj.currentCompany ?? obj.company ?? obj.current_company),
+  education: toStringOrUndefined(obj.education ?? obj.academic_background ?? obj.alma_mater),
+  netWorth: toStringOrUndefined(obj.netWorth ?? obj.net_worth ?? obj.estimated_net_worth),
+  knownFor: toStringOrUndefined(obj.knownFor ?? obj.known_for ?? obj.notable_for ?? obj.achievements),
+  nationality: toStringOrUndefined(obj.nationality ?? obj.citizenship),
   careerHistory: (() => {
     const raw = obj.careerHistory ?? obj.career_history ?? obj.career;
     if (!raw) return [];
@@ -392,6 +396,13 @@ export const RisksOpportunitiesSchema = AnyObject.transform((obj) => ({
   opportunities: toStringArray(obj.opportunities),
 }));
 export type RisksOpportunities = z.infer<typeof RisksOpportunitiesSchema>;
+
+export const ProConsVerdictSchema = AnyObject.transform((obj) => ({
+  pros: toStringArray(obj.pros ?? obj.advantages ?? obj.strengths),
+  cons: toStringArray(obj.cons ?? obj.disadvantages ?? obj.weaknesses),
+  verdict: toStringOrUndefined(obj.verdict ?? obj.summary ?? obj.recommendation),
+}));
+export type ProConsVerdict = z.infer<typeof ProConsVerdictSchema>;
 
 export const ProductEntityExtractionSchema = AnyObject.transform((obj) => ({
   description: toStringOrUndefined(obj.description),

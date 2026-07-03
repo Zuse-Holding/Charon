@@ -1,6 +1,28 @@
 "use client";
 import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
 import styles from "./landing.module.css";
+
+// Hook for scroll-triggered fade-in animations
+function useScrollFade() {
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add(styles.visible);
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: "0px 0px -40px 0px" }
+    );
+
+    const elements = document.querySelectorAll(`.${styles.fadeIn}`);
+    elements.forEach((el) => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, []);
+}
 
 const FEATURES = [
   {
@@ -66,6 +88,7 @@ const PRICING = [
 
 export default function Landing() {
   const router = useRouter();
+  useScrollFade();
 
   return (
     <div className={styles.page}>
@@ -136,7 +159,7 @@ export default function Landing() {
       </section>
 
       {/* TERMINAL PREVIEW */}
-      <div className={styles.previewSection}>
+      <div className={`${styles.previewSection} ${styles.fadeIn}`}>
         <div className={styles.terminal}>
           <div className={styles.terminalHeader}>
             <div className={styles.terminalDots}>
@@ -180,7 +203,7 @@ export default function Landing() {
       </div>
 
       {/* STATS */}
-      <div className={styles.statsBar}>
+      <div className={`${styles.statsBar} ${styles.fadeIn}`}>
         {[
           { num: "7", label: "Parallel agents per run" },
           { num: "~30s", label: "Average research time" },
@@ -194,7 +217,7 @@ export default function Landing() {
       </div>
 
       {/* FEATURES */}
-      <section id="features" className={styles.featuresSection}>
+      <section id="features" className={`${styles.featuresSection} ${styles.fadeIn}`}>
         <div className={styles.sectionLabel}>CAPABILITIES</div>
         <div className={styles.featuresGrid}>
           {FEATURES.map((f) => (
@@ -208,7 +231,7 @@ export default function Landing() {
       </section>
 
       {/* PRICING */}
-      <section className={styles.pricingSection}>
+      <section className={`${styles.pricingSection} ${styles.fadeIn}`}>
         <div className={styles.sectionLabel}>PRICING</div>
         <h2 className={styles.pricingTitle}>Between Crunchbase and PitchBook.</h2>
         <div className={styles.pricingCode}>// in price and depth</div>
@@ -249,7 +272,7 @@ export default function Landing() {
       </section>
 
       {/* FINAL CTA */}
-      <section className={styles.finalCta}>
+      <section className={`${styles.finalCta} ${styles.fadeIn}`}>
         <h2 className={styles.finalCtaTitle}>Start researching in under a minute.</h2>
         <p className={styles.finalCtaSub}>No credit card. No sales call. Just answers.</p>
         <button className={styles.btnHeroPrimary} onClick={() => router.push("/login")}>

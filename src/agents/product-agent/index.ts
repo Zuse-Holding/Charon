@@ -6,7 +6,7 @@ import {
   Source,
 } from "../../types/research.js";
 import { FetchProvider, SearchProvider } from "../../lib/providers.js";
-import { extractStructured, ProductEntityExtractionSchema, RisksOpportunitiesSchema } from "../../lib/llm.js";
+import { extractStructured, ProductEntityExtractionSchema, ProConsVerdictSchema } from "../../lib/llm.js";
 
 /**
  * Product Agent
@@ -66,9 +66,16 @@ Be specific about the brand — always identify the parent company.`,
         ProductEntityExtractionSchema
       ),
       extractStructured(
-        `You are a product analyst writing a brief Risks and Opportunities assessment for "${productName}". Base your analysis on the provided research data. Be specific — reference actual features, pricing, and competitors mentioned.`,
+        `You are a product reviewer writing a Pros, Cons, and Verdict assessment for "${productName}".
+
+RULES:
+- pros: 3-5 specific strengths based on the actual specs, price, and reviews. Reference real features.
+- cons: 3-5 specific weaknesses or limitations. Be direct — mention real complaints from reviews if available.
+- verdict: one clear paragraph on who should buy this product and why. Mention the best use case and who it's not for. No filler phrases.
+
+Be specific and direct. If review data is thin, say so rather than padding.`,
         combinedText + "\n\nCOMPETITORS:\n" + competitorText,
-        RisksOpportunitiesSchema
+        ProConsVerdictSchema
       ),
     ]);
 
@@ -115,8 +122,9 @@ Be specific about the brand — always identify the parent company.`,
       specs,
       competitors,
       news,
-      risks: (risksResult?.risks ?? []) as string[],
-      opportunities: (risksResult?.opportunities ?? []) as string[],
+      pros: (risksResult?.pros ?? []) as string[],
+      cons: (risksResult?.cons ?? []) as string[],
+      verdict: risksResult?.verdict as string | undefined,
       sources,
     };
   }
