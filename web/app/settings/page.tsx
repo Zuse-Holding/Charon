@@ -6,7 +6,9 @@ import Topbar from "../../components/Topbar";
 import styles from "./page.module.css";
 
 export default function Settings() {
-  const [email, setEmail] = useState<string>("");
+  const [email, setEmail]           = useState<string>("");
+  const [resetSent, setResetSent]   = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -14,6 +16,17 @@ export default function Settings() {
       if (data.user?.email) setEmail(data.user.email);
     });
   }, []);
+
+  async function handlePasswordReset() {
+    if (!email) return;
+    setResetLoading(true);
+    const supabase = createClient();
+    await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/login`,
+    });
+    setResetSent(true);
+    setResetLoading(false);
+  }
 
   const SYSTEM_INFO = [
     { section: "INTELLIGENCE ENGINE", items: [
@@ -61,6 +74,21 @@ export default function Settings() {
               ))}
             </div>
           ))}
+
+          <div className={styles.group}>
+            <div className={styles.groupLabel}>SECURITY</div>
+            <div className={styles.row}>
+              <span className={styles.rowLabel}>Password</span>
+              <span className={styles.rowValue}>••••••••</span>
+              <button
+                className={styles.resetBtn}
+                onClick={handlePasswordReset}
+                disabled={resetLoading || resetSent}
+              >
+                {resetSent ? "✓ Email sent" : resetLoading ? "Sending..." : "Reset password"}
+              </button>
+            </div>
+          </div>
 
           <div className={styles.group}>
             <div className={styles.groupLabel}>UPGRADE</div>

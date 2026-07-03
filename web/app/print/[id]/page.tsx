@@ -1,0 +1,134 @@
+import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import { notFound } from "next/navigation";
+
+interface Section {
+  title: string;
+  content: string;
+  riskLevel?: string;
+}
+
+interface DeepDiveBundle {
+  sections: Section[];
+  company: string;
+  generatedAt: string;
+  durationMs?: number;
+}
+
+const RISK_COLORS: Record<string, string> = {
+  high: "#e53e3e",
+  medium: "#ff6b2b",
+  low: "#38a169",
+};
+
+export default async function PrintPage({ params }: { params: { id: string } }) {
+  const supabase = await createServerSupabaseClient();
+
+  const { data: run } = await supabase
+    .from("deep_dives")
+    .select("*")
+    .eq("id", params.id)
+    .single();
+
+  if (!run) notFound();
+
+  const bundle = run.bundle as DeepDiveBundle;
+  const sections = bundle?.sections ?? [];
+  const generatedDate = new Date(bundle.generatedAt).toLocaleDateString("en-US", {
+    year: "numeric", month: "long", day: "numeric"
+  });
+
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{bundle.company} — Deep Dive · Charon</title>
+        <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+        <style>{`
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Inter', sans-serif; background: #fff; color: #111; }
+          @media print {
+            @page { margin: 0.75in; size: letter; }
+            .no-print { display: none !important; }
+            .section { page-break-inside: avoid; }
+            .cover { page-break-after: always; min-height: auto; padding: 60px 0; }
+          }
+          .doc { max-width: 680px; margin: 0 auto; padding: 48px; }
+          .print-btn { 
+            position: fixed; top: 20px; right: 20px;
+            padding: 10px 20px; background: #ff6b2b; color: white;
+            border: none; border-radius: 6px; font-family: 'Space Grotesk', sans-serif;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+          }
+          .cover { padding: 80px 0 60px; border-bottom: 3px solid #ff6b2b; margin-bottom: 60px; }
+          .cover-brand { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.2em; color: #ff6b2b; margin-bottom: 24px; text-transform: uppercase; }
+          .cover-type { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #999; margin-bottom: 14px; text-transform: uppercase; }
+          .cover-company { font-family: 'Space Grotesk', sans-serif; font-size: 48px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; color: #111; margin-bottom: 32px; }
+          .cover-divider { width: 100%; height: 1px; background: #e8e8e8; margin-bottom: 24px; }
+          .cover-meta { font-size: 13px; color: #666; margin-bottom: 14px; }
+          .cover-disclaimer { font-size: 11px; color: #bbb; line-height: 1.6; max-width: 460px; }
+          .section { margin-bottom: 48px; padding-bottom: 48px; border-bottom: 1px solid #f0f0f0; }
+          .section:last-of-type { border-bottom: none; }
+          .section-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+          .section-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #ff6b2b; letter-spacing: 0.1em; flex-shrink: 0; }
+          .section-title { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 600; color: #111; flex: 1; }
+          .risk-badge { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.1em; padding: 3px 8px; border-radius: 4px; border: 1px solid; flex-shrink: 0; text-transform: uppercase; }
+          .section-content { font-size: 13.5px; line-height: 1.85; color: #333; }
+          .section-content p { margin-bottom: 12px; }
+          .section-content p:last-child { margin-bottom: 0; }
+          .placeholder { color: #999; font-style: italic; }
+          .doc-footer { margin-top: 60px; padding-top: 16px; border-top: 1px solid #e8e8e8; display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #bbb; letter-spacing: 0.04em; }
+        `}</style>
+      </head>
+      <body>
+        <button className="print-btn no-print" onClick={() => window.print()}>
+          Export PDF
+        </button>
+
+        <div className="doc">
+          <div className="cover">
+            <div className="cover-brand">CHARON · ZUSE HOLDINGS</div>
+            <div className="cover-type">Deep Dive Analysis</div>
+            <div className="cover-company">{bundle.company}</div>
+            <div className="cover-divider" />
+            <div className="cover-meta">Generated {generatedDate} · {sections.length} sections · Powered by Selene</div>
+            <div className="cover-disclaimer">
+              This report was generated by Charon, an AI-powered business intelligence platform.
+              Information is sourced from public data and should be independently verified before use in financial or strategic decisions.
+            </div>
+          </div>
+
+          {sections.map((section, i) => (
+            <div key={i} className="section">
+              <div className="section-header">
+                <span className="section-num">{String(i + 1).padStart(2, "0")}</span>
+                <h2 className="section-title">{section.title}</h2>
+                {section.riskLevel && (
+                  <span
+                    className="risk-badge"
+                    style={{ color: RISK_COLORS[section.riskLevel] ?? "#666", borderColor: RISK_COLORS[section.riskLevel] ?? "#666" }}
+                  >
+                    {section.riskLevel} Risk
+                  </span>
+                )}
+              </div>
+              <div className="section-content">
+                {section.content.startsWith("_")
+                  ? <p className="placeholder">{section.content.replace(/^_|_$/g, "")}</p>
+                  : section.content.split("\n").filter(p => p.trim()).map((para, j) => (
+                      <p key={j}>{para}</p>
+                    ))
+                }
+              </div>
+            </div>
+          ))}
+
+          <div className="doc-footer">
+            <span>Generated by Charon · Powered by Selene</span>
+            <span>charon.zuseholdings.com</span>
+          </div>
+        </div>
+      </body>
+    </html>
+  );
+}
