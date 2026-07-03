@@ -57,7 +57,11 @@ export default function KnowledgeGraph() {
   const nodesRef                          = useRef<NodeData[]>([]);
   const edgesRef                          = useRef<EdgeData[]>([]);
   const animFrameRef                      = useRef<number>(0);
-  const dragRef                           = useRef<{ node: NodeData; offsetX: number; offsetY: number } | null>(null);
+  const dragRef                           = useRef<{ node: NodeData } | null>(null);
+  const panRef                            = useRef<{ startX: number; startY: number; origTx: number; origTy: number } | null>(null);
+  const transformRef                      = useRef({ scale: 1, tx: 0, ty: 0 });
+  const hoveredRef                        = useRef<string | null>(null);
+  const selectedRef                       = useRef<NodeData | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -73,100 +77,81 @@ export default function KnowledgeGraph() {
     load();
   }, []);
 
-  // Build nodes and edges from entities/relationships
+  // Keep refs in sync with state for use in canvas callbacks
+  useEffect(() => { hoveredRef.current = hoveredId; }, [hoveredId]);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+
+  // Build nodes and edges
   useEffect(() => {
     if (entities.length === 0) return;
-
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
-    const W = canvas.width / dpr;
-    const H = canvas.height / dpr;
+    const W = canvas.width / dpr || 900;
+    const H = canvas.height / dpr || 500;
 
-    // Place nodes in a rough circle with some randomness
-    const nodes: NodeData[] = entities.slice(0, 60).map((e, i) => {
-      const angle = (i / Math.min(entities.length, 60)) * Math.PI * 2;
-      const radius = Math.min(W, H) * 0.3 + Math.random() * 60 - 30;
+    const nodes: NodeData[] = entities.slice(0, 80).map((e, i) => {
+      const angle  = (i / Math.min(entities.length, 80)) * Math.PI * 2;
+      const radius = Math.min(W, H) * 0.28 + Math.random() * 50 - 25;
       return {
-        id: e.id,
-        name: e.name,
-        type: e.type,
+        id: e.id, name: e.name, type: e.type,
         x: W / 2 + Math.cos(angle) * radius,
         y: H / 2 + Math.sin(angle) * radius,
-        vx: 0, vy: 0,
-        r: e.name.length > 12 ? 18 : 14,
+        vx: 0, vy: 0, r: 16,
       };
     });
 
+    const nodeIds = new Set(nodes.map(n => n.id));
     const edges: EdgeData[] = relationships
-      .filter(r => nodes.some(n => n.id === r.from_entity_id) && nodes.some(n => n.id === r.to_entity_id))
-      .slice(0, 100)
-      .map(r => ({
-        source: r.from_entity_id,
-        target: r.to_entity_id,
-        label: r.relationship_type.replace(/_/g, " "),
-      }));
+      .filter(r => nodeIds.has(r.from_entity_id) && nodeIds.has(r.to_entity_id))
+      .slice(0, 120)
+      .map(r => ({ source: r.from_entity_id, target: r.to_entity_id, label: r.relationship_type.replace(/_/g, " ") }));
 
     nodesRef.current = nodes;
     edgesRef.current = edges;
   }, [entities, relationships]);
 
-  // Force-directed simulation
+  // Force simulation
   const simulate = useCallback(() => {
     const nodes = nodesRef.current;
     const edges = edgesRef.current;
     if (nodes.length === 0) return;
-
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const dpr2 = window.devicePixelRatio || 1;
-    const W = canvas.width / dpr2;
-    const H = canvas.height / dpr2;
-    const cx = W / 2;
-    const cy = H / 2;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.width / dpr;
+    const H = canvas.height / dpr;
+    const cx = W / 2, cy = H / 2;
 
-    // Forces
     for (const node of nodes) {
-      // Center gravity
-      node.vx += (cx - node.x) * 0.001;
-      node.vy += (cy - node.y) * 0.001;
-
-      // Repulsion between nodes
+      node.vx += (cx - node.x) * 0.0008;
+      node.vy += (cy - node.y) * 0.0008;
       for (const other of nodes) {
         if (other === node) continue;
-        const dx = node.x - other.x;
-        const dy = node.y - other.y;
+        const dx = node.x - other.x, dy = node.y - other.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = 800 / (dist * dist);
+        const force = 900 / (dist * dist);
         node.vx += (dx / dist) * force;
         node.vy += (dy / dist) * force;
       }
     }
 
-    // Attraction along edges
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
     for (const edge of edges) {
-      const a = nodeMap.get(edge.source);
-      const b = nodeMap.get(edge.target);
+      const a = nodeMap.get(edge.source), b = nodeMap.get(edge.target);
       if (!a || !b) continue;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
+      const dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const target = 120;
-      const force = (dist - target) * 0.03;
-      a.vx += (dx / dist) * force;
-      a.vy += (dy / dist) * force;
-      b.vx -= (dx / dist) * force;
-      b.vy -= (dy / dist) * force;
+      const force = (dist - 130) * 0.025;
+      a.vx += (dx / dist) * force; a.vy += (dy / dist) * force;
+      b.vx -= (dx / dist) * force; b.vy -= (dy / dist) * force;
     }
 
-    // Apply velocity with damping, clamp to canvas
     for (const node of nodes) {
       if (dragRef.current?.node === node) continue;
-      node.vx *= 0.85;
-      node.vy *= 0.85;
-      node.x = Math.max(node.r + 8, Math.min(W - node.r - 8, node.x + node.vx));
-      node.y = Math.max(node.r + 8, Math.min(H - node.r - 8, node.y + node.vy));
+      node.vx *= 0.85; node.vy *= 0.85;
+      node.x = Math.max(node.r + 4, Math.min(W - node.r - 4, node.x + node.vx));
+      node.y = Math.max(node.r + 4, Math.min(H - node.r - 4, node.y + node.vy));
     }
   }, []);
 
@@ -177,106 +162,140 @@ export default function KnowledgeGraph() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Fix blurry canvas on retina/HiDPI displays
-    const dpr = window.devicePixelRatio || 1;
-    const parent = canvas.parentElement;
-    const cssW = parent ? parent.clientWidth : 900;
-    const cssH = 500;
-    canvas.width  = Math.round(cssW * dpr);
-    canvas.height = Math.round(cssH * dpr);
-    canvas.style.width  = cssW + "px";
-    canvas.style.height = cssH + "px";
-    ctx.scale(dpr, dpr);
+    function resizeCanvas() {
+      if (!canvas || !ctx) return;
+      const dpr  = window.devicePixelRatio || 1;
+      const cssW = canvas.parentElement?.clientWidth ?? 900;
+      const cssH = 520;
+      canvas.width        = Math.round(cssW * dpr);
+      canvas.height       = Math.round(cssH * dpr);
+      canvas.style.width  = cssW + "px";
+      canvas.style.height = cssH + "px";
+    }
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
 
     function draw() {
       if (!canvas || !ctx) return;
-      const dpr3 = window.devicePixelRatio || 1;
-      const W = canvas.width / dpr3;
-      const H = canvas.height / dpr3;
+      const dpr   = window.devicePixelRatio || 1;
+      const W     = canvas.width / dpr;
+      const H     = canvas.height / dpr;
       const nodes = nodesRef.current;
       const edges = edgesRef.current;
-      const nodeMap = new Map(nodes.map(n => [n.id, n]));
+      const nodeMap   = new Map(nodes.map(n => [n.id, n]));
+      const { scale, tx, ty } = transformRef.current;
+      const hovered  = hoveredRef.current;
+      const sel      = selectedRef.current;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      // Apply device pixel ratio — critical for crisp rendering
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
 
-      // Draw edges
+      // Apply zoom/pan on top of DPR
+      ctx.translate(tx, ty);
+      ctx.scale(scale, scale);
+
+      // Edges
       for (const edge of edges) {
-        const a = nodeMap.get(edge.source);
-        const b = nodeMap.get(edge.target);
+        const a = nodeMap.get(edge.source), b = nodeMap.get(edge.target);
         if (!a || !b) continue;
-        const isHighlighted = hoveredId === a.id || hoveredId === b.id;
+        const hi = hovered === a.id || hovered === b.id || sel?.id === a.id || sel?.id === b.id;
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
-        ctx.strokeStyle = isHighlighted ? "rgba(255,107,43,0.6)" : "rgba(255,255,255,0.08)";
-        ctx.lineWidth = isHighlighted ? 1.5 : 0.8;
+        ctx.strokeStyle = hi ? "rgba(255,107,43,0.7)" : "rgba(255,255,255,0.1)";
+        ctx.lineWidth = (hi ? 1.5 : 0.7) / scale;
         ctx.stroke();
-
-        // Edge label on hover
-        if (isHighlighted && edge.label) {
-          const mx = (a.x + b.x) / 2;
-          const my = (a.y + b.y) / 2;
-          ctx.font = "9px JetBrains Mono, monospace";
-          ctx.fillStyle = "rgba(255,107,43,0.7)";
+        if (hi && edge.label && scale > 0.4) {
+          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          ctx.font = `${Math.max(7, 9 / scale)}px JetBrains Mono, monospace`;
+          ctx.fillStyle = "rgba(255,107,43,0.85)";
           ctx.textAlign = "center";
-          ctx.fillText(edge.label.toUpperCase(), mx, my - 4);
+          ctx.textBaseline = "middle";
+          ctx.fillText(edge.label.toUpperCase(), mx, my - 7 / scale);
         }
       }
 
-      // Draw nodes
+      // Nodes
       for (const node of nodes) {
-        const isHovered   = hoveredId === node.id;
-        const isSelected  = selected?.id === node.id;
+        const isH = hovered === node.id;
+        const isS = sel?.id === node.id;
         const color = TYPE_COLORS[node.type];
 
-        // Glow on hover/select
-        if (isHovered || isSelected) {
+        if (isH || isS) {
           ctx.beginPath();
-          ctx.arc(node.x, node.y, node.r + 6, 0, Math.PI * 2);
-          const grad = ctx.createRadialGradient(node.x, node.y, node.r, node.x, node.y, node.r + 6);
-          grad.addColorStop(0, color + "44");
-          grad.addColorStop(1, "transparent");
-          ctx.fillStyle = grad;
+          ctx.arc(node.x, node.y, node.r + 7 / scale, 0, Math.PI * 2);
+          const g = ctx.createRadialGradient(node.x, node.y, node.r - 2, node.x, node.y, node.r + 7 / scale);
+          g.addColorStop(0, color + "66");
+          g.addColorStop(1, "transparent");
+          ctx.fillStyle = g;
           ctx.fill();
         }
 
-        // Node circle
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2);
-        ctx.fillStyle = isSelected ? color : color + "cc";
+        ctx.fillStyle = isS ? color : color + "bb";
         ctx.fill();
-        ctx.strokeStyle = isSelected ? "#fff" : color;
-        ctx.lineWidth = isSelected ? 2 : 1;
+        ctx.strokeStyle = isS ? "#ffffff" : color;
+        ctx.lineWidth = (isS ? 2.5 : 1.2) / scale;
         ctx.stroke();
 
-        // Node label
-        ctx.font = `${node.r > 16 ? 10 : 9}px Space Grotesk, sans-serif`;
+        // Crisp text — font size scales inversely with zoom
+        const fs = Math.max(6, Math.min(13, node.r * 0.75)) / scale;
+        ctx.font = `600 ${fs}px Space Grotesk, sans-serif`;
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        const maxWidth = node.r * 2 - 4;
-        const label = node.name.length > 12 ? node.name.slice(0, 10) + "…" : node.name;
-        ctx.fillText(label, node.x, node.y, maxWidth);
+        const label = node.name.length > 10 ? node.name.slice(0, 9) + "\u2026" : node.name;
+        ctx.fillText(label, node.x, node.y);
       }
 
+      ctx.restore();
       simulate();
       animFrameRef.current = requestAnimationFrame(draw);
     }
 
     animFrameRef.current = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animFrameRef.current);
-  }, [entities, relationships, hoveredId, selected, simulate]);
+    return () => {
+      cancelAnimationFrame(animFrameRef.current);
+      window.removeEventListener("resize", resizeCanvas);
+    };
+  }, [entities, relationships, simulate]);
 
-  // Mouse interactions
-  function getNodeAt(e: React.MouseEvent<HTMLCanvasElement>): NodeData | null {
+  // Wheel zoom
+  function handleWheel(e: React.WheelEvent<HTMLCanvasElement>) {
+    e.preventDefault();
     const canvas = canvasRef.current;
-    if (!canvas) return null;
+    if (!canvas) return;
+    const rect  = canvas.getBoundingClientRect();
+    const mx    = e.clientX - rect.left;
+    const my    = e.clientY - rect.top;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const t     = transformRef.current;
+    const newScale = Math.max(0.2, Math.min(4, t.scale * delta));
+    // Zoom toward cursor
+    t.tx = mx - (mx - t.tx) * (newScale / t.scale);
+    t.ty = my - (my - t.ty) * (newScale / t.scale);
+    t.scale = newScale;
+  }
+
+  // Convert screen coords to world coords
+  function screenToWorld(e: React.MouseEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { scale, tx, ty } = transformRef.current;
+    return {
+      x: (e.clientX - rect.left - tx) / scale,
+      y: (e.clientY - rect.top  - ty) / scale,
+    };
+  }
+
+  function getNodeAt(e: React.MouseEvent<HTMLCanvasElement>): NodeData | null {
+    const { x, y } = screenToWorld(e);
     for (const node of nodesRef.current) {
-      const dx = node.x - x;
-      const dy = node.y - y;
+      const dx = node.x - x, dy = node.y - y;
       if (Math.sqrt(dx * dx + dy * dy) <= node.r + 4) return node;
     }
     return null;
@@ -284,24 +303,31 @@ export default function KnowledgeGraph() {
 
   function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
     if (dragRef.current) {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      dragRef.current.node.x = e.clientX - rect.left;
-      dragRef.current.node.y = e.clientY - rect.top;
+      const { x, y } = screenToWorld(e);
+      dragRef.current.node.x = x;
+      dragRef.current.node.y = y;
+      return;
+    }
+    if (panRef.current) {
+      const t = transformRef.current;
+      t.tx = panRef.current.origTx + (e.clientX - panRef.current.startX);
+      t.ty = panRef.current.origTy + (e.clientY - panRef.current.startY);
       return;
     }
     const node = getNodeAt(e);
-    setHoveredId(node?.id ?? null);
-    if (canvasRef.current) {
-      canvasRef.current.style.cursor = node ? "grab" : "default";
-    }
+    const newId = node?.id ?? null;
+    if (newId !== hoveredRef.current) setHoveredId(newId);
+    if (canvasRef.current) canvasRef.current.style.cursor = node ? "grab" : "default";
   }
 
   function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
     const node = getNodeAt(e);
     if (node) {
-      dragRef.current = { node, offsetX: 0, offsetY: 0 };
+      dragRef.current = { node };
+      if (canvasRef.current) canvasRef.current.style.cursor = "grabbing";
+    } else {
+      const t = transformRef.current;
+      panRef.current = { startX: e.clientX, startY: e.clientY, origTx: t.tx, origTy: t.ty };
       if (canvasRef.current) canvasRef.current.style.cursor = "grabbing";
     }
   }
@@ -309,9 +335,12 @@ export default function KnowledgeGraph() {
   function handleMouseUp(e: React.MouseEvent<HTMLCanvasElement>) {
     if (dragRef.current) {
       const node = getNodeAt(e);
-      if (node && node === dragRef.current.node) setSelected(node);
+      if (node && node === dragRef.current.node) {
+        setSelected(prev => prev?.id === node.id ? null : node);
+      }
     }
     dragRef.current = null;
+    panRef.current  = null;
     if (canvasRef.current) canvasRef.current.style.cursor = "default";
   }
 
@@ -333,13 +362,16 @@ export default function KnowledgeGraph() {
                 {loading ? "Loading..." : `${entities.length} entities · ${relationships.length} relationships`}
               </div>
             </div>
-            <div className={styles.legend}>
-              {Object.entries(TYPE_COLORS).map(([type, color]) => (
-                <span key={type} className={styles.legendItem}>
-                  <span className={styles.legendDot} style={{ background: color }} />
-                  {type}
-                </span>
-              ))}
+            <div className={styles.headerRight}>
+              <div className={styles.legend}>
+                {Object.entries(TYPE_COLORS).map(([type, color]) => (
+                  <span key={type} className={styles.legendItem}>
+                    <span className={styles.legendDot} style={{ background: color }} />
+                    {type}
+                  </span>
+                ))}
+              </div>
+              <div className={styles.zoomHint}>scroll to zoom · drag to pan</div>
             </div>
           </div>
 
@@ -347,19 +379,18 @@ export default function KnowledgeGraph() {
             <div className={styles.emptyState}>
               <div className={styles.emptyIcon}>◉</div>
               <div className={styles.emptyTitle}>No entities yet</div>
-              <div className={styles.emptyText}>Run some research to start building your knowledge graph. Entities and relationships are extracted automatically after each run.</div>
+              <div className={styles.emptyText}>Run some research to start building your knowledge graph.</div>
             </div>
           ) : (
             <div className={styles.graphArea}>
               <canvas
                 ref={canvasRef}
-                width={900}
-                height={500}
                 className={styles.canvas}
                 onMouseMove={handleMouseMove}
                 onMouseDown={handleMouseDown}
                 onMouseUp={handleMouseUp}
-                onMouseLeave={() => { dragRef.current = null; setHoveredId(null); }}
+                onMouseLeave={() => { dragRef.current = null; panRef.current = null; setHoveredId(null); }}
+                onWheel={handleWheel}
               />
 
               {selected && (
@@ -395,11 +426,11 @@ export default function KnowledgeGraph() {
 
           <div className={styles.statsRow}>
             {[
-              { num: entities.length, label: "Total Entities", color: "var(--orange)" },
-              { num: companiesCount,  label: "Companies",      color: "var(--orange)" },
-              { num: peopleCount,     label: "People",         color: "var(--cyan)" },
-              { num: productsCount,   label: "Products",       color: "var(--green)" },
-              { num: relationships.length, label: "Relationships", color: "var(--text)" },
+              { num: entities.length,      label: "Total Entities", color: "var(--orange)" },
+              { num: companiesCount,        label: "Companies",      color: "var(--orange)" },
+              { num: peopleCount,           label: "People",         color: "var(--cyan)" },
+              { num: productsCount,         label: "Products",       color: "var(--green)" },
+              { num: relationships.length,  label: "Relationships",  color: "var(--text)" },
             ].map(s => (
               <div key={s.label} className={styles.statCard}>
                 <div className={styles.statNum} style={{ color: s.color }}>{loading ? "—" : s.num}</div>

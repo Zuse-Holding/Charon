@@ -53,16 +53,19 @@ export class EntityExtractionAgent {
 
 The primary subject is: "${primarySubject.name}" (${primarySubject.type})
 
-Extract ALL named entities and their relationships to the primary subject and each other.
-
 Return JSON with:
 - entities: array of {name, type} where type is "company", "person", or "product"
 - relationships: array of {from, to, type} where from/to are exact entity names
 
-Relationship types:
-FOUNDED, CO_FOUNDED, WORKS_AT, WORKED_AT, CEO_OF, COMPETES_WITH, ACQUIRED, INVESTED_IN, PARTNERED_WITH, SUBSIDIARY_OF, USES
+ENTITY NAMING RULES — critical for deduplication:
+- Use the shortest unambiguous name: "Model 3" not "Tesla Model 3", "iPhone 15" not "Apple iPhone 15"
+- Company names: omit legal suffixes — "Tesla" not "Tesla, Inc.", "Apple" not "Apple Inc."
+- People: use full name — "Elon Musk" not just "Musk"
+- Never create two entries for the same entity with slightly different names
 
-IMPORTANT: Always include "${primarySubject.name}" in entities. Always extract relationships where "${primarySubject.name}" is the from or to entity. If "${primarySubject.name}" is a person and a company is mentioned as their employer, add a WORKS_AT relationship. If "${primarySubject.name}" is a company and a person is mentioned as CEO/founder, add a CEO_OF or FOUNDED relationship.`,
+Relationship types: FOUNDED, CO_FOUNDED, CEO_OF, WORKS_AT, COMPETES_WITH, ACQUIRED, INVESTED_IN, PARTNERED_WITH, SUBSIDIARY_OF, MAKES
+
+Always include "${primarySubject.name}" in entities. If it is a person, add CEO_OF or WORKS_AT relationships to their company. If it is a company, add FOUNDED or CEO_OF relationships to named founders/executives.`,
       truncated,
       ExtractionResultSchema
     );
