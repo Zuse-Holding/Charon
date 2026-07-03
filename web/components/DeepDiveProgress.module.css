@@ -94,3 +94,34 @@
   color: var(--orange); text-decoration: none;
 }
 .printLink:hover { text-decoration: underline; }
+.navWarning {
+  margin-top: 14px;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--orange);
+  letter-spacing: 0.04em;
+  background: rgba(255,107,43,0.06);
+  border: 1px solid rgba(255,107,43,0.2);
+  border-radius: 5px;
+  text-align: center;
+}
+
+.savedNote {
+  margin-top: 10px;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--green);
+  letter-spacing: 0.04em;
+  background: rgba(0,255,148,0.06);
+  border: 1px solid rgba(0,255,148,0.2);
+  border-radius: 5px;
+  text-align: center;
+}
+
+.printLink {
+  color: var(--orange);
+  text-decoration: none;
+}
+.printLink:hover { text-decoration: underline; }

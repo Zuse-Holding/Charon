@@ -27,30 +27,23 @@ interface Props {
 }
 
 export default function DeepDiveProgress({ company, onComplete, onCancel }: Props) {
-  const [started, setStarted]         = useState(false);
-  const [statuses, setStatuses]       = useState<SectionStatus[]>(
-    SECTION_ORDER.map(() => "queued")
-  );
+  const [started, setStarted]               = useState(false);
+  const [statuses, setStatuses]             = useState<SectionStatus[]>(SECTION_ORDER.map(() => "queued"));
   const [currentSection, setCurrentSection] = useState<string | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(TOTAL_ESTIMATED_SECONDS);
-  const [error, setError]             = useState<string | null>(null);
+  const [secondsLeft, setSecondsLeft]       = useState(TOTAL_ESTIMATED_SECONDS);
+  const [error, setError]                   = useState<string | null>(null);
+  const [savedId, setSavedId]               = useState<string | null>(null);
   const sections = useRef<{ title: string; content: string; riskLevel?: string }[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  function completedCount() {
-    return statuses.filter(s => s === "done").length;
-  }
-
-  function progressPercent() {
-    return Math.round((completedCount() / SECTION_ORDER.length) * 100);
-  }
+  function completedCount() { return statuses.filter(s => s === "done").length; }
+  function progressPercent() { return Math.round((completedCount() / SECTION_ORDER.length) * 100); }
 
   useEffect(() => {
     if (!started) return;
 
     abortRef.current = new AbortController();
-
     timerRef.current = setInterval(() => {
       setSecondsLeft(s => Math.max(0, s - 1));
     }, 1000);
@@ -93,7 +86,6 @@ export default function DeepDiveProgress({ company, onComplete, onCancel }: Prop
                   next[event.sectionIndex] = "running";
                   return next;
                 });
-                // Adjust time remaining based on remaining sections
                 const remaining = SECTION_ORDER
                   .slice(event.sectionIndex)
                   .reduce((acc, s) => acc + (SECTION_ESTIMATES[s] ?? 20), 0);
@@ -116,6 +108,20 @@ export default function DeepDiveProgress({ company, onComplete, onCancel }: Prop
                 if (timerRef.current) clearInterval(timerRef.current);
                 setSecondsLeft(0);
                 setStatuses(SECTION_ORDER.map(() => "done"));
+
+                // Save to Supabase — fire and forget, non-blocking
+                fetch("/api/deep-dives", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    company,
+                    sections: sections.current,
+                    durationMs: event.durationMs ?? 0,
+                  }),
+                }).then(r => r.json()).then(d => {
+                  if (d.id) setSavedId(d.id);
+                }).catch(() => { /* non-fatal */ });
+
                 setTimeout(() => onComplete(sections.current), 600);
               }
 
@@ -219,10 +225,7 @@ export default function DeepDiveProgress({ company, onComplete, onCancel }: Prop
         {SECTION_ORDER.map((section, i) => {
           const status = statuses[i];
           return (
-            <div
-              key={i}
-              className={`${styles.sectionRow} ${styles[status]}`}
-            >
+            <div key={i} className={`${styles.sectionRow} ${styles[status]}`}>
               <span className={styles.dot}>
                 {status === "done" ? "✓" : status === "running" ? "◉" : "○"}
               </span>
@@ -234,6 +237,23 @@ export default function DeepDiveProgress({ company, onComplete, onCancel }: Prop
           );
         })}
       </div>
+
+      {/* Navigation warning — only show while running */}
+      {progressPercent() < 100 && !error && (
+        <div className={styles.navWarning}>
+          ⚠ Please don't navigate away — Deep Dive in progress
+        </div>
+      )}
+
+      {/* Clean PDF link after save */}
+      {savedId && (
+        <div className={styles.savedNote}>
+          ✓ Saved ·{" "}
+          <a href={`/print/${savedId}`} target="_blank" rel="noopener noreferrer" className={styles.printLink}>
+            Export clean PDF →
+          </a>
+        </div>
+      )}
 
       {error && (
         <button className={styles.cancelBtn} onClick={onCancel}>
