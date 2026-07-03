@@ -19,6 +19,9 @@ const PRODUCT_PATTERNS = [
   /\d+(\.\d+)?/, // version numbers like "iPhone 15" or "Model 3"
   /^(iphone|ipad|macbook|airpods|galaxy|pixel|surface|xbox|playstation|ps\d|nintendo)/i,
   /\b(pro|max|ultra|plus|mini|lite|se|xl|gen\s?\d)\b/i,
+  /^model\s+[a-z0-9]/i, // Model Y, Model 3, Model S, Model X
+  /^(cybertruck|roadster|powerwall|megapack)/i, // Tesla products
+  /^(f-150|bronco|mustang|silverado|ram\s+\d|rivian\s+r)/i, // vehicle models
 ];
 
 // Known company suffixes

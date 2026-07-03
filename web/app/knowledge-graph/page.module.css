@@ -118,3 +118,23 @@
   .featuresGrid { grid-template-columns: 1fr; }
   .canvas { max-height: 300px; }
 }
+
+.nodeActions { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+
+.nodeResearchBtn {
+  width: 100%; padding: 8px 10px;
+  background: var(--orange); border: none; border-radius: 6px;
+  color: white; font-size: 11px; font-family: var(--font-display);
+  font-weight: 600; cursor: pointer; text-align: center;
+  transition: opacity 0.12s;
+}
+.nodeResearchBtn:hover { opacity: 0.88; }
+
+.nodeRemoveBtn {
+  width: 100%; padding: 7px 10px;
+  background: transparent; border: 1px solid rgba(255,68,85,0.3);
+  border-radius: 6px; color: rgba(255,68,85,0.7);
+  font-size: 11px; font-family: var(--font-mono);
+  cursor: pointer; text-align: center; transition: all 0.12s;
+}
+.nodeRemoveBtn:hover { border-color: #ff4455; color: #ff4455; }
