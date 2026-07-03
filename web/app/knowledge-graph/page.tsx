@@ -179,9 +179,13 @@ export default function KnowledgeGraph() {
 
     // Fix blurry canvas on retina/HiDPI displays
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width  = rect.width  * dpr;
-    canvas.height = rect.height * dpr;
+    const parent = canvas.parentElement;
+    const cssW = parent ? parent.clientWidth : 900;
+    const cssH = 500;
+    canvas.width  = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    canvas.style.width  = cssW + "px";
+    canvas.style.height = cssH + "px";
     ctx.scale(dpr, dpr);
 
     function draw() {

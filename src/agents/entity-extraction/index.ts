@@ -60,14 +60,24 @@ export class EntityExtractionAgent {
       `You are extracting named entities and relationships from a business research report for a knowledge graph.
 
 Extract:
-- entities: every named company, person, or product mentioned (not generic terms — only specific proper nouns)
-- relationships: connections between entities, using types like FOUNDED, CO_FOUNDED, COMPETES_WITH, ACQUIRED, PARTNERED_WITH, WORKS_AT, INVESTED_IN, SUBSIDIARY_OF
+- entities: every named company, person, or product mentioned (specific proper nouns only)
+- relationships: connections between entities
+
+Relationship types to look for:
+- FOUNDED / CO_FOUNDED — person founded a company
+- WORKS_AT / WORKED_AT — person works or worked at a company  
+- COMPETES_WITH — two companies compete directly
+- ACQUIRED — one company bought another
+- INVESTED_IN — investor put money into a company
+- PARTNERED_WITH — formal partnership between entities
+- SUBSIDIARY_OF — one company is owned by another
+- USES — company or person uses a product/service
 
 Rules:
-- Only extract entities that are clearly named (not "the company" or "a competitor")
-- Relationships must reference entities you've also extracted in the entities array
-- Be conservative — only extract relationships explicitly stated or strongly implied in the text
-- The "from" and "to" fields in relationships should match entity names exactly`,
+- Be LIBERAL about extracting relationships — if the text implies a connection, include it
+- The "from" and "to" fields must match entity names exactly as listed in your entities array
+- Include the primary subject of this report as an entity even if obvious
+- Aim for 3-8 relationships if the data supports it`,
       truncated,
       ExtractionResultSchema
     );
