@@ -459,10 +459,9 @@ export const RisksOpportunitiesSchema = AnyObject.transform((obj) => {
       .map((item: unknown) => {
         if (typeof item === "string") return item;
         if (typeof item === "object" && item !== null) {
-          // Handle {risk: "..."}, {opportunity: "..."}, {description: "..."}, etc.
           const o = item as Record<string, unknown>;
-          const val = o.risk ?? o.opportunity ?? o.description ?? o.text ?? o.item ?? Object.values(o)[0];
-          return typeof val === "string" ? val : null;
+          const v = o.risk ?? o.opportunity ?? o.description ?? o.text ?? o.item ?? Object.values(o)[0];
+          return typeof v === "string" ? v : null;
         }
         return null;
       })
