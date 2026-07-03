@@ -42,56 +42,41 @@ export interface EntityExtractionResult {
 }
 
 export class EntityExtractionAgent {
-  /**
-   * Extracts entities and relationships from a finished report.
-   * `primarySubject` is the name/type of the thing that was researched —
-   * always included as an entity even if the LLM extraction misses it,
-   * since it's the one entity we're 100% certain exists.
-   */
   async extract(
     reportMarkdown: string,
     primarySubject: { name: string; type: "company" | "person" | "product" }
   ): Promise<EntityExtractionResult> {
-    // Truncate — entity extraction doesn't need the full report, and
-    // keeping this pass cheap matters since it runs on every research run.
     const truncated = reportMarkdown.slice(0, 4000);
 
     const result = await extractStructured(
-      `You are extracting named entities and relationships from a business research report for a knowledge graph.
+      `You are extracting named entities and relationships from a business research report about "${primarySubject.name}" for a knowledge graph.
 
-Extract:
-- entities: every named company, person, or product mentioned (specific proper nouns only)
-- relationships: connections between entities
+The primary subject is: "${primarySubject.name}" (${primarySubject.type})
 
-Relationship types to look for:
-- FOUNDED / CO_FOUNDED — person founded a company
-- WORKS_AT / WORKED_AT — person works or worked at a company  
-- COMPETES_WITH — two companies compete directly
-- ACQUIRED — one company bought another
-- INVESTED_IN — investor put money into a company
-- PARTNERED_WITH — formal partnership between entities
-- SUBSIDIARY_OF — one company is owned by another
-- USES — company or person uses a product/service
+Extract ALL named entities and their relationships to the primary subject and each other.
 
-Rules:
-- Be LIBERAL about extracting relationships — if the text implies a connection, include it
-- The "from" and "to" fields must match entity names exactly as listed in your entities array
-- Include the primary subject of this report as an entity even if obvious
-- Aim for 3-8 relationships if the data supports it`,
+Return JSON with:
+- entities: array of {name, type} where type is "company", "person", or "product"
+- relationships: array of {from, to, type} where from/to are exact entity names
+
+Relationship types:
+FOUNDED, CO_FOUNDED, WORKS_AT, WORKED_AT, CEO_OF, COMPETES_WITH, ACQUIRED, INVESTED_IN, PARTNERED_WITH, SUBSIDIARY_OF, USES
+
+IMPORTANT: Always include "${primarySubject.name}" in entities. Always extract relationships where "${primarySubject.name}" is the from or to entity. If "${primarySubject.name}" is a person and a company is mentioned as their employer, add a WORKS_AT relationship. If "${primarySubject.name}" is a company and a person is mentioned as CEO/founder, add a CEO_OF or FOUNDED relationship.`,
       truncated,
       ExtractionResultSchema
     );
 
+    console.log(`[entity-extraction] ${primarySubject.name}: found ${result?.entities?.length ?? 0} entities, ${result?.relationships?.length ?? 0} relationships`);
+
     if (!result) {
-      // LLM unavailable — return just the primary subject as a fallback
-      // so the graph at least has the entity even without relationships.
       return {
         entities: [{ name: primarySubject.name, type: primarySubject.type }],
         relationships: [],
       };
     }
 
-    // Ensure the primary subject is always included
+    // Ensure primary subject is always included
     const hasPrimary = result.entities.some(
       (e) => e.name.toLowerCase() === primarySubject.name.toLowerCase()
     );
