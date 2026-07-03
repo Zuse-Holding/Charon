@@ -1,42 +1,39 @@
 "use client";
+import { useEffect, useState } from "react";
+import { createClient } from "../../lib/supabase/client";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import styles from "./page.module.css";
 
-const SETTINGS = [
-  {
-    section: "LLM PROVIDER",
-    items: [
-      { label: "Provider", value: "Groq (llama-3.1-8b-instant)", status: "active" },
-      { label: "Fallback", value: "Ollama (llama3.1:8b)", status: "standby" },
-      { label: "Cost per run", value: "~$0.00 (free tier)", status: "" },
-    ],
-  },
-  {
-    section: "SEARCH",
-    items: [
-      { label: "Search Provider", value: "Serper.dev", status: "active" },
-      { label: "Results per query", value: "5", status: "" },
-    ],
-  },
-  {
-    section: "WATCHLIST",
-    items: [
-      { label: "Default refresh interval", value: "3 days", status: "" },
-      { label: "Stale threshold", value: "Refresh interval elapsed", status: "" },
-    ],
-  },
-  {
-    section: "DATA",
-    items: [
-      { label: "Storage", value: "Local JSON (database/store.json)", status: "" },
-      { label: "Reports", value: "Local Markdown (reports/)", status: "" },
-      { label: "Cloud sync", value: "Not configured — Supabase planned", status: "planned" },
-    ],
-  },
-];
-
 export default function Settings() {
+  const [email, setEmail] = useState<string>("");
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setEmail(data.user.email);
+    });
+  }, []);
+
+  const SYSTEM_INFO = [
+    { section: "INTELLIGENCE ENGINE", items: [
+      { label: "LLM Provider",    value: "Groq · llama-3.3-70b-versatile", status: "active" },
+      { label: "KG Extraction",   value: "OpenRouter · gpt-oss-120b",       status: "active" },
+      { label: "Search Provider", value: "Serper.dev",                       status: "active" },
+      { label: "Agent Pipeline",  value: "7 parallel agents",                status: "" },
+      { label: "Full Page Fetch", value: "Enabled",                          status: "active" },
+    ]},
+    { section: "DATA", items: [
+      { label: "Storage",         value: "Supabase (cloud)",     status: "active" },
+      { label: "Auth",            value: "Supabase Auth",        status: "active" },
+      { label: "Knowledge Graph", value: "Phase 1 — collecting", status: "active" },
+    ]},
+    { section: "ACCOUNT", items: [
+      { label: "Email", value: email || "Loading...", status: "" },
+      { label: "Plan",  value: "Basic",               status: "active" },
+    ]},
+  ];
+
   return (
     <div className={styles.shell}>
       <Sidebar />
@@ -45,11 +42,10 @@ export default function Settings() {
         <div className={styles.content}>
           <h1 className={styles.title}>Settings</h1>
           <p className={styles.sub}>
-            Configuration is managed via <code>.env</code> in the project root.
-            This page shows current active settings read from your environment.
+            System configuration and account information for your Charon workspace.
           </p>
 
-          {SETTINGS.map((group) => (
+          {SYSTEM_INFO.map((group) => (
             <div key={group.section} className={styles.group}>
               <div className={styles.groupLabel}>{group.section}</div>
               {group.items.map((item) => (
@@ -66,14 +62,15 @@ export default function Settings() {
             </div>
           ))}
 
-          <div className={styles.envNote}>
-            <div className={styles.groupLabel}>ENVIRONMENT FILE</div>
-            <div className={styles.envBlock}>
-              <div className={styles.envLine}><span className={styles.envKey}>SERPER_API_KEY</span>=<span className={styles.envVal}>••••••••••••••••</span></div>
-              <div className={styles.envLine}><span className={styles.envKey}>GROQ_API_KEY</span>=<span className={styles.envVal}>••••••••••••••••</span></div>
-              <div className={styles.envLine}><span className={styles.envKey}>GROQ_MODEL</span>=<span className={styles.envVal}>llama-3.1-8b-instant</span></div>
-              <div className={styles.envLine}><span className={styles.envKey}>OLLAMA_URL</span>=<span className={styles.envVal}>http://localhost:11434</span></div>
-              <div className={styles.envLine}><span className={styles.envKey}>OLLAMA_MODEL</span>=<span className={styles.envVal}>llama3.1:8b</span></div>
+          <div className={styles.group}>
+            <div className={styles.groupLabel}>UPGRADE</div>
+            <div className={styles.upgradeCard}>
+              <div className={styles.upgradeText}>
+                Unlock Deep Dive, Knowledge Graph, and unlimited watchlist tracking with Pro.
+              </div>
+              <a href="mailto:hello@zuseholdings.com?subject=Charon Pro Upgrade" className={styles.upgradeBtn}>
+                Contact us to upgrade →
+              </a>
             </div>
           </div>
         </div>
