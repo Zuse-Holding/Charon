@@ -79,8 +79,9 @@ export default function KnowledgeGraph() {
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const W = canvas.width;
-    const H = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.width / dpr;
+    const H = canvas.height / dpr;
 
     // Place nodes in a rough circle with some randomness
     const nodes: NodeData[] = entities.slice(0, 60).map((e, i) => {
@@ -118,8 +119,9 @@ export default function KnowledgeGraph() {
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const W = canvas.width;
-    const H = canvas.height;
+    const dpr2 = window.devicePixelRatio || 1;
+    const W = canvas.width / dpr2;
+    const H = canvas.height / dpr2;
     const cx = W / 2;
     const cy = H / 2;
 
@@ -175,15 +177,23 @@ export default function KnowledgeGraph() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Fix blurry canvas on retina/HiDPI displays
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = rect.width  * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+
     function draw() {
       if (!canvas || !ctx) return;
-      const W = canvas.width;
-      const H = canvas.height;
+      const dpr3 = window.devicePixelRatio || 1;
+      const W = canvas.width / dpr3;
+      const H = canvas.height / dpr3;
       const nodes = nodesRef.current;
       const edges = edgesRef.current;
       const nodeMap = new Map(nodes.map(n => [n.id, n]));
 
-      ctx.clearRect(0, 0, W, H);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Draw edges
       for (const edge of edges) {
