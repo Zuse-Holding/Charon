@@ -28,7 +28,7 @@ export default function Sidebar() {
     <aside className={styles.sidebar}>
       <div className={styles.logo} onClick={() => router.push("/")} style={{ cursor: "pointer" }}>
         <div className={styles.logoMark}>CHARON</div>
-        <div className={styles.logoSub}>ZUSE HOLDINGS // v0.1</div>
+        <div className={styles.logoSub}>ZUSE HOLDINGS</div>
       </div>
 
       <nav className={styles.nav}>

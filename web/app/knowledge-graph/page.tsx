@@ -90,8 +90,18 @@ export default function KnowledgeGraph() {
     const W = canvas.width / dpr || 900;
     const H = canvas.height / dpr || 500;
 
-    const nodes: NodeData[] = entities.slice(0, 80).map((e, i) => {
-      const angle  = (i / Math.min(entities.length, 80)) * Math.PI * 2;
+    // Sort entities by relationship count — most connected first
+    // then cap at 35 for performance and readability
+    const relCount = new Map<string, number>();
+    for (const r of relationships) {
+      relCount.set(r.from_entity_id, (relCount.get(r.from_entity_id) ?? 0) + 1);
+      relCount.set(r.to_entity_id,   (relCount.get(r.to_entity_id)   ?? 0) + 1);
+    }
+    const sorted = [...entities].sort((a, b) => (relCount.get(b.id) ?? 0) - (relCount.get(a.id) ?? 0));
+    const visible = sorted.slice(0, 35);
+
+    const nodes: NodeData[] = visible.map((e, i) => {
+      const angle  = (i / Math.min(visible.length, 35)) * Math.PI * 2;
       const radius = Math.min(W, H) * 0.28 + Math.random() * 50 - 25;
       return {
         id: e.id, name: e.name, type: e.type,

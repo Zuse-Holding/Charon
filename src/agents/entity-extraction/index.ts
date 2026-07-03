@@ -79,13 +79,38 @@ Always include "${primarySubject.name}" in entities. If it is a person, add CEO_
       };
     }
 
-    // Ensure primary subject is always included
+    // Normalize entity names to improve deduplication
+    // - Strip parenthetical suffixes: "General Motors (GM)" → "General Motors"
+    // - Strip common legal suffixes: "Tesla, Inc." → "Tesla"
+    // - Filter product category suffixes: "Chevrolet Trucks" → skip
+    const PRODUCT_CATEGORY_WORDS = new Set([
+      "trucks", "suvs", "cars", "vans", "sedans", "crossovers", "vehicles",
+      "phones", "laptops", "tablets", "products", "services", "solutions",
+    ]);
+
+    function normalizeName(name: string): string | null {
+      let n = name.replace(/\s*\([^)]+\)\s*$/, "").trim();
+      n = n.replace(/,?\s*(Inc\.|LLC|Ltd\.|Corp\.|Co\.|Group)\.?$/i, "").trim();
+      const lastWord = n.split(" ").pop()?.toLowerCase() ?? "";
+      if (PRODUCT_CATEGORY_WORDS.has(lastWord) && n.split(" ").length <= 3) return null;
+      return n || null;
+    }
+
     const hasPrimary = result.entities.some(
       (e) => e.name.toLowerCase() === primarySubject.name.toLowerCase()
     );
-    const entities = hasPrimary
+
+    const rawEntities = hasPrimary
       ? result.entities
       : [{ name: primarySubject.name, type: primarySubject.type }, ...result.entities];
+
+    const entities = rawEntities
+      .map(e => {
+        const normalized = normalizeName(e.name);
+        return normalized ? { ...e, name: normalized } : null;
+      })
+      .filter((e): e is typeof result.entities[0] => e !== null)
+      .filter((e, i, arr) => arr.findIndex(x => x.name.toLowerCase() === e.name.toLowerCase()) === i);
 
     return { entities, relationships: result.relationships };
   }
