@@ -146,6 +146,20 @@ Always include "${primarySubject.name}" in entities. If it is a person, add CEO_
       .filter((e): e is typeof result.entities[0] => e !== null)
       .filter((e, i, arr) => arr.findIndex(x => x.name.toLowerCase() === e.name.toLowerCase()) === i);
 
-    return { entities, relationships: result.relationships };
+   const entityNameSet = new Set(entities.map(e => e.name.toLowerCase()));
+
+    const relationships = result.relationships
+      .map(r => {
+        const fromNorm = normalizeName(r.from) ?? r.from;
+        const toNorm = normalizeName(r.to) ?? r.to;
+        return { ...r, from: fromNorm, to: toNorm };
+      })
+      .filter(r => r.from.toLowerCase() !== r.to.toLowerCase())
+      .filter(r =>
+        entityNameSet.has(r.from.toLowerCase()) &&
+        entityNameSet.has(r.to.toLowerCase())
+      );
+
+    return { entities, relationships };
   }
 }
