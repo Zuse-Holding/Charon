@@ -130,7 +130,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
         </div>
       )}
 
-      {/* Mobile nav drawer */}
+{/* Mobile nav drawer */}
       {menuOpen && (
         <div className={styles.drawerOverlay} onClick={() => setMenuOpen(false)}>
           <div className={styles.drawer} onClick={e => e.stopPropagation()}>
@@ -155,6 +155,14 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
                 {item.label}
               </button>
             ))}
+            <div className={styles.drawerDivider} />
+            <button
+              className={`${styles.drawerItem} ${styles.drawerItemDanger}`}
+              onClick={() => { setMenuOpen(false); router.push("/logout"); }}
+            >
+              <span className={styles.drawerIcon}>⏻</span>
+              Sign Out
+            </button>
           </div>
         </div>
       )}
