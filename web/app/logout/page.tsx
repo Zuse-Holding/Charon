@@ -23,7 +23,7 @@ export default function LogoutPage() {
         <div className={styles.logoMark}>CHARON</div>
         <div className={styles.logoSub}>ZUSE HOLDINGS // INTELLIGENCE PLATFORM</div>
         <div className={styles.divider} />
-        <div className={styles.icon}>⏻</div>
+        <div className={styles.icon}>◐</div>
         <div className={styles.title}>You've been signed out</div>
         <div className={styles.sub}>Redirecting you to the home page...</div>
         <button className={styles.btn} onClick={() => router.push("/login")}>
