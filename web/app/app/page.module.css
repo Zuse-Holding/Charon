@@ -475,3 +475,9 @@
   border-color: var(--orange);
   color: var(--orange);
 }
+.watching {
+  color: var(--orange) !important;
+  border-color: var(--orange) !important;
+  background: rgba(255,107,43,0.12) !important;
+  box-shadow: 0 0 12px rgba(255,107,43,0.4);
+}
