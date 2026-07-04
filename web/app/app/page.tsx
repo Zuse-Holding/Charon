@@ -58,6 +58,7 @@ function Dashboard() {
   const [deepDive, setDeepDive]   = useState<DeepDiveBundle | null>(null);
   const [pending, setPending]     = useState<{ subject: string; type: "company" | "person" | "product" } | null>(null);
   const selectedRef               = useRef<Run | null>(null);
+  const [isWatching, setIsWatching] = useState(false);
 
   const loadRuns = useCallback(async () => {
     const res = await fetch("/api/runs");
@@ -84,6 +85,16 @@ function Dashboard() {
     // Trigger research automatically
     runSuggestion(subject, "company");
   }, [searchParams]);
+ useEffect(() => {
+  if (!selected) { setIsWatching(false); return; }
+  fetch("/api/watchlist")
+    .then(r => r.json())
+    .then((list: { subject: string; type: string }[]) => {
+      const found = list.some(w => w.subject === selected.subject && w.type === selected.type);
+      setIsWatching(found);
+    })
+    .catch(() => setIsWatching(false));
+}, [selected]);
 
   async function selectRun(run: Run) {
     selectedRef.current = run;
@@ -267,20 +278,21 @@ function Dashboard() {
                     </div>
                   </div>
                   <div className={styles.reportActions}>
-                    <button
-                      className={styles.actionBtn}
-                      onClick={async () => {
-                        if (!selected) return;
-                        await fetch("/api/watchlist", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ subject: selected.subject, type: selected.type }),
-                        });
-                      }}
-                      title="Add to watchlist"
-                    >
-                      ◎ Watch
-                    </button>
+                  <button
+  className={`${styles.actionBtn} ${isWatching ? styles.watching : ""}`}
+  onClick={async () => {
+    if (!selected) return;
+    await fetch("/api/watchlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subject: selected.subject, type: selected.type }),
+    });
+    setIsWatching(true);
+  }}
+  title={isWatching ? "On your watchlist" : "Add to watchlist"}
+>
+  {isWatching ? "● Watching" : "◎ Watch"}
+</button>
                     <button
                       className={styles.actionBtn}
                       disabled={loading}
