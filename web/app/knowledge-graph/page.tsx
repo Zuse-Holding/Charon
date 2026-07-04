@@ -393,7 +393,6 @@ export default function KnowledgeGraph() {
               <div className={styles.emptyText}>Run some research to start building your knowledge graph.</div>
             </div>
           ) : (
-          ) : (
             <div className={styles.graphArea}>
               <KGQueryPanel />
               <canvas
