@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import styles from "./page.module.css";
+import KGQueryPanel from "../../components/KGQueryPanel";
 
 interface Entity {
   id: string;
@@ -392,7 +393,9 @@ export default function KnowledgeGraph() {
               <div className={styles.emptyText}>Run some research to start building your knowledge graph.</div>
             </div>
           ) : (
+          ) : (
             <div className={styles.graphArea}>
+              <KGQueryPanel />
               <canvas
                 ref={canvasRef}
                 className={styles.canvas}
