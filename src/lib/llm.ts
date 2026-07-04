@@ -2,35 +2,16 @@ import { z } from "zod";
 import Groq from "groq-sdk";
 
 /**
- * Unified LLM extraction layer — supports three providers, selected via
- * LLM_PROVIDER env var:
+ * Unified LLM extraction layer.
  *
- *   "groq"   (default if GROQ_API_KEY is set) — hosted Llama via Groq's
- *            API, free tier, no GPU usage, very fast. Best for most cases.
- *
- *   "ollama" (default if no GROQ_API_KEY) — local Llama via Ollama,
- *            free but uses your GPU. Good for offline/private research.
- *
- *   "none"   — disables LLM entirely, all agents use heuristic fallback.
+ * Provider priority for extractStructured():
+ *   1. OpenRouter (if OPENROUTER_API_KEY set) — primary provider
+ *   2. Groq (if GROQ_API_KEY set) — fallback
+ *   3. Ollama (local) — final fallback for dev
  *
  * Every agent treats LLM extraction as OPTIONAL — if extractStructured()
  * returns null for any reason, the agent falls back to its existing
- * heuristic extraction automatically. This mirrors the "degrade
- * gracefully, never crash" policy used throughout the codebase.
- *
- * LLM RESULT CACHING:
- * Extracted JSON is cached in memory per (prompt + content) hash for
- * the duration of a process run. This means re-running research on the
- * same company in the same session skips redundant LLM calls — useful
- * during development and for Watchlist auto-refresh where the same
- * company might be re-checked multiple times in a session.
- *
- * Env vars:
- *   LLM_PROVIDER  — "groq" | "ollama" | "none" (auto-detected if unset)
- *   GROQ_API_KEY  — required for Groq provider (free at console.groq.com)
- *   GROQ_MODEL    — default "llama-3.1-8b-instant"
- *   OLLAMA_URL    — default http://localhost:11434
- *   OLLAMA_MODEL  — default llama3.1:8b
+ * heuristic extraction automatically.
  */
 
 // --- Config ---
@@ -42,13 +23,10 @@ const OLLAMA_URL   = process.env.OLLAMA_URL   ?? "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.1:8b";
 
 // --- Cache ---
-// Capped at 100 entries — enough for a full session of research runs
-// without growing unbounded in long-running processes.
 const MAX_CACHE_SIZE = 100;
 const extractionCache = new Map<string, unknown>();
 
 function cacheKey(systemPrompt: string, userContent: string): string {
-  // Simple hash — good enough for dev/session caching, not cryptographic
   const str = `${systemPrompt}|||${userContent}`;
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -59,7 +37,6 @@ function cacheKey(systemPrompt: string, userContent: string): string {
 
 function cacheSet(key: string, value: unknown): void {
   if (extractionCache.size >= MAX_CACHE_SIZE) {
-    // Evict oldest entry (Map preserves insertion order)
     extractionCache.delete(extractionCache.keys().next().value!);
   }
   extractionCache.set(key, value);
@@ -69,7 +46,6 @@ function cacheSet(key: string, value: unknown): void {
 let queueTail: Promise<unknown> = Promise.resolve();
 function enqueue<T>(task: () => Promise<T>): Promise<T> {
   const result = queueTail.then(async () => {
-    // Small pause between LLM calls to stay under TPM limits on free tier
     await new Promise(r => setTimeout(r, 1500));
     return task();
   }, task);
@@ -135,7 +111,6 @@ async function extractViaGroq<T>(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
 
-    // Rate limit — parse retry-after and wait
     if (message.includes("429") && retryCount < 3) {
       const secondsMatch = message.match(/try again in ([\d.]+)s/);
       const waitMs = secondsMatch
@@ -152,8 +127,6 @@ async function extractViaGroq<T>(
 }
 
 // --- OpenRouter provider ---
-// Used for entity extraction via gpt-oss-120b:free
-// OpenRouter is OpenAI-API compatible — no extra SDK needed
 async function extractViaOpenRouter<T>(
   systemPrompt: string,
   userContent: string,
@@ -262,8 +235,8 @@ async function extractViaOllama<T>(
 // --- Public API ---
 
 /**
- * Extract structured data from text using the configured LLM provider.
- * Results are cached per (systemPrompt + userContent) for the session.
+ * Extract structured data from text.
+ * Tries OpenRouter first, falls back to Groq, then Ollama.
  * Returns null on any failure — callers always fall back to heuristics.
  */
 export async function extractStructured<T>(
@@ -281,28 +254,25 @@ export async function extractStructured<T>(
     return result.success ? result.data : null;
   }
 
-
-}
-
   let result: T | null = null;
 
-  if (LLM_PROVIDER === "groq") {
-    result = await extractViaGroq(systemPrompt, userContent, schema, 0, modelOverride);
-    if (!result) result = await extractViaOllama(systemPrompt, userContent, schema);
-  } else {
-    result = await extractViaOllama(systemPrompt, userContent, schema);
+  // Try OpenRouter first
+  if (process.env.OPENROUTER_API_KEY) {
+    result = await extractViaOpenRouter(
+      systemPrompt,
+      userContent,
+      schema,
+      modelOverride ?? "meta-llama/llama-3.3-70b-instruct"
+    );
   }
 
-  if (result !== null) cacheSet(key, result);
-  return result;
-}
-
-  let result: T | null = null;
-
-  if (LLM_PROVIDER === "groq") {
+  // Fall back to Groq
+  if (!result && LLM_PROVIDER === "groq") {
     result = await extractViaGroq(systemPrompt, userContent, schema, 0, modelOverride);
-    if (!result) result = await extractViaOllama(systemPrompt, userContent, schema);
-  } else {
+  }
+
+  // Final fallback — Ollama (local dev only)
+  if (!result) {
     result = await extractViaOllama(systemPrompt, userContent, schema);
   }
 
@@ -313,10 +283,6 @@ export async function extractStructured<T>(
 export { extractViaOpenRouter };
 
 // --- Schema helpers ---
-// Rather than trying to enumerate every shape an LLM might return,
-// accept `unknown` for complex fields and normalize in a transform.
-// This is more robust than nested z.union() which breaks in Zod v4
-// when unions are nested inside arrays.
 
 function toStringOrUndefined(v: unknown): string | undefined {
   if (!v) return undefined;
@@ -404,7 +370,6 @@ function toCompetitorArray(v: unknown): { name: string; note?: string }[] {
   });
 }
 
-// --- Permissive base schema: accept any JSON object ---
 const AnyObject = z.record(z.string(), z.unknown());
 
 export const CompanyExtractionSchema = AnyObject.transform((obj) => ({
