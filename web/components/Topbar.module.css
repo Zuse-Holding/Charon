@@ -172,6 +172,8 @@
   flex-direction: column;
   padding: 0;
   animation: slideIn 0.2s ease;
+  overflow-y: auto;
+  max-height: 100vh;
 }
 
 @keyframes slideIn {
@@ -228,3 +230,6 @@
   font-size: 14px;
   flex-shrink: 0;
 }
+.drawerDivider { height: 1px; background: var(--border); margin: 8px 0; }
+.drawerItemDanger { color: #ff6b6b; }
+.drawerItemDanger:hover { background: rgba(255,107,107,0.08); }
