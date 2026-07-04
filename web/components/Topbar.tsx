@@ -160,7 +160,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
               className={`${styles.drawerItem} ${styles.drawerItemDanger}`}
               onClick={() => { setMenuOpen(false); router.push("/logout"); }}
             >
-              <span className={styles.drawerIcon}>⏻</span>
+              <span className={styles.drawerIcon}>◐</span>
               Sign Out
             </button>
           </div>
