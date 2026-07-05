@@ -40,8 +40,8 @@ type DeepDiveState = "idle" | "confirming" | "running" | "done";
 // a small discoverable delight rather than a marketed feature.
 const SUGGESTIONS: { name: string; type: "company" | "person" | "product" }[] = [
   { name: "Stripe", type: "company" },
-  { name: "Tesla", type: "company" },
-  { name: "Wayne Enterprises", type: "company" },
+  { name: "iPhone 15", type: "product" },
+  { name: "Anthropic", type: "company" },
   { name: "Patrick Collison", type: "person" },
 ];
 
