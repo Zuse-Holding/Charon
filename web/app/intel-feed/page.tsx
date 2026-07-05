@@ -38,6 +38,7 @@ export default function IntelFeed() {
   const [feeds, setFeeds]   = useState<Record<string, SectorFeed>>({});
   const [states, setStates] = useState<Record<string, SectorState>>({});
   const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(new Set());
 
   const loadSector = useCallback(async (sectorId: string) => {
     setStates(prev => ({ ...prev, [sectorId]: "loading" }));
@@ -60,6 +61,41 @@ export default function IntelFeed() {
 
   function handleResearch(company: string) {
     router.push(`/app?research=${encodeURIComponent(company)}`);
+  }
+  useEffect(() => {
+    fetch("/api/intel-feed/pin")
+      .then(r => r.json())
+      .then(d => setPinnedKeys(new Set(d.pinned ?? [])))
+      .catch(() => {});
+  }, []);
+  async function togglePin(item: FeedItem, sectorId: string) {
+    const key = `${sectorId}:${item.headline}`;
+    const isPinned = pinnedKeys.has(key);
+
+    if (isPinned) {
+      await fetch("/api/intel-feed/pin", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemKey: key }),
+      });
+      setPinnedKeys(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    } else {
+      await fetch("/api/intel-feed/pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemKey: key,
+          headline: item.headline,
+          sector: sectorId,
+          url: item.url,
+        }),
+      });
+      setPinnedKeys(prev => new Set(prev).add(key));
+    }
   }
 
   const loadedCount = Object.values(states).filter(s => s === "loaded").length;
@@ -122,18 +158,27 @@ export default function IntelFeed() {
                     </div>
                   )}
 
-                  {state === "loaded" && feed && (
+{state === "loaded" && feed && (
                     <div className={styles.items}>
                       {feed.items.map((item, i) => (
                         <div key={i} className={styles.item}>
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={styles.itemHeadline}
-                          >
-                            {item.headline}
-                          </a>
+                          <div className={styles.itemTop}>
+                            
+                              href={item.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={styles.itemHeadline}
+                            >
+                              {item.headline}
+                            </a>
+                            <button
+                              className={`${styles.pinBtn} ${pinnedKeys.has(`${sector.id}:${item.headline}`) ? styles.pinned : ""}`}
+                              onClick={() => togglePin(item, sector.id)}
+                              title={pinnedKeys.has(`${sector.id}:${item.headline}`) ? "Unpin" : "Pin to top"}
+                            >
+                              {pinnedKeys.has(`${sector.id}:${item.headline}`) ? "★" : "☆"}
+                            </button>
+                          </div>
                           {item.summary && (
                             <div className={styles.itemSummary}>
                               {item.summary.slice(0, 120)}{item.summary.length > 120 ? "..." : ""}
