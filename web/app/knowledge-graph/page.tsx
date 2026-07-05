@@ -439,9 +439,11 @@ export default function KnowledgeGraph() {
                         );
                       })
                     }
-                 <div className={styles.nodeActions}>
+                  </div>
+                  <div className={styles.nodeActions}>
                     <button
                       className={styles.nodeResearchBtn}
+                      ...
                       onClick={() => {
                         window.location.href = `/app?research=${encodeURIComponent(selected.name)}`;
                       }}
