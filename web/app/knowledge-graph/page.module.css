@@ -138,3 +138,12 @@
   cursor: pointer; text-align: center; transition: all 0.12s;
 }
 .nodeRemoveBtn:hover { border-color: #ff4455; color: #ff4455; }
+
+.nodeExpandBtn {
+  width: 100%; padding: 8px 10px; margin-top: 6px;
+  background: transparent; border: 1px solid rgba(0,229,255,0.3);
+  border-radius: 6px; color: rgba(0,229,255,0.8);
+  font-size: 11px; font-family: var(--font-mono);
+  cursor: pointer; text-align: center; transition: all 0.12s;
+}
+.nodeExpandBtn:hover { border-color: #00e5ff; color: #00e5ff; }

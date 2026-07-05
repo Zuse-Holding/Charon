@@ -4,6 +4,7 @@ import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import styles from "./page.module.css";
 import KGQueryPanel from "../../components/KGQueryPanel";
+import KGSearchBox from "../../components/KGSearchBox";
 
 interface Entity {
   id: string;
@@ -375,6 +376,14 @@ export default function KnowledgeGraph() {
             </div>
             <div className={styles.headerRight}>
               <div className={styles.legend}>
+              <KGSearchBox
+  entities={entities}
+  onSelect={(entity) => {
+    const node = nodesRef.current.find(n => n.id === entity.id);
+    if (node) setSelected(node);
+  }}
+/>
+
                 {Object.entries(TYPE_COLORS).map(([type, color]) => (
                   <span key={type} className={styles.legendItem}>
                     <span className={styles.legendDot} style={{ background: color }} />
@@ -430,8 +439,7 @@ export default function KnowledgeGraph() {
                         );
                       })
                     }
-                  </div>
-                  <div className={styles.nodeActions}>
+                 <div className={styles.nodeActions}>
                     <button
                       className={styles.nodeResearchBtn}
                       onClick={() => {
@@ -439,6 +447,21 @@ export default function KnowledgeGraph() {
                       }}
                     >
                       ◈ Research {selected.name} →
+                    </button>
+                    <button
+                      className={styles.nodeExpandBtn}
+                      onClick={async () => {
+                        if (!selected) return;
+                        const res = await fetch("/api/knowledge-graph/expand", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ entityName: selected.name, entityType: selected.type }),
+                        });
+                        const data = await res.json();
+                        alert(data.message ?? data.error ?? "Expansion started");
+                      }}
+                    >
+                      ⬡ Expand connections
                     </button>
                     <button
                       className={styles.nodeRemoveBtn}
@@ -452,9 +475,6 @@ export default function KnowledgeGraph() {
                       Remove from graph
                     </button>
                   </div>
-                </div>
-              )}
-            </div>
           )}
 
           <div className={styles.statsRow}>
