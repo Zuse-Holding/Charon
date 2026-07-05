@@ -44,9 +44,9 @@ const TYPE_COLORS = {
 };
 
 const PLANNED_FEATURES = [
-  { icon: "◈", title: "Click to Expand", desc: "Click any node to load its full entity graph — see everyone connected to a company or person." },
-  { icon: "⬡", title: "Cross-Entity Queries", desc: 'Ask "who invested in both X and Y?" by traversing the relationship graph.' },
-  { icon: "◎", title: "Ecosystem Mapping", desc: "Map entire market segments — all fintech competitors, all AI investors — in one view." },
+  { icon: "◈", title: "Click to Expand", desc: "Click any node and expand its connections — see everyone linked to a company or person." },
+  { icon: "⬡", title: "Cross-Entity Queries", desc: 'Ask "how is X connected to Y?" using the search panel above.' },
+  { icon: "◎", title: "Ecosystem Mapping", desc: "Every research run adds to the graph — map entire market segments as you go." },
 ];
 
 export default function KnowledgeGraph() {
@@ -497,7 +497,7 @@ export default function KnowledgeGraph() {
           </div>
 
           <div className={styles.featuresSection}>
-            <div className={styles.sectionLabel}>COMING NEXT</div>
+            <div className={styles.sectionLabel}>CAPABILITIES</div>
             <div className={styles.featuresGrid}>
               {PLANNED_FEATURES.map((f) => (
                 <div key={f.title} className={styles.featureCard}>
