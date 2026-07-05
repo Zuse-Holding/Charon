@@ -54,20 +54,21 @@ export default function IntelFeed() {
   }, []);
 
   useEffect(() => {
-    // Load all sectors in parallel
     SECTORS.forEach(s => loadSector(s.id));
     setLastUpdated(new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }));
   }, [loadSector]);
 
-  function handleResearch(company: string) {
-    router.push(`/app?research=${encodeURIComponent(company)}`);
-  }
   useEffect(() => {
     fetch("/api/intel-feed/pin")
       .then(r => r.json())
       .then(d => setPinnedKeys(new Set(d.pinned ?? [])))
       .catch(() => {});
   }, []);
+
+  function handleResearch(company: string) {
+    router.push(`/app?research=${encodeURIComponent(company)}`);
+  }
+
   async function togglePin(item: FeedItem, sectorId: string) {
     const key = `${sectorId}:${item.headline}`;
     const isPinned = pinnedKeys.has(key);
@@ -158,47 +159,51 @@ export default function IntelFeed() {
                     </div>
                   )}
 
-{state === "loaded" && feed && (
+                  {state === "loaded" && feed && (
                     <div className={styles.items}>
-                      {feed.items.map((item, i) => (
-                        <div key={i} className={styles.item}>
-                          <div className={styles.itemTop}>
-                            
-                              href={item.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={styles.itemHeadline}
-                            >
-                              {item.headline}
-                            </a>
-                            <button
-                              className={`${styles.pinBtn} ${pinnedKeys.has(`${sector.id}:${item.headline}`) ? styles.pinned : ""}`}
-                              onClick={() => togglePin(item, sector.id)}
-                              title={pinnedKeys.has(`${sector.id}:${item.headline}`) ? "Unpin" : "Pin to top"}
-                            >
-                              {pinnedKeys.has(`${sector.id}:${item.headline}`) ? "★" : "☆"}
-                            </button>
-                          </div>
-                          {item.summary && (
-                            <div className={styles.itemSummary}>
-                              {item.summary.slice(0, 120)}{item.summary.length > 120 ? "..." : ""}
-                            </div>
-                          )}
-                          <div className={styles.itemFooter}>
-                            {item.source && (
-                              <span className={styles.itemSource}>{item.source}</span>
-                            )}
-                            {item.company && (
-                              <button
-                                className={styles.researchBtn}
-                                onClick={() => handleResearch(item.company!)}
+                      {feed.items.map((item, i) => {
+                        const pinKey = `${sector.id}:${item.headline}`;
+                        const isPinned = pinnedKeys.has(pinKey);
+                        return (
+                          <div key={i} className={styles.item}>
+                            <div className={styles.itemTop}>
+                              
+                                href={item.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={styles.itemHeadline}
                               >
-                                Research {item.company} →
+                                {item.headline}
+                              </a>
+                              <button
+                                className={`${styles.pinBtn} ${isPinned ? styles.pinned : ""}`}
+                                onClick={() => togglePin(item, sector.id)}
+                                title={isPinned ? "Unpin" : "Pin to top"}
+                              >
+                                {isPinned ? "★" : "☆"}
                               </button>
+                            </div>
+                            {item.summary && (
+                              <div className={styles.itemSummary}>
+                                {item.summary.slice(0, 120)}{item.summary.length > 120 ? "..." : ""}
+                              </div>
                             )}
+                            <div className={styles.itemFooter}>
+                              {item.source && (
+                                <span className={styles.itemSource}>{item.source}</span>
+                              )}
+                              {item.company && (
+                                <button
+                                  className={styles.researchBtn}
+                                  onClick={() => handleResearch(item.company!)}
+                                >
+                                  Research {item.company} →
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {feed.items.length === 0 && (
                         <div className={styles.emptyFeed}>No signals found</div>
                       )}
