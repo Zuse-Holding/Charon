@@ -476,6 +476,9 @@ export default function KnowledgeGraph() {
                       Remove from graph
                     </button>
                   </div>
+                </div>
+              )}
+            </div>
           )}
 
           <div className={styles.statsRow}>
