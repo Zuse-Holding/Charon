@@ -27,12 +27,12 @@ interface Props {
 }
 
 export default function DeepDiveProgress({ company, onComplete, onCancel }: Props) {
-  const [started, setStarted]               = useState(false);
-  const [statuses, setStatuses]             = useState<SectionStatus[]>(SECTION_ORDER.map(() => "queued"));
+  const [started, setStarted]         = useState(false);
+  const [statuses, setStatuses]       = useState<SectionStatus[]>(SECTION_ORDER.map(() => "queued"));
   const [currentSection, setCurrentSection] = useState<string | null>(null);
-  const [secondsLeft, setSecondsLeft]       = useState(TOTAL_ESTIMATED_SECONDS);
-  const [error, setError]                   = useState<string | null>(null);
-  const [savedId, setSavedId]               = useState<string | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(TOTAL_ESTIMATED_SECONDS);
+  const [error, setError]             = useState<string | null>(null);
+  const [savedId, setSavedId]         = useState<string | null>(null);
   const sections = useRef<{ title: string; content: string; riskLevel?: string }[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -109,7 +109,6 @@ export default function DeepDiveProgress({ company, onComplete, onCancel }: Prop
                 setSecondsLeft(0);
                 setStatuses(SECTION_ORDER.map(() => "done"));
 
-                // Save to Supabase — fire and forget, non-blocking
                 fetch("/api/deep-dives", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -157,109 +156,111 @@ export default function DeepDiveProgress({ company, onComplete, onCancel }: Prop
     return `${m}m ${rem}s`;
   }
 
-  // Pre-start confirmation state
+  // Pre-start confirmation — centered modal overlay
   if (!started) {
     return (
-      <div className={styles.modal}>
-        <div className={styles.modalHeader}>
-          <span className={styles.modalIcon}>◉</span>
-          <div>
-            <div className={styles.modalTitle}>Deep Dive Analysis</div>
-            <div className={styles.modalSub}>{company}</div>
-          </div>
-        </div>
-
-        <div className={styles.estimate}>
-          Estimated time: <strong>~{formatTime(TOTAL_ESTIMATED_SECONDS)}</strong>
-        </div>
-
-        <div className={styles.sectionList}>
-          {SECTION_ORDER.map((section, i) => (
-            <div key={i} className={styles.sectionQueued}>
-              <span className={styles.dot}>○</span>
-              <span className={styles.sectionName}>{section}</span>
-              <span className={styles.sectionTime}>~{SECTION_ESTIMATES[section]}s</span>
+      <div className={styles.overlay}>
+        <div className={styles.modal}>
+          <div className={styles.modalHeader}>
+            <span className={styles.modalIcon}>◉</span>
+            <div>
+              <div className={styles.modalTitle}>Deep Dive Analysis</div>
+              <div className={styles.modalSub}>{company}</div>
             </div>
-          ))}
-        </div>
+          </div>
 
-        <div className={styles.modalFooter}>
-          <button className={styles.cancelBtn} onClick={onCancel}>Cancel</button>
-          <button className={styles.startBtn} onClick={() => setStarted(true)}>
-            Start Deep Dive →
-          </button>
+          <div className={styles.estimate}>
+            Estimated time: <strong>~{formatTime(TOTAL_ESTIMATED_SECONDS)}</strong>
+          </div>
+
+          <div className={styles.sectionList}>
+            {SECTION_ORDER.map((section, i) => (
+              <div key={i} className={styles.sectionQueued}>
+                <span className={styles.dot}>○</span>
+                <span className={styles.sectionName}>{section}</span>
+                <span className={styles.sectionTime}>~{SECTION_ESTIMATES[section]}s</span>
+              </div>
+            ))}
+          </div>
+
+          <div className={styles.modalFooter}>
+            <button className={styles.cancelBtn} onClick={onCancel}>Cancel</button>
+            <button className={styles.startBtn} onClick={() => setStarted(true)}>
+              Start Deep Dive →
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Running state
+  // Running state — centered modal overlay
   return (
-    <div className={styles.running}>
-      <div className={styles.runHeader}>
-        <span className={`${styles.modalIcon} ${styles.pulse}`}>◉</span>
-        <div>
-          <div className={styles.modalTitle}>Analyzing {company}</div>
-          <div className={styles.modalSub}>
-            {error
-              ? `Error: ${error}`
-              : progressPercent() === 100
-              ? "Complete — loading report..."
-              : `${currentSection ?? "Starting..."} — ~${formatTime(secondsLeft)} remaining`
-            }
+    <div className={styles.overlay}>
+      <div className={styles.modal}>
+        <div className={styles.runHeader}>
+          <span className={`${styles.modalIcon} ${styles.pulse}`}>◉</span>
+          <div>
+            <div className={styles.modalTitle}>Analyzing {company}</div>
+            <div className={styles.modalSub}>
+              {error
+                ? `Error: ${error}`
+                : progressPercent() === 100
+                ? "Complete — loading report..."
+                : `${currentSection ?? "Starting..."} — ~${formatTime(secondsLeft)} remaining`
+              }
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className={styles.progressTrack}>
-        <div
-          className={`${styles.progressFill} ${progressPercent() === 100 ? styles.complete : ""}`}
-          style={{ width: `${progressPercent()}%` }}
-        />
-      </div>
-      <div className={styles.progressLabel}>
-        {progressPercent()}% — {completedCount()} of {SECTION_ORDER.length} sections
-      </div>
-
-      <div className={styles.sectionList}>
-        {SECTION_ORDER.map((section, i) => {
-          const status = statuses[i];
-          return (
-            <div key={i} className={`${styles.sectionRow} ${styles[status]}`}>
-              <span className={styles.dot}>
-                {status === "done" ? "✓" : status === "running" ? "◉" : "○"}
-              </span>
-              <span className={styles.sectionName}>{section}</span>
-              {status === "running" && (
-                <span className={styles.runningLabel}>running...</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Navigation warning — only show while running */}
-      {progressPercent() < 100 && !error && (
-        <div className={styles.navWarning}>
-          ⚠ Please don't navigate away — Deep Dive in progress
+        <div className={styles.progressTrack}>
+          <div
+            className={`${styles.progressFill} ${progressPercent() === 100 ? styles.complete : ""}`}
+            style={{ width: `${progressPercent()}%` }}
+          />
         </div>
-      )}
-
-      {/* Clean PDF link after save */}
-      {savedId && (
-        <div className={styles.savedNote}>
-          ✓ Saved ·{" "}
-          <a href={`/print/${savedId}`} target="_blank" rel="noopener noreferrer" className={styles.printLink}>
-            Export clean PDF →
-          </a>
+        <div className={styles.progressLabel}>
+          {progressPercent()}% — {completedCount()} of {SECTION_ORDER.length} sections
         </div>
-      )}
 
-      {error && (
-        <button className={styles.cancelBtn} onClick={onCancel}>
-          Close
-        </button>
-      )}
+        <div className={styles.sectionList}>
+          {SECTION_ORDER.map((section, i) => {
+            const status = statuses[i];
+            return (
+              <div key={i} className={`${styles.sectionRow} ${styles[status]}`}>
+                <span className={styles.dot}>
+                  {status === "done" ? "✓" : status === "running" ? "◉" : "○"}
+                </span>
+                <span className={styles.sectionName}>{section}</span>
+                {status === "running" && (
+                  <span className={styles.runningLabel}>running...</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {progressPercent() < 100 && !error && (
+          <div className={styles.navWarning}>
+            ⚠ Please don't navigate away — Deep Dive in progress
+          </div>
+        )}
+
+        {savedId && (
+          <div className={styles.savedNote}>
+            ✓ Saved ·{" "}
+            <a href={`/print/${savedId}`} target="_blank" rel="noopener noreferrer" className={styles.printLink}>
+              Export clean PDF →
+            </a>
+          </div>
+        )}
+
+        {error && (
+          <button className={styles.cancelBtn} onClick={onCancel}>
+            Close
+          </button>
+        )}
+      </div>
     </div>
   );
 }
