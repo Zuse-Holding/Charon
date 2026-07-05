@@ -167,12 +167,7 @@ export default function IntelFeed() {
                         return (
                           <div key={i} className={styles.item}>
                             <div className={styles.itemTop}>
-                              
-                                href={item.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={styles.itemHeadline}
-                              >
+                              <a href={item.url} target="_blank" rel="noopener noreferrer" className={styles.itemHeadline}>
                                 {item.headline}
                               </a>
                               <button
