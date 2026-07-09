@@ -1,9 +1,5 @@
 /**
  * VPS Agent Server
- * Runs on Railway (or any Node.js server).
- * Accepts research requests from the Next.js frontend and
- * streams results back via SSE — no 30-second timeout like Vercel.
- * Writes results directly to Supabase using the service role key.
  */
 
 import "dotenv/config";
@@ -38,91 +34,34 @@ function authCheck(req: express.Request, res: express.Response): boolean {
   return true;
 }
 
-// Supabase service role client — bypasses RLS
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ─── Tier Configuration ───────────────────────────────────────────────────────
-// Internal = Jackal Protocol: no limits, all features unlocked.
-// Add new features here as they're built — one source of truth.
-
 type Tier = "internal" | "team" | "pro" | "basic" | "free";
 
 interface TierConfig {
-  dailyResearchLimit: number;   // max research runs per day (-1 = unlimited)
-  dailyDeepDiveLimit: number;   // max deep dives per day (-1 = unlimited)
-  deepDiveAccess: boolean;      // can run deep dives at all
-  politicalAccess: boolean;     // access to political research type
-  watchlistLimit: number;       // max watchlist entities (-1 = unlimited)
+  dailyResearchLimit: number;
+  dailyDeepDiveLimit: number;
+  deepDiveAccess: boolean;
+  politicalAccess: boolean;
+  watchlistLimit: number;
   knowledgeGraphAccess: boolean;
   exportAccess: boolean;
-  jackalProtocol: boolean;      // Jackal Protocol: all premium agents unlocked
+  jackalProtocol: boolean;
 }
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: {
-    dailyResearchLimit: -1,
-    dailyDeepDiveLimit: -1,
-    deepDiveAccess: true,
-    politicalAccess: true,
-    watchlistLimit: -1,
-    knowledgeGraphAccess: true,
-    exportAccess: true,
-    jackalProtocol: true,
-  },
-  team: {
-    dailyResearchLimit: 200,
-    dailyDeepDiveLimit: 20,
-    deepDiveAccess: true,
-    politicalAccess: true,
-    watchlistLimit: 50,
-    knowledgeGraphAccess: true,
-    exportAccess: true,
-    jackalProtocol: false,
-  },
-  pro: {
-    dailyResearchLimit: 50,
-    dailyDeepDiveLimit: 5,
-    deepDiveAccess: true,
-    politicalAccess: true,
-    watchlistLimit: 20,
-    knowledgeGraphAccess: true,
-    exportAccess: true,
-    jackalProtocol: false,
-  },
-  basic: {
-    dailyResearchLimit: 10,
-    dailyDeepDiveLimit: 0,
-    deepDiveAccess: false,
-    politicalAccess: false,
-    watchlistLimit: 5,
-    knowledgeGraphAccess: false,
-    exportAccess: false,
-    jackalProtocol: false,
-  },
-  free: {
-    dailyResearchLimit: 3,
-    dailyDeepDiveLimit: 0,
-    deepDiveAccess: false,
-    politicalAccess: false,
-    watchlistLimit: 2,
-    knowledgeGraphAccess: false,
-    exportAccess: false,
-    jackalProtocol: false,
-  },
+  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: true },
+  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: false },
+  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: false },
+  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, jackalProtocol: false },
+  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, jackalProtocol: false },
 };
 
-// ─── Tier Helpers ─────────────────────────────────────────────────────────────
-
 async function getUserTier(userId: string): Promise<Tier> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("tier")
-    .eq("id", userId)
-    .single();
-
+  const { data, error } = await supabase.from("profiles").select("tier").eq("id", userId).single();
   if (error || !data?.tier) return "basic";
   return (data.tier as Tier) ?? "basic";
 }
@@ -134,26 +73,14 @@ function getTierConfig(tier: Tier): TierConfig {
 async function getDailyUsage(userId: string, table: "research_runs" | "deep_dives"): Promise<number> {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
-
-  const { count, error } = await supabase
-    .from(table)
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .gte("generated_at", startOfDay.toISOString());
-
+  const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true }).eq("user_id", userId).gte("generated_at", startOfDay.toISOString());
   if (error) return 0;
   return count ?? 0;
 }
 
 function tierDenied(res: express.Response, message: string, upgradeHint?: string) {
-  res.status(403).json({
-    error: "tier_limit",
-    message,
-    upgradeHint: upgradeHint ?? "Upgrade your plan at charonv1-silk.vercel.app/pricing",
-  });
+  res.status(403).json({ error: "tier_limit", message, upgradeHint: upgradeHint ?? "Upgrade your plan at charonv1-silk.vercel.app/pricing" });
 }
-
-// ─── Routes ───────────────────────────────────────────────────────────────────
 
 const REPORTS_DIR = join(process.cwd(), "reports");
 mkdirSync(REPORTS_DIR, { recursive: true });
@@ -165,7 +92,6 @@ function slugify(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
-// --- Quick research (all tiers, with limits) ---
 app.post("/research", async (req, res) => {
   if (!authCheck(req, res)) return;
 
@@ -175,26 +101,17 @@ app.post("/research", async (req, res) => {
     return;
   }
 
-  // ── Tier checks ──
   const tier = await getUserTier(userId);
   const config = getTierConfig(tier);
 
-  // Political research gate
   if (type === "political" && !config.politicalAccess) {
-    return tierDenied(res, "Political research requires Pro or higher.", "Upgrade to Pro to access political intelligence.");
+    return tierDenied(res, "Political research requires Pro or higher.");
   }
 
-  // Daily limit check (internal bypasses)
   if (config.dailyResearchLimit !== -1) {
     const usage = await getDailyUsage(userId, "research_runs");
     if (usage >= config.dailyResearchLimit) {
-      return tierDenied(
-        res,
-        `Daily research limit of ${config.dailyResearchLimit} reached. Resets at midnight.`,
-        tier === "basic"
-          ? "Upgrade to Pro for 50 runs/day."
-          : "Upgrade to Team for 200 runs/day."
-      );
+      return tierDenied(res, `Daily research limit of ${config.dailyResearchLimit} reached.`);
     }
   }
 
@@ -203,17 +120,11 @@ app.post("/research", async (req, res) => {
     let report: string;
     let outPath: string;
 
-    // Easter egg short-circuit
     const egg = findEasterEgg(subject);
     if (egg && egg.type === type) {
       report = egg.markdown;
       bundle = { query: subject, generatedAt: new Date().toISOString() };
-      outPath =
-        type === "person"
-          ? join(REPORTS_DIR, "people", `${slugify(subject)}.md`)
-          : type === "product"
-          ? join(REPORTS_DIR, "products", `${slugify(subject)}.md`)
-          : join(REPORTS_DIR, `${slugify(subject)}.md`);
+      outPath = type === "person" ? join(REPORTS_DIR, "people", `${slugify(subject)}.md`) : type === "product" ? join(REPORTS_DIR, "products", `${slugify(subject)}.md`) : join(REPORTS_DIR, `${slugify(subject)}.md`);
     } else {
       const orchestrator = new ResearchOrchestrator();
       if (type === "company") {
@@ -225,8 +136,6 @@ app.post("/research", async (req, res) => {
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, "people", `${slugify(subject)}.md`);
       } else if (type === "political") {
-        // Political research uses person orchestrator for now
-        // TODO: swap for dedicated political agent when built
         const result = await orchestrator.researchPerson(subject);
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, "political", `${slugify(subject)}.md`);
@@ -249,29 +158,30 @@ app.post("/research", async (req, res) => {
       generated_at: new Date().toISOString(),
       report_path: outPath,
       bundle: { ...(bundle as object), reportMarkdown: report },
-      // Store tier at time of run — useful for analytics
-      tier_at_run: tier,
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error("[research] Supabase insert error:", JSON.stringify(error));
+      throw new Error(error.message);
+    }
+
     res.json({ ok: true, reportPath: outPath, tier, jackal: config.jackalProtocol });
 
-    // Fire-and-forget entity extraction
     if (type === "company" || type === "person" || type === "product" || type === "political") {
       const entityAgent = new EntityExtractionAgent();
       setTimeout(() => {
-        entityAgent
-          .extract(report, { name: subject, type })
+        entityAgent.extract(report, { name: subject, type })
           .then((extraction) => saveEntityExtraction(userId, runId, extraction))
           .catch((err) => console.error("[entity-extraction] failed:", err));
       }, 3000);
     }
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    const message = err instanceof Error ? err.message : JSON.stringify(err);
+    console.error("[research] Error:", message);
+    res.status(500).json({ error: message });
   }
 });
 
-// --- Deep dive — SSE streaming (Pro, Team, Internal only) ---
 app.post("/deep-dive", async (req, res) => {
   if (!authCheck(req, res)) return;
 
@@ -281,24 +191,17 @@ app.post("/deep-dive", async (req, res) => {
     return;
   }
 
-  // ── Tier checks ──
   const tier = await getUserTier(userId);
   const config = getTierConfig(tier);
 
   if (!config.deepDiveAccess) {
-    return tierDenied(res, "Deep Dive requires Pro or higher.", "Upgrade to Pro to unlock Deep Dive reports.");
+    return tierDenied(res, "Deep Dive requires Pro or higher.");
   }
 
   if (config.dailyDeepDiveLimit !== -1) {
     const usage = await getDailyUsage(userId, "deep_dives");
     if (usage >= config.dailyDeepDiveLimit) {
-      return tierDenied(
-        res,
-        `Daily Deep Dive limit of ${config.dailyDeepDiveLimit} reached. Resets at midnight.`,
-        tier === "pro"
-          ? "Upgrade to Team for 20 Deep Dives/day."
-          : undefined
-      );
+      return tierDenied(res, `Daily Deep Dive limit of ${config.dailyDeepDiveLimit} reached.`);
     }
   }
 
@@ -308,15 +211,12 @@ app.post("/deep-dive", async (req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  const send = (data: object) => {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-  };
+  const send = (data: object) => { res.write(`data: ${JSON.stringify(data)}\n\n`); };
 
   try {
     const fetcher = new DirectFetchProvider();
     const searcher = new SerperSearchProvider();
     const agent = new DeepDiveAgent(fetcher, searcher);
-
     const bundle = await agent.run(company, send);
 
     await supabase.from("deep_dives").upsert({
@@ -326,7 +226,6 @@ app.post("/deep-dive", async (req, res) => {
       generated_at: bundle.generatedAt,
       duration_ms: bundle.durationMs,
       sections: bundle.sections,
-      tier_at_run: tier,
     });
 
     res.end();
@@ -336,7 +235,6 @@ app.post("/deep-dive", async (req, res) => {
   }
 });
 
-// --- Tier info endpoint — frontend can call this to know what to show/hide ---
 app.get("/tier/:userId", async (req, res) => {
   if (!authCheck(req, res)) return;
   const tier = await getUserTier(req.params.userId);
@@ -344,9 +242,6 @@ app.get("/tier/:userId", async (req, res) => {
   res.json({ tier, config });
 });
 
-// Health check
 app.get("/health", (_, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));
 
-app.listen(PORT, () => {
-  console.log(`SELINE Agent Server running on port ${PORT}`);
-});
+app.listen(PORT, () => { console.log(`SELINE Agent Server running on port ${PORT}`); });
