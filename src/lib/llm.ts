@@ -99,7 +99,10 @@ async function extractViaGroq<T>(
     if (!raw) { console.error("[llm:groq] No content in response"); return null; }
 
     let parsed: unknown;
-    try { parsed = JSON.parse(raw); }
+    try {
+      const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+      parsed = JSON.parse(cleaned);
+    }
     catch { console.error(`[llm:groq] Invalid JSON: ${raw.slice(0, 200)}`); return null; }
 
     const result = schema.safeParse(parsed);
@@ -168,7 +171,10 @@ async function extractViaOpenRouter<T>(
     if (!raw) { console.error("[llm:openrouter] No content"); return null; }
 
     let parsed: unknown;
-    try { parsed = JSON.parse(raw); }
+    try {
+      const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+      parsed = JSON.parse(cleaned);
+    }
     catch { console.error(`[llm:openrouter] Invalid JSON: ${raw.slice(0, 200)}`); return null; }
 
     const result = schema.safeParse(parsed);
