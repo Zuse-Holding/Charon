@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ResearchProvider } from "../lib/research-context";
+import { TierProvider } from "../lib/tier-context";
 
 export const metadata: Metadata = {
   title: "Charon — Business Intelligence",
@@ -33,7 +34,9 @@ export default function RootLayout({
       </head>
       <body>
         <ResearchProvider>
-          {children}
+          <TierProvider>
+            {children}
+          </TierProvider>
         </ResearchProvider>
       </body>
     </html>

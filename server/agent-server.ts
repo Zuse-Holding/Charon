@@ -1,15 +1,9 @@
 /**
  * VPS Agent Server
- * Runs on a DigitalOcean Droplet (or any Node.js server).
+ * Runs on Railway (or any Node.js server).
  * Accepts research requests from the Next.js frontend and
  * streams results back via SSE — no 30-second timeout like Vercel.
  * Writes results directly to Supabase using the service role key.
- *
- * Setup on VPS:
- *   npm install
- *   cp .env.example .env  # add all keys
- *   node server/agent-server.js
- *   # or with PM2: pm2 start server/agent-server.js --name seline-agents
  */
 
 import "dotenv/config";
@@ -29,13 +23,10 @@ import { createClient } from "@supabase/supabase-js";
 const app  = express();
 const PORT = process.env.PORT ?? process.env.AGENT_PORT ?? 4000;
 
-// Allow requests from your Vercel frontend domain
 const ALLOWED_ORIGIN = process.env.FRONTEND_URL ?? "http://localhost:3000";
-
 app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
 app.use(express.json());
 
-// Shared secret — Next.js sends this header, server validates it
 const AGENT_SECRET = process.env.AGENT_SECRET ?? "change-me-in-production";
 
 function authCheck(req: express.Request, res: express.Response): boolean {
@@ -47,28 +38,164 @@ function authCheck(req: express.Request, res: express.Response): boolean {
   return true;
 }
 
-// Supabase service role client — bypasses RLS for writing results
+// Supabase service role client — bypasses RLS
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// ─── Tier Configuration ───────────────────────────────────────────────────────
+// Internal = Jackal Protocol: no limits, all features unlocked.
+// Add new features here as they're built — one source of truth.
+
+type Tier = "internal" | "team" | "pro" | "basic" | "free";
+
+interface TierConfig {
+  dailyResearchLimit: number;   // max research runs per day (-1 = unlimited)
+  dailyDeepDiveLimit: number;   // max deep dives per day (-1 = unlimited)
+  deepDiveAccess: boolean;      // can run deep dives at all
+  politicalAccess: boolean;     // access to political research type
+  watchlistLimit: number;       // max watchlist entities (-1 = unlimited)
+  knowledgeGraphAccess: boolean;
+  exportAccess: boolean;
+  jackalProtocol: boolean;      // Jackal Protocol: all premium agents unlocked
+}
+
+const TIER_CONFIG: Record<Tier, TierConfig> = {
+  internal: {
+    dailyResearchLimit: -1,
+    dailyDeepDiveLimit: -1,
+    deepDiveAccess: true,
+    politicalAccess: true,
+    watchlistLimit: -1,
+    knowledgeGraphAccess: true,
+    exportAccess: true,
+    jackalProtocol: true,
+  },
+  team: {
+    dailyResearchLimit: 200,
+    dailyDeepDiveLimit: 20,
+    deepDiveAccess: true,
+    politicalAccess: true,
+    watchlistLimit: 50,
+    knowledgeGraphAccess: true,
+    exportAccess: true,
+    jackalProtocol: false,
+  },
+  pro: {
+    dailyResearchLimit: 50,
+    dailyDeepDiveLimit: 5,
+    deepDiveAccess: true,
+    politicalAccess: true,
+    watchlistLimit: 20,
+    knowledgeGraphAccess: true,
+    exportAccess: true,
+    jackalProtocol: false,
+  },
+  basic: {
+    dailyResearchLimit: 10,
+    dailyDeepDiveLimit: 0,
+    deepDiveAccess: false,
+    politicalAccess: false,
+    watchlistLimit: 5,
+    knowledgeGraphAccess: false,
+    exportAccess: false,
+    jackalProtocol: false,
+  },
+  free: {
+    dailyResearchLimit: 3,
+    dailyDeepDiveLimit: 0,
+    deepDiveAccess: false,
+    politicalAccess: false,
+    watchlistLimit: 2,
+    knowledgeGraphAccess: false,
+    exportAccess: false,
+    jackalProtocol: false,
+  },
+};
+
+// ─── Tier Helpers ─────────────────────────────────────────────────────────────
+
+async function getUserTier(userId: string): Promise<Tier> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("tier")
+    .eq("id", userId)
+    .single();
+
+  if (error || !data?.tier) return "basic";
+  return (data.tier as Tier) ?? "basic";
+}
+
+function getTierConfig(tier: Tier): TierConfig {
+  return TIER_CONFIG[tier] ?? TIER_CONFIG.basic;
+}
+
+async function getDailyUsage(userId: string, table: "research_runs" | "deep_dives"): Promise<number> {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const { count, error } = await supabase
+    .from(table)
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("generated_at", startOfDay.toISOString());
+
+  if (error) return 0;
+  return count ?? 0;
+}
+
+function tierDenied(res: express.Response, message: string, upgradeHint?: string) {
+  res.status(403).json({
+    error: "tier_limit",
+    message,
+    upgradeHint: upgradeHint ?? "Upgrade your plan at charonv1-silk.vercel.app/pricing",
+  });
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
 const REPORTS_DIR = join(process.cwd(), "reports");
 mkdirSync(REPORTS_DIR, { recursive: true });
 mkdirSync(join(REPORTS_DIR, "people"), { recursive: true });
 mkdirSync(join(REPORTS_DIR, "products"), { recursive: true });
+mkdirSync(join(REPORTS_DIR, "political"), { recursive: true });
 
 function slugify(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
-// --- Quick research (Tier 1) ---
+// --- Quick research (all tiers, with limits) ---
 app.post("/research", async (req, res) => {
   if (!authCheck(req, res)) return;
+
   const { subject, type, userId } = req.body;
   if (!subject || !type || !userId) {
     res.status(400).json({ error: "subject, type, and userId required" });
     return;
+  }
+
+  // ── Tier checks ──
+  const tier = await getUserTier(userId);
+  const config = getTierConfig(tier);
+
+  // Political research gate
+  if (type === "political" && !config.politicalAccess) {
+    return tierDenied(res, "Political research requires Pro or higher.", "Upgrade to Pro to access political intelligence.");
+  }
+
+  // Daily limit check (internal bypasses)
+  if (config.dailyResearchLimit !== -1) {
+    const usage = await getDailyUsage(userId, "research_runs");
+    if (usage >= config.dailyResearchLimit) {
+      return tierDenied(
+        res,
+        `Daily research limit of ${config.dailyResearchLimit} reached. Resets at midnight.`,
+        tier === "basic"
+          ? "Upgrade to Pro for 50 runs/day."
+          : "Upgrade to Team for 200 runs/day."
+      );
+    }
   }
 
   try {
@@ -76,7 +203,7 @@ app.post("/research", async (req, res) => {
     let report: string;
     let outPath: string;
 
-    // Easter egg short-circuit — skip the real pipeline for known fictional entities
+    // Easter egg short-circuit
     const egg = findEasterEgg(subject);
     if (egg && egg.type === type) {
       report = egg.markdown;
@@ -97,6 +224,12 @@ app.post("/research", async (req, res) => {
         const result = await orchestrator.researchPerson(subject);
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, "people", `${slugify(subject)}.md`);
+      } else if (type === "political") {
+        // Political research uses person orchestrator for now
+        // TODO: swap for dedicated political agent when built
+        const result = await orchestrator.researchPerson(subject);
+        bundle = result.bundle; report = result.report;
+        outPath = join(REPORTS_DIR, "political", `${slugify(subject)}.md`);
       } else {
         const result = await orchestrator.researchProduct(subject);
         bundle = result.bundle; report = result.report;
@@ -108,8 +241,6 @@ app.post("/research", async (req, res) => {
 
     const runId = randomUUID();
 
-    // Write to Supabase — report markdown stored in bundle so it can be
-    // read back on Vercel (which has no access to this server's filesystem)
     const { error } = await supabase.from("research_runs").insert({
       id: runId,
       user_id: userId,
@@ -118,35 +249,57 @@ app.post("/research", async (req, res) => {
       generated_at: new Date().toISOString(),
       report_path: outPath,
       bundle: { ...(bundle as object), reportMarkdown: report },
+      // Store tier at time of run — useful for analytics
+      tier_at_run: tier,
     });
 
     if (error) throw error;
-    res.json({ ok: true, reportPath: outPath });
+    res.json({ ok: true, reportPath: outPath, tier, jackal: config.jackalProtocol });
 
-    // Fire-and-forget entity extraction — runs after response is sent so
-    // it never adds latency to the user-facing request. Delay slightly
-    // to avoid hitting Groq rate limits right after the main pipeline.
-    if (type === "company" || type === "person" || type === "product") {
+    // Fire-and-forget entity extraction
+    if (type === "company" || type === "person" || type === "product" || type === "political") {
       const entityAgent = new EntityExtractionAgent();
       setTimeout(() => {
         entityAgent
           .extract(report, { name: subject, type })
           .then((extraction) => saveEntityExtraction(userId, runId, extraction))
           .catch((err) => console.error("[entity-extraction] failed:", err));
-      }, 3000); // 3 second delay
+      }, 3000);
     }
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
 });
 
-// --- Deep dive (Tier 2) — SSE streaming ---
+// --- Deep dive — SSE streaming (Pro, Team, Internal only) ---
 app.post("/deep-dive", async (req, res) => {
   if (!authCheck(req, res)) return;
+
   const { company, userId } = req.body;
   if (!company || !userId) {
     res.status(400).json({ error: "company and userId required" });
     return;
+  }
+
+  // ── Tier checks ──
+  const tier = await getUserTier(userId);
+  const config = getTierConfig(tier);
+
+  if (!config.deepDiveAccess) {
+    return tierDenied(res, "Deep Dive requires Pro or higher.", "Upgrade to Pro to unlock Deep Dive reports.");
+  }
+
+  if (config.dailyDeepDiveLimit !== -1) {
+    const usage = await getDailyUsage(userId, "deep_dives");
+    if (usage >= config.dailyDeepDiveLimit) {
+      return tierDenied(
+        res,
+        `Daily Deep Dive limit of ${config.dailyDeepDiveLimit} reached. Resets at midnight.`,
+        tier === "pro"
+          ? "Upgrade to Team for 20 Deep Dives/day."
+          : undefined
+      );
+    }
   }
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -166,7 +319,6 @@ app.post("/deep-dive", async (req, res) => {
 
     const bundle = await agent.run(company, send);
 
-    // Write to Supabase
     await supabase.from("deep_dives").upsert({
       id: bundle.id,
       user_id: userId,
@@ -174,6 +326,7 @@ app.post("/deep-dive", async (req, res) => {
       generated_at: bundle.generatedAt,
       duration_ms: bundle.durationMs,
       sections: bundle.sections,
+      tier_at_run: tier,
     });
 
     res.end();
@@ -183,8 +336,16 @@ app.post("/deep-dive", async (req, res) => {
   }
 });
 
+// --- Tier info endpoint — frontend can call this to know what to show/hide ---
+app.get("/tier/:userId", async (req, res) => {
+  if (!authCheck(req, res)) return;
+  const tier = await getUserTier(req.params.userId);
+  const config = getTierConfig(tier);
+  res.json({ tier, config });
+});
+
 // Health check
-app.get("/health", (_, res) => res.json({ ok: true }));
+app.get("/health", (_, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));
 
 app.listen(PORT, () => {
   console.log(`SELINE Agent Server running on port ${PORT}`);
