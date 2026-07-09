@@ -1,16 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import { EntityExtractionResult } from "../agents/entity-extraction/index.js";
+import { validateAndCorrectFact, findOverride } from "../entity-validation.js";
 
 /**
- * Knowledge Graph data layer (Phase 1).
+ * Knowledge Graph data layer.
  * Writes extracted entities and relationships to Supabase using the
- * service role key — this runs server-side (VPS agent server) after
- * each research run completes, never from the browser.
+ * service role key — runs server-side after each research run completes.
  *
- * Entity dedup is handled via the UNIQUE (user_id, name, type) constraint
- * on kg_entities — repeated mentions of "Stripe" across multiple research
- * runs collapse into a single entity row, with relationships accumulating
- * over time as more runs reference it.
+ * Entity dedup via UNIQUE(user_id, name, type) constraint — repeated mentions
+ * of "Stripe" across runs collapse into a single entity row.
+ *
+ * Includes entity validation layer to catch LLM extraction errors
+ * (e.g. org name returned instead of CEO name).
  */
 
 function getClient() {
@@ -29,17 +30,34 @@ export async function saveEntityExtraction(
 ): Promise<void> {
   const supabase = getClient();
 
-  // Upsert entities — UNIQUE(user_id, name, type) means repeated names
-  // resolve to the same row instead of duplicating.
   const entityIdMap = new Map<string, string>(); // name (lowercase) -> id
 
   for (const entity of extraction.entities) {
+    // Look up any known override for this entity before writing
+    const override = findOverride(entity.name);
+
+    // Validate and correct any person-field facts before they hit the DB
+    if (entity.facts) {
+      entity.facts = entity.facts.map((fact) => {
+        const result = validateAndCorrectFact(entity.name, fact, override);
+        if (result.flagged) {
+          console.warn(
+            `[knowledge-graph] Corrected fact on "${entity.name}": ${result.note}`
+          );
+        }
+        return { ...fact, value: result.value };
+      });
+    }
+
+    // Use canonical name if we have an override
+    const canonicalName = override?.canonical_name ?? entity.name;
+
     const { data, error } = await supabase
       .from("kg_entities")
       .upsert(
         {
           user_id: userId,
-          name: entity.name,
+          name: canonicalName,
           type: entity.type,
           source_run_id: sourceRunId,
         },
@@ -49,7 +67,16 @@ export async function saveEntityExtraction(
       .single();
 
     if (!error && data) {
+      // Map both the raw extracted name and canonical name for relationship resolution
       entityIdMap.set(entity.name.toLowerCase(), data.id);
+      entityIdMap.set(canonicalName.toLowerCase(), data.id);
+
+      // Also map known aliases so relationships resolve correctly
+      if (override?.aka) {
+        for (const alias of override.aka) {
+          entityIdMap.set(alias.toLowerCase(), data.id);
+        }
+      }
     }
   }
 
@@ -57,7 +84,7 @@ export async function saveEntityExtraction(
   const relationshipRows = extraction.relationships
     .map((rel) => {
       const fromId = entityIdMap.get(rel.from.toLowerCase());
-      const toId = entityIdMap.get(rel.to.toLowerCase());
+      const toId   = entityIdMap.get(rel.to.toLowerCase());
       if (!fromId || !toId) return null;
       return {
         user_id: userId,

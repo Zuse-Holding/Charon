@@ -3,9 +3,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { detectEntityType } from "../lib/detect-entity-type";
 import { useResearch } from "../lib/research-context";
+import { useTier } from "../lib/tier-context";
 import styles from "./Topbar.module.css";
 
-type ResearchType = "company" | "person" | "product";
+type ResearchType = "company" | "person" | "product" | "political";
 
 interface TopbarProps {
   onResearchStart?: (subject: string, type: ResearchType) => void;
@@ -20,16 +21,32 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
   const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
   const { startResearch, completeResearch } = useResearch();
+  const { can } = useTier();
+
+  // Available types based on tier
+  const availableTypes: { value: ResearchType; label: string; gated?: boolean }[] = [
+    { value: "company",   label: "CO" },
+    { value: "person",    label: "PERSON" },
+    { value: "product",   label: "PRODUCT" },
+    { value: "political", label: "POL", gated: !can("politicalAccess") },
+  ];
 
   async function handleRun() {
     if (!query.trim() || loading) return;
+
+    // Gate political research on the frontend too
+    if (type === "political" && !can("politicalAccess")) {
+      setStatus("✗ Political research requires Pro or higher");
+      setTimeout(() => setStatus(""), 4000);
+      return;
+    }
+
     const subject = query.trim();
     setLoading(true);
     setStatus(`Researching "${subject}"...`);
     setQuery("");
 
-    // Update global context so other pages can see research in progress
-    startResearch(subject, type);
+    startResearch(subject, type as "company" | "person" | "product");
     onResearchStart?.(subject, type);
 
     try {
@@ -46,7 +63,11 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
         router.refresh();
         setTimeout(() => setStatus(""), 4000);
       } else {
-        setStatus(`✗ Error: ${data.error ?? "unknown error"}`);
+        // Show upgrade hint if tier-blocked
+        const msg = data.upgradeHint
+          ? `✗ ${data.message} ${data.upgradeHint}`
+          : `✗ Error: ${data.error ?? data.message ?? "unknown error"}`;
+        setStatus(msg);
         completeResearch();
         setTimeout(() => setStatus(""), 6000);
       }
@@ -67,12 +88,12 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
           <input
             className={styles.input}
             type="text"
-            placeholder="Research a company, person, or product..."
+            placeholder="Research a company, person, product, or political figure..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               if (e.target.value.trim().length > 2) {
-                setType(detectEntityType(e.target.value.trim()));
+                setType(detectEntityType(e.target.value.trim()) as ResearchType);
               }
             }}
             onKeyDown={(e) => e.key === "Enter" && handleRun()}
@@ -81,13 +102,16 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
 
         {/* Desktop pills */}
         <div className={styles.pills}>
-          {(["company", "person", "product"] as ResearchType[]).map((t) => (
+          {availableTypes.map((t) => (
             <button
-              key={t}
-              className={`${styles.pill} ${type === t ? styles.active : ""}`}
-              onClick={() => setType(t)}
+              key={t.value}
+              className={`${styles.pill} ${type === t.value ? styles.active : ""} ${t.gated ? styles.gated ?? "" : ""}`}
+              onClick={() => !t.gated && setType(t.value)}
+              title={t.gated ? "Upgrade to Pro to unlock political research" : undefined}
+              style={t.gated ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
             >
-              {t === "company" ? "CO" : t === "person" ? "PERSON" : "PRODUCT"}
+              {t.label}
+              {t.gated && " 🔒"}
             </button>
           ))}
         </div>
@@ -101,6 +125,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
           <option value="company">Company</option>
           <option value="person">Person</option>
           <option value="product">Product</option>
+          {can("politicalAccess") && <option value="political">Political</option>}
         </select>
 
         <button
@@ -118,10 +143,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
           </div>
         </div>
 
-        {/* Mobile hamburger */}
-        <button className={styles.hamburger} onClick={() => setMenuOpen(true)}>
-          ☰
-        </button>
+        <button className={styles.hamburger} onClick={() => setMenuOpen(true)}>☰</button>
       </div>
 
       {status && (
@@ -130,7 +152,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
         </div>
       )}
 
-{/* Mobile nav drawer */}
+      {/* Mobile nav drawer */}
       {menuOpen && (
         <div className={styles.drawerOverlay} onClick={() => setMenuOpen(false)}>
           <div className={styles.drawer} onClick={e => e.stopPropagation()}>
@@ -139,12 +161,13 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
               <button className={styles.drawerClose} onClick={() => setMenuOpen(false)}>✕</button>
             </div>
             {[
-              { label: "Dashboard",      href: "/app",             icon: "◈" },
-              { label: "Intel Feed",     href: "/intel-feed",      icon: "◆" },
-              { label: "Reports",        href: "/reports",         icon: "⊞" },
-              { label: "Watchlist",      href: "/watchlist",       icon: "◎" },
-              { label: "Knowledge Graph",href: "/knowledge-graph", icon: "◉" },
-              { label: "Settings",       href: "/settings",        icon: "⊙" },
+              { label: "Dashboard",       href: "/dashboard",       icon: "◈" },
+              { label: "Research",        href: "/app",             icon: "◎" },
+              { label: "Intel Feed",      href: "/intel-feed",      icon: "◆" },
+              { label: "Reports",         href: "/reports",         icon: "⊞" },
+              { label: "Watchlist",       href: "/watchlist",       icon: "◎" },
+              { label: "Knowledge Graph", href: "/knowledge-graph", icon: "◉" },
+              { label: "Settings",        href: "/settings",        icon: "⊙" },
             ].map(item => (
               <button
                 key={item.href}

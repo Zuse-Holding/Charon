@@ -2,10 +2,12 @@
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "../lib/supabase/client";
 import { useResearch } from "../lib/research-context";
+import { useTier } from "../lib/tier-context";
 import styles from "./Sidebar.module.css";
 
 const NAV = [
-  { label: "Dashboard",       icon: "◈", href: "/app" },
+  { label: "Dashboard",       icon: "◈", href: "/dashboard" },
+  { label: "Research",        icon: "◎", href: "/app" },
   { label: "Intel Feed",      icon: "◆", href: "/intel-feed" },
   { label: "Reports",         icon: "⊞", href: "/reports" },
   { label: "Watchlist",       icon: "◎", href: "/watchlist" },
@@ -21,6 +23,7 @@ export default function Sidebar() {
   const router   = useRouter();
   const supabase = createClient();
   const { pending } = useResearch();
+  const { isInternal, tier } = useTier();
 
   async function signOut() {
     router.push("/logout");
@@ -69,9 +72,28 @@ export default function Sidebar() {
 
       <div className={styles.footer}>
         <span className={styles.dot} />
-        <span className={styles.footerText}>GROQ · Selene</span>
+        <span className={styles.footerText}>
+          {isInternal ? "JACKAL · SELENE" : "GROQ · Selene"}
+        </span>
         <button className={styles.signOut} onClick={signOut} title="Sign out">⏻</button>
       </div>
+
+      {isInternal && (
+        <div style={{
+          margin: "0 12px 12px",
+          background: "#E8A02018",
+          border: "1px solid #9B6A10",
+          borderRadius: 6,
+          padding: "4px 10px",
+          fontSize: 10,
+          fontWeight: 700,
+          color: "#E8A020",
+          letterSpacing: "0.1em",
+          textAlign: "center",
+        }}>
+          ◈ JACKAL PROTOCOL
+        </div>
+      )}
     </aside>
   );
 }
