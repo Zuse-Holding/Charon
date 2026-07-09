@@ -44,3 +44,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
+<button
+  className={styles.nodeExpandBtn}
+  onClick={async () => {
+    if (!selected) return;
+    const res = await fetch("/api/knowledge-graph/expand", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entityName: selected.name, entityType: selected.type }),
+    });
+    const data = await res.json();
+    alert(data.message ?? data.error ?? "Expansion started");
+  }}
+>
+  ⬡ Expand connections
+</button>

@@ -134,3 +134,23 @@
   .grid { grid-template-columns: 1fr; }
   .headerRight { width: 100%; justify-content: space-between; }
 }
+.itemTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pinBtn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.pinBtn:hover { color: var(--orange); }
+.pinBtn.pinned { color: var(--orange); }
