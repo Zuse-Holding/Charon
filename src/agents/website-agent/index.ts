@@ -84,6 +84,21 @@ function cleanPageText(text: string): string {
 }
 
 /**
+ * Cleans a leadership name/title field extracted by the LLM or heuristic
+ * fallback. Strips stray markdown bold markers and trailing dash
+ * fragments that occasionally leak through when a source page's
+ * "meet the team" text runs multiple people together (e.g.
+ * "**Cassandra Paniagua, M.S., BCBA** —" or "Iknoian** —").
+ */
+function cleanLeadershipField(value: string): string {
+  return value
+    .replace(/\*\*/g, "")           // strip markdown bold
+    .replace(/\s*—\s*$/, "")        // strip trailing dash fragments
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Website Agent
  * Collects: description, founded/HQ/industry, leadership, products.
  *
@@ -202,10 +217,12 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
         if (llmResult.headquarters) company.headquarters = llmResult.headquarters;
         if (llmResult.industry) company.industry = llmResult.industry;
         if (llmResult.leadership) {
-          leadership = llmResult.leadership.map((l) => ({
-            name: l.name,
-            title: l.title,
-          }));
+          leadership = llmResult.leadership
+            .map((l) => ({
+              name: cleanLeadershipField(l.name),
+              title: cleanLeadershipField(l.title),
+            }))
+            .filter((l) => l.name.length > 0 && l.name.length < 80);
         }
         if (llmResult.products) {
           products = llmResult.products.map((p) => ({
@@ -241,7 +258,10 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
           const key = p.name.toLowerCase();
           if (seenLeaders.has(key)) continue;
           seenLeaders.add(key);
-          leadership.push({ name: p.name, title: p.title });
+          leadership.push({
+            name: cleanLeadershipField(p.name),
+            title: cleanLeadershipField(p.title),
+          });
         }
       }
     }
