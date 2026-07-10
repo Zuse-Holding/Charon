@@ -18,12 +18,25 @@ const SYSTEM_NAV = [
   { label: "Settings",        icon: "⊙", href: "/settings" },
 ];
 
+// Badge shown for every tier, not just internal — label + accent color.
+const TIER_BADGE: Record<string, { label: string; color: string }> = {
+  internal: { label: "◈ JACKAL PROTOCOL", color: "#E8A020" },
+  team:     { label: "◈ TEAM",            color: "#4A90D9" },
+  pro:      { label: "◈ PRO",             color: "#2DD4BF" },
+  basic:    { label: "◈ BASIC",           color: "#6B7A99" },
+  free:     { label: "◈ FREE",            color: "#6B7A99" },
+};
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
   const supabase = createClient();
   const { pending } = useResearch();
-  const { isInternal, tier } = useTier();
+  const { isInternal, tier, displayName } = useTier();
+  const initials = displayName
+    ? displayName.split(" ").filter(Boolean).map(w => w[0]).slice(0, 2).join("").toUpperCase()
+    : "?";
+  const badge = tier ? TIER_BADGE[tier] : undefined;
 
   async function signOut() {
     router.push("/logout");
@@ -70,6 +83,13 @@ export default function Sidebar() {
         </div>
       )}
 
+      {displayName && (
+        <div className={styles.userRow}>
+          <div className={styles.userAvatar}>{initials}</div>
+          <div className={styles.userName} title={displayName}>{displayName}</div>
+        </div>
+      )}
+
       <div className={styles.footer}>
         <span className={styles.dot} />
         <span className={styles.footerText}>
@@ -78,20 +98,20 @@ export default function Sidebar() {
         <button className={styles.signOut} onClick={signOut} title="Sign out">⏻</button>
       </div>
 
-      {isInternal && (
+      {badge && (
         <div style={{
           margin: "0 12px 12px",
-          background: "#E8A02018",
-          border: "1px solid #9B6A10",
+          background: `${badge.color}18`,
+          border: `1px solid ${badge.color}66`,
           borderRadius: 6,
           padding: "4px 10px",
           fontSize: 10,
           fontWeight: 700,
-          color: "#E8A020",
+          color: badge.color,
           letterSpacing: "0.1em",
           textAlign: "center",
         }}>
-          ◈ JACKAL PROTOCOL
+          {badge.label}
         </div>
       )}
     </aside>

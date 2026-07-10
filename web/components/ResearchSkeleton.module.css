@@ -47,13 +47,21 @@
   height: 100%;
   background: var(--orange);
   border-radius: 2px;
-  animation: progress-sweep 3s ease-in-out infinite;
+  /* Climbs once to ~88% and holds — a real research run can take far
+     longer than any fixed loop length, and repeatedly snapping back to
+     0% reads as "this failed and restarted" rather than "still working".
+     A soft glow keeps it feeling alive without implying false progress. */
+  animation:
+    progress-climb 2.2s cubic-bezier(0.16, 0.8, 0.3, 1) forwards,
+    progress-glow 1.6s ease-in-out infinite 2.2s;
 }
-@keyframes progress-sweep {
-  0%   { width: 0%;   opacity: 1; }
-  60%  { width: 85%;  opacity: 1; }
-  90%  { width: 92%;  opacity: 1; }
-  100% { width: 92%;  opacity: 0.6; }
+@keyframes progress-climb {
+  0%   { width: 0%; }
+  100% { width: 88%; }
+}
+@keyframes progress-glow {
+  0%, 100% { opacity: 0.75; }
+  50%      { opacity: 1; }
 }
 
 .steps {
@@ -67,11 +75,18 @@
   align-items: center;
   gap: 10px;
   opacity: 0;
-  animation: fade-in 0.4s ease forwards;
+  /* Entrance reveal (once), then a slow perpetual breathing cycle so the
+     list still reads as "active" during long waits instead of going
+     static right after the initial stagger finishes. */
+  animation: fade-in 0.4s ease forwards, step-cycle 4.2s ease-in-out infinite;
 }
 @keyframes fade-in {
   from { opacity: 0; transform: translateX(-6px); }
   to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes step-cycle {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
 }
 .stepDot {
   width: 5px; height: 5px;

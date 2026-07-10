@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
+import EmptyState from "../../components/EmptyState";
 import styles from "./page.module.css";
 
 const SECTORS = [
@@ -200,7 +201,7 @@ export default function IntelFeed() {
                         );
                       })}
                       {feed.items.length === 0 && (
-                        <div className={styles.emptyFeed}>No signals found</div>
+                        <EmptyState size="compact" icon="◆" title="No signals found" />
                       )}
                     </div>
                   )}

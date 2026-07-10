@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import EntityTag from "../../components/EntityTag";
+import EmptyState from "../../components/EmptyState";
 import styles from "./page.module.css";
 
 interface Run {
@@ -14,6 +16,7 @@ interface Run {
 }
 
 export default function Reports() {
+  const router = useRouter();
   const [runs, setRuns]         = useState<Run[]>([]);
   const [filter, setFilter]     = useState<string>("all");
   const [search, setSearch]     = useState("");
@@ -99,7 +102,13 @@ export default function Reports() {
                 {filtered.length === 0 && (
                   <tr>
                     <td colSpan={4} className={styles.empty}>
-                      No reports found. Run your first research query above.
+                      <EmptyState
+                        size="compact"
+                        icon="⊞"
+                        title="No reports found"
+                        description="Run your first research query above."
+                        action={{ label: "Start Research", onClick: () => router.push("/app") }}
+                      />
                     </td>
                   </tr>
                 )}

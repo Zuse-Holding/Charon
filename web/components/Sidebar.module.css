@@ -61,6 +61,36 @@
 }
 .icon { width: 15px; text-align: center; font-size: 12px; }
 
+.userRow {
+  padding: 14px 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.userAvatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--orange);
+  flex-shrink: 0;
+}
+.userName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .footer {
   padding: 16px 20px;
   border-top: 1px solid var(--border);

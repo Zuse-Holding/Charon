@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import EntityTag from "../../components/EntityTag";
+import EmptyState from "../../components/EmptyState";
 import styles from "./page.module.css";
 
 interface WatchEntry {
@@ -17,6 +19,7 @@ interface WatchEntry {
 }
 
 export default function Watchlist() {
+  const router = useRouter();
   const [entries, setEntries] = useState<WatchEntry[]>([]);
   const [refreshing, setRefreshing] = useState<string | null>(null);
 
@@ -79,14 +82,17 @@ export default function Watchlist() {
           </div>
 
           {entries.length === 0 ? (
-            <div className={styles.empty}>
-              <div className={styles.emptyIcon}>◎</div>
-              <div className={styles.emptyTitle}>Your Watchlist is empty</div>
-              <div className={styles.emptyText}>
-                Research a company, person, or product from the dashboard,<br />
-                then click <strong>Watch</strong> on any report to track it here.
-              </div>
-            </div>
+            <EmptyState
+              icon="◎"
+              title="Your Watchlist is empty"
+              description={
+                <>
+                  Research a company, person, or product from the dashboard,
+                  then click <strong>Watch</strong> on any report to track it here.
+                </>
+              }
+              action={{ label: "Start Research", onClick: () => router.push("/app") }}
+            />
           ) : (
             <div className={styles.grid}>
               {entries.map((entry) => {
