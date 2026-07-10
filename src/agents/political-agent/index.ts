@@ -33,6 +33,44 @@ import { PoliticalExtractionSchema, extractStructured } from "../../lib/llm.js";
  * the top opposition-research sources instead of relying on snippets
  * alone, for a materially more thorough pass.
  */
+/**
+ * Crude "Firstname Lastname" phrase matcher — good enough to spot which
+ * real name is actually dominating a batch of search results.
+ */
+function extractNamePhrases(text: string): string[] {
+  return text.match(/\b[A-Z][a-z]+(?:\s+[A-Z]\.)?\s+[A-Z][a-z]+\b/g) ?? [];
+}
+
+/**
+ * Guards against a fuzzy-matched wrong person. If the literal queried
+ * name never appears anywhere in the gathered source text, that's a
+ * strong signal the search engine substituted a different (if
+ * similar-sounding) real person — e.g. querying "Bill Sherman" silently
+ * returning results about Brad Sherman (D-CA), a 25+ year incumbent
+ * with no name in common except the surname. Confidently synthesizing a
+ * profile — worse, opposition-research allegations — under the wrong
+ * name is a real accuracy/liability problem, not just a data-quality
+ * one, so this returns a warning instead of a best-effort guess when it
+ * can't confirm the sources are actually about the person asked for.
+ */
+function findNameMismatch(queryName: string, combinedText: string): string | undefined {
+  const queryLower = queryName.toLowerCase().trim();
+  if (combinedText.toLowerCase().includes(queryLower)) return undefined;
+
+  const queryTokens = new Set(queryLower.split(/\s+/).filter((t) => t.length > 2));
+  const tally = new Map<string, number>();
+  for (const phrase of extractNamePhrases(combinedText)) {
+    const tokens = phrase.toLowerCase().split(/\s+/);
+    if (tokens.some((t) => queryTokens.has(t))) {
+      tally.set(phrase, (tally.get(phrase) ?? 0) + 1);
+    }
+  }
+  if (tally.size === 0) return `No source found that mentions "${queryName}" by name.`;
+
+  const [closest] = [...tally.entries()].sort((a, b) => b[1] - a[1])[0];
+  return `No source mentions "${queryName}" by name — the closest match in results is "${closest}", which may be a different person.`;
+}
+
 export class PoliticalAgent {
   constructor(
     private fetcher: FetchProvider,
@@ -108,7 +146,12 @@ export class PoliticalAgent {
     let campaignFinance: CampaignFinanceEntry[] = [];
     let oppositionResearch: OppositionResearchEntry[] = [];
 
-    if (combinedText.length > 0) {
+    const nameMismatch = combinedText.length > 0 ? findNameMismatch(name, combinedText) : undefined;
+    if (nameMismatch) {
+      console.warn(`[political-agent] "${name}" — ${nameMismatch}`);
+      profile.nameMismatchWarning = nameMismatch;
+      profile.summary = `Could not confirm any gathered source is actually about "${name}". ${nameMismatch} No profile or opposition-research data was generated to avoid attributing another person's information to this name — double-check the spelling and re-run.`;
+    } else if (combinedText.length > 0) {
       const llmResult = await extractStructured(
         `You are a nonpartisan political research analyst compiling a factual briefing on "${name}" from search results.
 
@@ -122,6 +165,7 @@ CRITICAL RULES:
 - votingRecord: specific named bills/legislation with how they voted. Only votes explicitly mentioned in source text.
 - campaignFinance: fundraising totals, donor composition, by election cycle if stated.
 - oppositionResearch: an array of {topic, finding, severity}. Each entry is a specific, sourced, factual finding — a controversy, inconsistency, notable vote, financial conflict, past statement, etc. severity is "high"/"medium"/"low" based on how significant the finding is. Do NOT invent findings — only include what the source text actually supports. It is fine to return an empty array if nothing substantive is in the source text.
+- CRITICAL for oppositionResearch specifically: this is the highest-risk section in this report — a wrong or misattributed finding here is a real reputational/accuracy problem, not just a data gap. Only include a finding if the source text explicitly names "${name}" (not a different, similarly-named person) in direct connection with that specific finding. If a source discusses someone with a similar-sounding but different name, or doesn't clearly tie the finding to "${name}" specifically, omit it — do not include it "in case it's relevant."
 - Every field must be traceable to the provided source text. Do not use outside knowledge to fill gaps.`,
         combinedText,
         PoliticalExtractionSchema
@@ -158,16 +202,22 @@ CRITICAL RULES:
 
     // Best-effort description fallback if the LLM call failed entirely —
     // matches the pattern every other agent in this codebase uses rather
-    // than returning a blank profile.
-    if (!profile.summary && profileResults[0]?.snippet) {
+    // than returning a blank profile. Skipped on a name mismatch — that
+    // profile.summary is already the warning message, not a gap to fill.
+    if (!profile.summary && !nameMismatch && profileResults[0]?.snippet) {
       profile.summary = profileResults[0].snippet;
     }
 
-    const news: NewsEntry[] = oppoResults.slice(0, 5).map((r) => ({
-      headline: r.title,
-      summary: r.snippet,
-      url: r.url,
-    }));
+    // Suppress "Recent News" too on a name mismatch — those headlines
+    // are just as likely to be about the wrong person as anything else
+    // pulled from this batch of search results.
+    const news: NewsEntry[] = nameMismatch
+      ? []
+      : oppoResults.slice(0, 5).map((r) => ({
+          headline: r.title,
+          summary: r.snippet,
+          url: r.url,
+        }));
 
     return {
       profile,
