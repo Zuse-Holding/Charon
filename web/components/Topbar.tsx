@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { detectEntityType } from "../lib/detect-entity-type";
 import { useResearch } from "../lib/research-context";
 import { useTier } from "../lib/tier-context";
+import { AmbiguousOption, findAmbiguousMatch } from "../lib/ambiguous-entities";
+import DisambiguationModal from "./DisambiguationModal";
 import styles from "./Topbar.module.css";
 
 type ResearchType = "company" | "person" | "product" | "political";
@@ -19,6 +21,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
   const [loading, setLoading]   = useState(false);
   const [status, setStatus]     = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [ambiguousOptions, setAmbiguousOptions] = useState<AmbiguousOption[] | null>(null);
   const router = useRouter();
   const { startResearch, completeResearch } = useResearch();
   const { can } = useTier();
@@ -41,7 +44,22 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
       return;
     }
 
-    const subject = query.trim();
+    // Known name collisions (e.g. "Alan Health" vs "Alan" the French
+    // insurer) — ask which one instead of silently picking one, or
+    // worse, mixing sources from both into one report.
+    if (type === "company") {
+      const ambiguous = findAmbiguousMatch(query);
+      if (ambiguous) {
+        setAmbiguousOptions(ambiguous.options);
+        return;
+      }
+    }
+
+    await runResearch(query.trim());
+  }
+
+  async function runResearch(subject: string) {
+    setAmbiguousOptions(null);
     setLoading(true);
     setStatus(`Researching "${subject}"...`);
     setQuery("");
@@ -188,6 +206,15 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
             </button>
           </div>
         </div>
+      )}
+
+      {ambiguousOptions && (
+        <DisambiguationModal
+          query={query.trim()}
+          options={ambiguousOptions}
+          onSelect={(opt) => runResearch(opt.subject)}
+          onCancel={() => setAmbiguousOptions(null)}
+        />
       )}
     </div>
   );

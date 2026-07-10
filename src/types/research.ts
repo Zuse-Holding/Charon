@@ -132,11 +132,34 @@ export interface CareerEntry {
   note?: string;
 }
 
+// Jackal Person Research (Round 3) — corporate officer/directorship
+// records from OpenCorporates. See src/agents/opencorporates-agent.
+export interface CorporateAffiliationEntry {
+  companyName: string;
+  position?: string;
+  jurisdiction?: string;
+  startDate?: string;
+  endDate?: string;
+  companyUrl?: string;
+}
+
+// MuckRock FOIA request search (Round 3) — Jackal-only, wired into both
+// political and person research. See src/agents/muckrock-agent.
+export interface FoiaRequestEntry {
+  title: string;
+  url: string;
+  status?: string;
+  agency?: string;
+  dateSubmitted?: string;
+}
+
 export interface PersonAgentResult {
   person: PersonProfile;
   careerHistory: CareerEntry[];
   news: NewsEntry[];
   sources: Source[];
+  corporateAffiliations?: CorporateAffiliationEntry[];
+  foiaRequests?: FoiaRequestEntry[];
 }
 
 export interface PersonResearchBundle {
@@ -146,6 +169,8 @@ export interface PersonResearchBundle {
   careerHistory: CareerEntry[];
   news: NewsEntry[];
   sources: Source[];
+  corporateAffiliations?: CorporateAffiliationEntry[];
+  foiaRequests?: FoiaRequestEntry[];
 }
 
 // --- Deep Dive types ---
@@ -236,6 +261,51 @@ export interface OppositionResearchEntry {
   severity?: RiskLevel;
 }
 
+// --- Authoritative political data (Round 2 v2) — real API integrations,
+// not search-and-synthesis. These sit alongside (and take priority over)
+// the LLM-derived fields above when both are present. See
+// src/agents/congress-agent, src/agents/legiscan-agent,
+// src/agents/openfec-agent.
+
+export interface SponsoredBillEntry {
+  billId: string;            // e.g. "hr1234-118"
+  title: string;
+  congress?: string;
+  introducedDate?: string;
+  latestAction?: string;
+  latestActionDate?: string;
+  url?: string;
+}
+
+export interface CommitteeAssignment {
+  name: string;
+  role?: string;   // "Chair", "Ranking Member", "Member"
+}
+
+export interface RollCallVoteEntry {
+  bill: string;
+  description?: string;
+  vote: string;     // "Yea" | "Nay" | "Not Voting" | "Present"
+  date?: string;
+  chamber?: string;
+  url?: string;
+}
+
+export interface FecCandidateSummary {
+  candidateId: string;
+  name: string;
+  party?: string;
+  cycle?: string;
+  totalReceipts?: string;
+  totalDisbursements?: string;
+  cashOnHand?: string;
+}
+
+export interface FecDonorBreakdownEntry {
+  employer: string;
+  total: string;
+}
+
 export interface PoliticalAgentResult {
   profile: PoliticalProfile;
   districtMakeup?: DistrictMakeup;
@@ -245,6 +315,12 @@ export interface PoliticalAgentResult {
   oppositionResearch: OppositionResearchEntry[];
   news: NewsEntry[];
   sources: Source[];
+  sponsoredLegislation?: SponsoredBillEntry[];
+  committees?: CommitteeAssignment[];
+  rollCallVotes?: RollCallVoteEntry[];
+  fecSummary?: FecCandidateSummary;
+  fecDonorBreakdown?: FecDonorBreakdownEntry[];
+  foiaRequests?: FoiaRequestEntry[];
 }
 
 export interface PoliticalResearchBundle {
@@ -258,6 +334,12 @@ export interface PoliticalResearchBundle {
   oppositionResearch: OppositionResearchEntry[];
   news: NewsEntry[];
   sources: Source[];
+  sponsoredLegislation?: SponsoredBillEntry[];
+  committees?: CommitteeAssignment[];
+  rollCallVotes?: RollCallVoteEntry[];
+  fecSummary?: FecCandidateSummary;
+  fecDonorBreakdown?: FecDonorBreakdownEntry[];
+  foiaRequests?: FoiaRequestEntry[];
 }
 
 // --- USASpending (Round 2, item 3) ---
