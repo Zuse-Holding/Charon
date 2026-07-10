@@ -8,9 +8,10 @@ import { randomUUID } from "node:crypto";
 const execAsync = promisify(exec);
 
 const CLI_COMMANDS: Record<string, string> = {
-  company: "research",
-  person:  "research-person",
-  product: "research-product",
+  company:   "research",
+  person:    "research-person",
+  product:   "research-product",
+  political: "research-political",
 };
 
 function slugify(name: string) {
@@ -21,6 +22,7 @@ function getReportPath(subject: string, type: string): string {
   const root = join(process.cwd(), "..");
   if (type === "person") return join(root, "reports", "people", `${slugify(subject)}.md`);
   if (type === "product") return join(root, "reports", "products", `${slugify(subject)}.md`);
+  if (type === "political") return join(root, "reports", "political", `${slugify(subject)}.md`);
   return join(root, "reports", `${slugify(subject)}.md`);
 }
 
