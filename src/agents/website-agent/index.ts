@@ -202,7 +202,7 @@ CRITICAL RULES — violations undermine credibility:
 - founded: year only, as a string (e.g. "2012"). If unknown, omit.
 - headquarters: city and state/country only. If unknown, omit.
 - industry: specific sector (e.g. "Revenue-Based Financing" not just "Fintech"). Be precise.
-- leadership: extract ALL named executives with their exact titles. Include CEO, founders, presidents, CFOs, CTOs. Only include people explicitly named in the source text — do NOT invent or guess names.
+- leadership: extract ALL named executives with their exact titles. Include CEO, founders, presidents, CFOs, CTOs. Only include people explicitly named in the source text — do NOT invent or guess names. Return each person as their own separate {name, title} object — a "meet the team" page often lists several people in one paragraph; do NOT merge two people into a single entry or split one person's name across two entries. name and title must be plain text only: no markdown (no "**", no bullet "-" or "—" characters), no trailing punctuation, and no credentials or extra names appended after the title.
 - products: only include named products or services explicitly mentioned. Do NOT include generic descriptions like "cloud platform" or "SaaS solution" unless a specific product name is given.
 
 Return only facts that are explicitly stated in the source text. Omit fields where the data is absent or ambiguous rather than filling them with guesses.`,

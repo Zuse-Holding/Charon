@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
+import EmptyState from "../../components/EmptyState";
 import { useTier } from "../../lib/tier-context";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -82,6 +83,19 @@ const S = {
     flex: 1, overflow: "auto", padding: "20px 24px",
     display: "flex", flexDirection: "column" as const, gap: 16,
   },
+  greetingRow: {
+    display: "flex", alignItems: "baseline", justifyContent: "space-between",
+    padding: "18px 24px 0",
+  } as React.CSSProperties,
+  greetingTitle: {
+    fontSize: 19, fontWeight: 700, color: "#EDF2F7", letterSpacing: "-0.01em",
+  } as React.CSSProperties,
+  greetingSub: {
+    fontSize: 12, color: "#6B7A99", marginTop: 3,
+  } as React.CSSProperties,
+  greetingDate: {
+    fontSize: 11, color: "#6B7A99", fontFamily: "monospace",
+  } as React.CSSProperties,
   tabBar: {
     display: "flex", gap: 4, padding: "12px 24px 0",
     borderBottom: "1px solid #1C2333",
@@ -139,8 +153,15 @@ const S = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+function getGreeting(hour: number): string {
+  if (hour < 5) return "Working late";
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function DashboardPage() {
-  const { isInternal, tier } = useTier();
+  const { isInternal, tier, displayName } = useTier();
   const router = useRouter();
   const [tab, setTab] = useState<DashTab>("dashboard");
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
@@ -213,6 +234,23 @@ export default function DashboardPage() {
       <main style={S.main}>
         <Topbar />
 
+        {/* Greeting */}
+        <div style={S.greetingRow}>
+          <div>
+            <div style={S.greetingTitle}>
+              {getGreeting(time.getHours())}{displayName ? `, ${displayName.split(" ")[0]}` : ""}
+            </div>
+            <div style={S.greetingSub}>
+              {recentRuns.length > 0
+                ? `${recentRuns.length} report${recentRuns.length === 1 ? "" : "s"} on record. Here's what's new.`
+                : "Here's your workspace."}
+            </div>
+          </div>
+          <div style={S.greetingDate}>
+            {time.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+          </div>
+        </div>
+
         {/* Tab bar */}
         <div style={S.tabBar}>
           <button style={S.tab(tab === "dashboard")} onClick={() => setTab("dashboard")}>
@@ -242,7 +280,12 @@ export default function DashboardPage() {
                     <span style={S.badge("#E8A020")}>{new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
                   </div>
                   {briefItems.length === 0 && (
-                    <div style={{ fontSize: 12, color: "#374151" }}>Run some research to populate your brief.</div>
+                    <EmptyState
+                      size="compact"
+                      icon="◈"
+                      title="Nothing to brief yet"
+                      description="Run some research to populate your brief."
+                    />
                   )}
                   {briefItems.map((item, i) => (
                     <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
@@ -264,9 +307,13 @@ export default function DashboardPage() {
                     <span style={S.badge("#2DD4BF")}>{watchlist.length} entities</span>
                   </div>
                   {watchlist.length === 0 && (
-                    <div style={{ fontSize: 12, color: "#374151" }}>
-                      No watchlist entities yet. Add companies from the research view.
-                    </div>
+                    <EmptyState
+                      size="compact"
+                      icon="◎"
+                      title="Watchlist is empty"
+                      description="Add companies from the research view to track them here."
+                      action={{ label: "Go to Research", onClick: () => router.push("/app") }}
+                    />
                   )}
                   {watchlist.slice(0, 6).map((w) => {
                     const status = freshnessStatus(w.last_researched_at);
@@ -308,7 +355,7 @@ export default function DashboardPage() {
                     <span style={S.badge("#4A90D9")}>live</span>
                   </div>
                   {intel.length === 0 && (
-                    <div style={{ fontSize: 12, color: "#374151" }}>No feed items yet.</div>
+                    <EmptyState size="compact" icon="◆" title="Feed is quiet" description="No intel items yet." />
                   )}
                   {intel.slice(0, 6).map((item) => (
                     <div key={item.id} style={{ ...S.card, cursor: "pointer" }}
@@ -330,7 +377,7 @@ export default function DashboardPage() {
                 <div style={{ ...S.panel("#6B7A99"), flex: "0 0 35%" }}>
                   <div style={S.panelTitle}>Recent Research</div>
                   {recentRuns.length === 0 && (
-                    <div style={{ fontSize: 12, color: "#374151" }}>No research runs yet.</div>
+                    <EmptyState size="compact" icon="⊞" title="No research yet" description="Run your first query above." />
                   )}
                   {recentRuns.slice(0, 8).map((run) => (
                     <div

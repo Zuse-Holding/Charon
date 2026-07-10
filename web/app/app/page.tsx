@@ -9,6 +9,7 @@ import DeepDiveProgress from "../../components/DeepDiveProgress";
 import DeepDiveViewer from "../../components/DeepDiveViewer";
 import ErrorBoundary from "../../components/ErrorBoundary";
 import ResearchSkeleton from "../../components/ResearchSkeleton";
+import EmptyState from "../../components/EmptyState";
 import styles from "./page.module.css";
 
 interface Run {
@@ -204,9 +205,7 @@ function Dashboard() {
             </div>
             <div className={styles.feedList}>
               {runs.length === 0 && (
-                <div className={styles.empty}>
-                  No research yet. Run your first query above.
-                </div>
+                <EmptyState size="compact" icon="◎" title="No research yet" description="Run your first query above." />
               )}
               {pending && (
                 <div className={`${styles.feedItem} ${styles.feedItemPending}`}>

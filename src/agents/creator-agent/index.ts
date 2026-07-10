@@ -104,7 +104,9 @@ async function fetchHashtagVideos(challengeId: string, count = 30): Promise<Vide
   });
 
   if (!res.ok) throw new Error(`Hashtag fetch failed: ${res.status}`);
-  const data = await res.json();
+  // RapidAPI's response shape isn't modeled with a type — cast once here
+  // rather than scattering `as any` across every property access below.
+  const data = (await res.json()) as any;
 
   if (data.code !== 0 || !data.data?.videos) {
     console.warn(`[creator-agent] No videos for challenge ${challengeId}`);
@@ -140,7 +142,7 @@ async function fetchUserProfile(username: string): Promise<CreatorProfile | null
   });
 
   if (!res.ok) return null;
-  const data = await res.json();
+  const data = (await res.json()) as any;
   if (data.code !== 0 || !data.data?.user) return null;
 
   const u = data.data.user;

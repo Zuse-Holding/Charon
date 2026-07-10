@@ -110,9 +110,16 @@ function renderSection(section: Section) {
     return (
       <div className={styles.personList}>
         {items.map((item, i) => {
-          const match = item.match(/^(.+?)\s*[—\-–]\s*(.+)/);
-          const name  = match ? match[1].replace(/\*\*/g, "").trim() : item;
-          const role  = match ? match[2].trim() : "";
+          // Split only on an em/en dash with space on both sides (the
+          // literal " — " report-agent inserts between name and title).
+          // A bare hyphen char-class here used to also match hyphens
+          // inside names/titles themselves (e.g. "Evinyan-Iknoian",
+          // "Co-Founder"), splitting mid-word and leaving a stray "**"
+          // and the real separator stuck onto the title half.
+          const match = item.match(/^(.+?)\s+[—–]\s+(.+)/);
+          const clean = (s: string) => s.replace(/\*\*/g, "").trim();
+          const name  = match ? clean(match[1]) : clean(item);
+          const role  = match ? clean(match[2]) : "";
           const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
           return (
             <div key={i} className={styles.personCard}>

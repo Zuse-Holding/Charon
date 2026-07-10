@@ -316,14 +316,26 @@ function toLeadershipArray(v: unknown): { name: string; title: string }[] {
   const items = Array.isArray(v) ? v : [v];
   return items.flatMap((item) => {
     if (typeof item === "string") {
-      const [name, ...rest] = item.split(/\s*[—\-–:,|]\s*/);
-      if (!name?.trim()) return [];
-      return [{ name: name.trim(), title: rest.join(" ").trim() || "Unknown" }];
+      // Split only on an em/en dash, colon, or pipe with whitespace on
+      // both sides — NOT a bare comma or hyphen. Names routinely contain
+      // commas (credentials, e.g. "Cassandra Paniagua, M.S., BCBA") and
+      // hyphens (compound surnames, e.g. "Anna Evinyan-Iknoian"); splitting
+      // on those characters mangles the name and leaks a fragment into
+      // the title. This string branch is only a fallback for a model
+      // that doesn't follow the requested {name, title} object shape —
+      // see the object branch below and the extraction prompt.
+      const [name, ...rest] = item.split(/\s+[—–:|]\s+/);
+      const cleanedName = name?.replace(/\*\*/g, "").trim();
+      if (!cleanedName) return [];
+      return [{
+        name: cleanedName,
+        title: rest.join(" ").replace(/\*\*/g, "").trim() || "Unknown",
+      }];
     }
     if (typeof item === "object" && item !== null) {
       const obj = item as Record<string, unknown>;
-      const name = String(obj.name ?? obj.fullName ?? obj.person ?? "").trim();
-      const title = String(obj.title ?? obj.role ?? obj.position ?? "Unknown").trim();
+      const name = String(obj.name ?? obj.fullName ?? obj.person ?? "").replace(/\*\*/g, "").trim();
+      const title = String(obj.title ?? obj.role ?? obj.position ?? "Unknown").replace(/\*\*/g, "").trim();
       if (!name) return [];
       return [{ name, title }];
     }
@@ -423,14 +435,22 @@ export const PersonExtractionSchema = AnyObject.transform((obj) => ({
     const items = Array.isArray(raw) ? raw : [raw];
     return items.flatMap((item: unknown) => {
       if (typeof item === "string") {
-        const [title, company] = item.split(/\s*[—\-–:@]\s*/);
-        return title?.trim() ? [{ title: title.trim(), company: company?.trim() }] : [];
+        // Whitespace-bounded separators only — a bare hyphen/colon can
+        // appear inside a title or company name (e.g. "Co-Founder",
+        // "E-Trade") and would otherwise split mid-word.
+        const [title, company] = item.split(/\s+[—–:@]\s+/);
+        const cleanedTitle = title?.replace(/\*\*/g, "").trim();
+        const cleanedCompany = company?.replace(/\*\*/g, "")?.trim();
+        return cleanedTitle
+          ? [{ title: cleanedTitle, company: cleanedCompany }]
+          : [];
       }
       if (typeof item === "object" && item !== null) {
         const o = item as Record<string, unknown>;
-        const title = String(o.title ?? o.role ?? o.position ?? "").trim();
+        const title = String(o.title ?? o.role ?? o.position ?? "").replace(/\*\*/g, "").trim();
         const company = toStringOrUndefined(o.company ?? o.organization ?? o.employer);
-        return title ? [{ title, company }] : [];
+        const cleanedCompany = company?.replace(/\*\*/g, "")?.trim();
+        return title ? [{ title, company: cleanedCompany }] : [];
       }
       return [];
     });

@@ -22,6 +22,8 @@ interface TierContextValue {
   config: TierConfig | null;
   loading: boolean;
   isInternal: boolean;
+  displayName: string | null;
+  email: string | null;
   can: (feature: keyof TierConfig) => boolean;
   refresh: () => void;
 }
@@ -44,9 +46,30 @@ const TierContext = createContext<TierContextValue>({
   config: null,
   loading: true,
   isInternal: false,
+  displayName: null,
+  email: null,
   can: () => false,
   refresh: () => {},
 });
+
+/** Best-effort human-friendly name: metadata full name -> email local part. */
+function deriveDisplayName(user: { email?: string | null; user_metadata?: Record<string, unknown> } | null): string | null {
+  if (!user) return null;
+  const meta = user.user_metadata ?? {};
+  const metaName = (meta.full_name ?? meta.name ?? meta.display_name) as string | undefined;
+  if (metaName && metaName.trim()) return metaName.trim();
+  if (user.email) {
+    const local = user.email.split("@")[0];
+    // "nick.olmos" / "nick_olmos" -> "Nick Olmos"
+    return local
+      .replace(/[._-]+/g, " ")
+      .split(" ")
+      .filter(Boolean)
+      .map(w => w[0].toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+  return null;
+}
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
@@ -55,6 +78,8 @@ export function TierProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<TierConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +90,11 @@ export function TierProvider({ children }: { children: ReactNode }) {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { setLoading(false); return; }
+
+        if (!cancelled) {
+          setDisplayName(deriveDisplayName(user));
+          setEmail(user.email ?? null);
+        }
 
         const res = await fetch(`/api/tier`, { credentials: "include" });
         if (!res.ok) throw new Error("tier fetch failed");
@@ -102,7 +132,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TierContext.Provider value={{ tier, config, loading, isInternal, can, refresh }}>
+    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, can, refresh }}>
       {children}
     </TierContext.Provider>
   );

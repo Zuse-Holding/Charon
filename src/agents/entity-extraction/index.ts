@@ -18,9 +18,21 @@ import { extractStructured, extractViaOpenRouter } from "../../lib/llm.js";
  * step, not a critical path.
  */
 
+const FactSchema = z.object({
+  field: z.string(),
+  value: z.string(),
+  sourceUrl: z.string().optional(),
+});
+
 const EntitySchema = z.object({
   name: z.string(),
   type: z.enum(["company", "person", "product"]),
+  // Optional per-entity facts (e.g. {field: "ceo", value: "..."}) —
+  // not yet populated by the extraction prompt below, but the knowledge
+  // graph write layer (src/database/knowledge-graph.ts) already validates
+  // and corrects these when present, so the shape is defined here now
+  // rather than leaving it an implicit/untyped property.
+  facts: z.array(FactSchema).optional(),
 });
 
 const RelationshipSchema = z.object({
