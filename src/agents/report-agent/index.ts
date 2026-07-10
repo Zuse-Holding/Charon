@@ -359,6 +359,11 @@ export class ReportAgent {
     lines.push(`*Generated ${bundle.generatedAt}*`);
     lines.push(``);
 
+    if (bundle.profile.nameMismatchWarning) {
+      lines.push(`> ⚠️ **Name not confirmed:** ${bundle.profile.nameMismatchWarning} Profile and opposition-research data below reflects only what real API integrations (Congress.gov, OpenFEC, LegiScan) could independently verify — nothing was synthesized from search results under this name. Double-check the spelling and re-run.`);
+      lines.push(``);
+    }
+
     lines.push(`## Executive Summary`);
     lines.push(
       bundle.profile.summary

@@ -228,6 +228,13 @@ export interface PoliticalProfile {
   district?: string;    // e.g. "CA-30"
   incumbent?: boolean;
   summary?: string;
+  // Set when the exact queried name never appears in any gathered
+  // source text — a strong signal the search engine fuzzy-matched to a
+  // different (if similar-sounding) real person. When set, no profile
+  // fields or opposition-research findings are synthesized from search
+  // results, to avoid attributing a real person's facts/allegations to
+  // the wrong name. See src/agents/political-agent.
+  nameMismatchWarning?: string;
 }
 
 export interface DistrictMakeup {
