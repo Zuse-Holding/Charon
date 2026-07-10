@@ -20,7 +20,7 @@ export const ENTITY_OVERRIDES: Record<string, EntityOverride> = {
   "alan health": {
     canonical_name: "Alan Health Technologies",
     canonical_domain: "alanmeds.com",
-    aka: ["Alan Meds", "Alan Health Technologies, Inc.", "Alan"],
+    aka: ["Alan Meds", "Alan Health Technologies, Inc."],
     ceo: "Andrew McLeod",
     reject_domains: ["alan.com"],
   },
@@ -125,9 +125,11 @@ export function findOverride(entityName: string): EntityOverride | undefined {
   const key = entityName.toLowerCase().trim();
   if (ENTITY_OVERRIDES[key]) return ENTITY_OVERRIDES[key];
 
-  // Check aliases
   for (const [, override] of Object.entries(ENTITY_OVERRIDES)) {
-    if (override.aka.map((a) => a.toLowerCase()).includes(key)) {
+    const match = override.aka
+      .map((a) => a.toLowerCase().trim())
+      .find((a) => a === key);
+    if (match && match.split(/\s+/).length >= 2) {
       return override;
     }
   }
