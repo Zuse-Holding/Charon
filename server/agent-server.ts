@@ -39,7 +39,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-type Tier = "internal" | "team" | "pro" | "basic" | "free";
+type Tier = "internal" | "team" | "pro" | "basic" | "free" | "trial";
 
 interface TierConfig {
   dailyResearchLimit: number;
@@ -50,23 +50,55 @@ interface TierConfig {
   knowledgeGraphAccess: boolean;
   exportAccess: boolean;
   jackalProtocol: boolean;
+  chatWidgetAccess: boolean;
 }
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: true },
-  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: false },
-  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: false },
-  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, jackalProtocol: false },
-  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, jackalProtocol: false },
+  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: true, chatWidgetAccess: true },
+  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: false, chatWidgetAccess: true },
+  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: false, chatWidgetAccess: true },
+  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, jackalProtocol: false, chatWidgetAccess: false },
+  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, jackalProtocol: false, chatWidgetAccess: false },
+  // Time-boxed trial tier for external demo/feedback users (e.g. investor trials).
+  // No political research, no Jackal Protocol, no chat widget (protects API cost
+  // exposure on an unmetered-feeling trial). Expiry enforced via
+  // profiles.trial_expires_at, checked in getUserTier below.
+  trial:    { dailyResearchLimit: 30, dailyDeepDiveLimit: 10, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: false, chatWidgetAccess: false },
 };
 
-async function getUserTier(userId: string): Promise<Tier> {
-  const { data, error } = await supabase.from("profiles").select("tier").eq("id", userId).single();
+/**
+ * Looks up the user's tier. If the user is on "trial" and trial_expires_at
+ * has passed, returns "expired" — a dead state with zero access — rather
+ * than continuing to honor trial privileges. Every route that calls
+ * getUserTier automatically respects expiry with no extra wiring.
+ */
+async function getUserTier(userId: string): Promise<Tier | "expired"> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("tier, trial_expires_at")
+    .eq("id", userId)
+    .single();
+
   if (error || !data?.tier) return "basic";
-  return (data.tier as Tier) ?? "basic";
+
+  const tier = (data.tier as Tier) ?? "basic";
+
+  if (tier === "trial" && data.trial_expires_at) {
+    const expired = new Date() > new Date(data.trial_expires_at);
+    if (expired) return "expired";
+  }
+
+  return tier;
 }
 
-function getTierConfig(tier: Tier): TierConfig {
+const EXPIRED_CONFIG: TierConfig = {
+  dailyResearchLimit: 0, dailyDeepDiveLimit: 0, deepDiveAccess: false,
+  politicalAccess: false, watchlistLimit: 0, knowledgeGraphAccess: false,
+  exportAccess: false, jackalProtocol: false, chatWidgetAccess: false,
+};
+
+function getTierConfig(tier: Tier | "expired"): TierConfig {
+  if (tier === "expired") return EXPIRED_CONFIG;
   return TIER_CONFIG[tier] ?? TIER_CONFIG.basic;
 }
 
@@ -76,6 +108,44 @@ async function getDailyUsage(userId: string, table: "research_runs" | "deep_dive
   const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true }).eq("user_id", userId).gte("generated_at", startOfDay.toISOString());
   if (error) return 0;
   return count ?? 0;
+}
+
+/**
+ * Person-search monthly limit — 25/month, separate from the daily research
+ * limit. Scoped specifically to type === "person" requests. Internal tier
+ * bypasses this the same way it bypasses every other limit.
+ */
+const PERSON_SEARCH_MONTHLY_LIMIT = 25;
+
+async function getMonthlyPersonSearchCount(userId: string): Promise<number> {
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const { count, error } = await supabase
+    .from("person_search_audit")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", startOfMonth.toISOString());
+
+  if (error) {
+    console.error("[person-search-audit] count error:", JSON.stringify(error));
+    return 0;
+  }
+  return count ?? 0;
+}
+
+async function logPersonSearch(userId: string, subject: string, ipAddress?: string) {
+  const { error } = await supabase.from("person_search_audit").insert({
+    id: randomUUID(),
+    user_id: userId,
+    query_target: subject,
+    search_type: "person_research",
+    ip_address: ipAddress ?? null,
+  });
+  if (error) {
+    console.error("[person-search-audit] insert error:", JSON.stringify(error));
+  }
 }
 
 function tierDenied(res: express.Response, message: string, upgradeHint?: string) {
@@ -104,6 +174,10 @@ app.post("/research", async (req, res) => {
   const tier = await getUserTier(userId);
   const config = getTierConfig(tier);
 
+  if (tier === "expired") {
+    return tierDenied(res, "Your trial has ended. Contact us to continue using Charon.", "Contact hello@charon.example to discuss plans.");
+  }
+
   if (type === "political" && !config.politicalAccess) {
     return tierDenied(res, "Political research requires Pro or higher.");
   }
@@ -112,6 +186,15 @@ app.post("/research", async (req, res) => {
     const usage = await getDailyUsage(userId, "research_runs");
     if (usage >= config.dailyResearchLimit) {
       return tierDenied(res, `Daily research limit of ${config.dailyResearchLimit} reached.`);
+    }
+  }
+
+  // Person-search specific monthly cap + audit trail. Internal tier bypasses
+  // this entirely, same as every other limit.
+  if (type === "person" && tier !== "internal") {
+    const monthlyCount = await getMonthlyPersonSearchCount(userId);
+    if (monthlyCount >= PERSON_SEARCH_MONTHLY_LIMIT) {
+      return tierDenied(res, `Monthly person-research limit of ${PERSON_SEARCH_MONTHLY_LIMIT} reached.`);
     }
   }
 
@@ -165,6 +248,15 @@ app.post("/research", async (req, res) => {
       throw new Error(error.message);
     }
 
+    // Log person-search audit trail only after a successful run, and only
+    // for non-internal users (internal bypasses the cap so no need to track).
+    if (type === "person" && tier !== "internal") {
+      const ipAddress = (req.headers["x-forwarded-for"] as string) ?? req.socket.remoteAddress;
+      logPersonSearch(userId, subject, ipAddress).catch((err) =>
+        console.error("[person-search-audit] failed:", err)
+      );
+    }
+
     res.json({ ok: true, reportPath: outPath, tier, jackal: config.jackalProtocol });
 
     if (type === "company" || type === "person" || type === "product" || type === "political") {
@@ -193,6 +285,10 @@ app.post("/deep-dive", async (req, res) => {
 
   const tier = await getUserTier(userId);
   const config = getTierConfig(tier);
+
+  if (tier === "expired") {
+    return tierDenied(res, "Your trial has ended. Contact us to continue using Charon.");
+  }
 
   if (!config.deepDiveAccess) {
     return tierDenied(res, "Deep Dive requires Pro or higher.");
