@@ -12,6 +12,7 @@
     "research": "tsx src/cli.ts research",
     "research-person": "tsx src/cli.ts research-person",
     "research-product": "tsx src/cli.ts research-product",
+    "research-political": "tsx src/cli.ts research-political",
     "deep-dive": "tsx src/cli.ts deep-dive",
     "list": "tsx src/cli.ts list",
     "show": "tsx src/cli.ts show",
@@ -19,6 +20,7 @@
     "unwatch": "tsx src/cli.ts unwatch",
     "watchlist": "tsx src/cli.ts watchlist",
     "watchlist-refresh": "tsx src/cli.ts watchlist-refresh",
+    "creator": "tsx run-creator.mjs",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],

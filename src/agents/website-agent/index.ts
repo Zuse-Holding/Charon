@@ -17,6 +17,7 @@ import {
   PRODUCT_STOPWORDS,
 } from "../../lib/nlp.js";
 import { CompanyExtractionSchema, extractStructured } from "../../lib/llm.js";
+import { findOverride, EntityOverride } from "../../entity-validation.js";
 
 // Domains that should never be treated as a company's official website
 // even if they rank first in search results for "X official website".
@@ -46,6 +47,25 @@ function isOfficialDomain(url: string): boolean {
   try {
     const hostname = new URL(url).hostname.replace(/^www\./, "");
     return !NON_OFFICIAL_DOMAINS.has(hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Per-entity domain block list (src/entity-validation.ts ENTITY_OVERRIDES).
+ * "Alan Health" is the motivating case: search results for that name
+ * regularly surface alan.com (an unrelated French health-insurance
+ * company) as a top "official site" hit, which used to get treated as a
+ * real source — pulling in that company's CEO/description instead of
+ * Alan Health Technologies'. reject_domains was defined on the override
+ * but never actually consulted anywhere until now.
+ */
+function isRejectedDomain(url: string, override: EntityOverride | undefined): boolean {
+  if (!override?.reject_domains?.length) return false;
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    return override.reject_domains.some((d) => d.replace(/^www\./, "") === hostname);
   } catch {
     return false;
   }
@@ -132,9 +152,16 @@ export class WebsiteAgent {
 
   async run(companyName: string): Promise<WebsiteAgentResult> {
     const sources: Source[] = [];
-    const directUrl = this.guessDomain(companyName);
+    const override = findOverride(companyName);
+    // A known override's own domain is a better direct guess than the
+    // generic slugify-the-name heuristic (e.g. "Alan Health" -> guessed
+    // "alanhealth.com", which either doesn't resolve or isn't the real
+    // site — the override already knows it's alanmeds.com).
+    const directUrl = override
+      ? `https://${override.canonical_domain}`
+      : this.guessDomain(companyName);
 
-    const [page, leadershipResults, productResults, overviewResults] =
+    const [pageRaw, leadershipResultsRaw, productResultsRaw, overviewResultsRaw] =
       await Promise.all([
         resolveAndFetch(
           directUrl,
@@ -146,6 +173,13 @@ export class WebsiteAgent {
         this.searcher.search(`${companyName} products and services`, 5),
         this.searcher.search(`${companyName} overview what is`, 3),
       ]);
+
+    // Drop any result whose domain is on this entity's reject list before
+    // it can influence sources, the LLM prompt, or the heuristic fallback.
+    const page = pageRaw && !isRejectedDomain(pageRaw.url, override) ? pageRaw : null;
+    const leadershipResults = leadershipResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
+    const productResults = productResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
+    const overviewResults = overviewResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
 
     const company: CompanyProfile = { name: companyName };
 

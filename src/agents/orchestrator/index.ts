@@ -4,6 +4,8 @@ import { CompetitorAgent } from "../competitor-agent/index.js";
 import { CorporateAgent } from "../corporate-agent/index.js";
 import { PeopleAgent } from "../people-agent/index.js";
 import { ProductAgent } from "../product-agent/index.js";
+import { PoliticalAgent } from "../political-agent/index.js";
+import { USASpendingAgent } from "../usaspending-agent/index.js";
 import { synthesizeRisksOpportunities } from "../synthesis-agent/index.js";
 import { ReportAgent } from "../report-agent/index.js";
 import {
@@ -12,6 +14,7 @@ import {
 } from "../../lib/providers.js";
 import {
   PersonResearchBundle,
+  PoliticalResearchBundle,
   ProductResearchBundle,
   ResearchBundle,
   Source,
@@ -36,6 +39,8 @@ export class ResearchOrchestrator {
   private corporateAgent: CorporateAgent;
   private peopleAgent: PeopleAgent;
   private productAgent: ProductAgent;
+  private politicalAgent: PoliticalAgent;
+  private usaSpendingAgent: USASpendingAgent;
   private reportAgent: ReportAgent;
 
   constructor() {
@@ -47,6 +52,8 @@ export class ResearchOrchestrator {
     this.corporateAgent = new CorporateAgent(fetcher, searcher);
     this.peopleAgent = new PeopleAgent(fetcher, searcher);
     this.productAgent = new ProductAgent(fetcher, searcher);
+    this.politicalAgent = new PoliticalAgent(fetcher, searcher);
+    this.usaSpendingAgent = new USASpendingAgent();
     this.reportAgent = new ReportAgent();
   }
 
@@ -54,12 +61,14 @@ export class ResearchOrchestrator {
     bundle: ResearchBundle;
     report: string;
   }> {
-    const [siteResult, newsResult, competitorResult, corporateResult] =
+    const [siteResult, newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
         this.websiteAgent.run(companyName),
         this.newsAgent.run(companyName),
         this.competitorAgent.run(companyName),
         this.corporateAgent.run(companyName),
+        // Free public API, no tier gating — every research run gets this.
+        this.usaSpendingAgent.run(companyName),
       ]);
 
     const sources: Source[] = [
@@ -67,6 +76,7 @@ export class ResearchOrchestrator {
       ...newsResult.sources,
       ...competitorResult.sources,
       ...corporateResult.sources,
+      ...spendingResult.sources,
     ];
 
     const bundle: ResearchBundle = {
@@ -80,6 +90,8 @@ export class ResearchOrchestrator {
       competitors: competitorResult.competitors,
       ownership: corporateResult.ownership,
       sources,
+      federalSpending: spendingResult.awards,
+      insiderActivity: corporateResult.insiderActivity,
     };
 
     // Risks/Opportunities is pure LLM synthesis with no heuristic
@@ -96,11 +108,15 @@ export class ResearchOrchestrator {
     return { bundle, report };
   }
 
-  async researchPerson(personName: string): Promise<{
+  /**
+   * @param deep Jackal Protocol (internal tier only, no daily/monthly
+   *   limits — see server/agent-server.ts). Deeper sourcing, same shape.
+   */
+  async researchPerson(personName: string, deep = false): Promise<{
     bundle: PersonResearchBundle;
     report: string;
   }> {
-    const result = await this.peopleAgent.run(personName);
+    const result = await this.peopleAgent.run(personName, deep);
 
     const bundle: PersonResearchBundle = {
       query: personName,
@@ -122,6 +138,36 @@ export class ResearchOrchestrator {
   }> {
     const bundle = await this.productAgent.run(productName);
     const report = this.reportAgent.generateProduct(bundle);
+    return { bundle, report };
+  }
+
+  /**
+   * Political research (Round 2, item 1): opposition research, district
+   * makeup, approval ratings, voting record, campaign finance.
+   * @param deep Jackal Protocol (internal tier only) — deeper sourcing,
+   *   including full-page reads for the top opposition-research sources.
+   */
+  async researchPolitical(name: string, deep = false): Promise<{
+    bundle: PoliticalResearchBundle;
+    report: string;
+  }> {
+    const result = await this.politicalAgent.run(name, deep);
+
+    const bundle: PoliticalResearchBundle = {
+      query: name,
+      generatedAt: new Date().toISOString(),
+      profile: result.profile,
+      districtMakeup: result.districtMakeup,
+      approvalRating: result.approvalRating,
+      votingRecord: result.votingRecord,
+      campaignFinance: result.campaignFinance,
+      oppositionResearch: result.oppositionResearch,
+      news: result.news,
+      sources: result.sources,
+    };
+
+    const report = this.reportAgent.generatePolitical(bundle);
+
     return { bundle, report };
   }
 }

@@ -26,6 +26,21 @@
 }
 .rowValue { font-size: 13px; color: var(--text); flex: 1; font-family: var(--font-mono); }
 
+.nameInput {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.nameInput:focus { border-color: var(--orange); }
+.nameInput::placeholder { color: var(--muted); }
+
 .badge {
   font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em;
   padding: 2px 8px; border-radius: 4px; flex-shrink: 0;

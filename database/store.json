@@ -13496,6 +13496,1388 @@
           "Leadership's Armenian heritage and commitment to community involvement may attract customers and talent."
         ]
       }
+    },
+    {
+      "id": "a716524c-2873-4d79-b062-9391358e9472",
+      "type": "company",
+      "subject": "Lockheed Martin",
+      "generatedAt": "2026-07-10T14:21:12.034Z",
+      "reportPath": "C:\\Users\\PC\\Downloads\\seline-intel\\reports\\lockheed-martin.md",
+      "bundle": {
+        "query": "Lockheed Martin",
+        "generatedAt": "2026-07-10T14:21:12.034Z",
+        "company": {
+          "name": "Lockheed Martin",
+          "website": "https://www.lockheedmartin.com",
+          "description": "Lockheed Martin manufactures security and aerospace products, serving the global security and aerospace sectors.",
+          "headquarters": "North Bethesda, Maryland",
+          "industry": "Aerospace and Defense"
+        },
+        "leadership": [
+          {
+            "name": "Jim Taiclet",
+            "title": "Chairman, President & CEO"
+          },
+          {
+            "name": "Frank St. John",
+            "title": ""
+          },
+          {
+            "name": "Evan Scott",
+            "title": ""
+          },
+          {
+            "name": "Tim Cahill",
+            "title": ""
+          },
+          {
+            "name": "Maria Demaree",
+            "title": ""
+          },
+          {
+            "name": "Dr. Anthony DeSimone",
+            "title": ""
+          },
+          {
+            "name": "Robert Head",
+            "title": ""
+          },
+          {
+            "name": "Stephanie C. Hill",
+            "title": ""
+          }
+        ],
+        "products": [
+          {
+            "name": "UGM-133 Trident II ballistic missile"
+          },
+          {
+            "name": "Orion spacecraft"
+          },
+          {
+            "name": "Next-Generation Overhead Persistent Infrared"
+          },
+          {
+            "name": "GPS Block III"
+          },
+          {
+            "name": "hypersonic weapons"
+          },
+          {
+            "name": "Precision Strike Missile (PrSM)"
+          },
+          {
+            "name": "GMLRS Rockets"
+          },
+          {
+            "name": "LampreyMMAUV"
+          },
+          {
+            "name": "X-59"
+          },
+          {
+            "name": "Aegis Combat System"
+          }
+        ],
+        "news": [
+          {
+            "headline": "News Releases - Lockheed Martin",
+            "summary": "Media - Lockheed Martin - Releases Lockheed Martin Corporation Releases Newsroom News Releases Releases In this section of the Lockheed Martin Newsroom, you'll find our news releases. The releases are listed in chronological order and are archived by year. Month Year Su Mo Tu We Th Fr Sa Month Year Su Mo Tu We Th Fr Sa Get News Alerts by Email Jul 9, 2026 Lockheed Martin Awarded 500 kW Joint Laser Weapon System Contract The U.S. Department of War awarded Lockheed Martin a contract to advance the  United States’ next generation cruise missile and unmanned aerial system defense architecture. Und",
+            "url": "https://news.lockheedmartin.com/news-releases"
+          },
+          {
+            "headline": "Lockheed Martin News and Events",
+            "summary": "Lockheed Martin News and Events | Lockheed Martin Lockheed Martin News and Events Newsroom Resources ___ Media Contacts Press Release Archive Annual Reports Trade Shows Multimedia Recent Stories",
+            "url": "https://www.lockheedmartin.com/en-us/news.html"
+          },
+          {
+            "headline": "Contracts for July 7, 2026 - Department of War",
+            "summary": "Lockheed Martin Corp., Orlando, Florida, was awarded a $502,381,686 cost-no-fee, cost-plus-fixed-fee, firm-fixed-price contract for post- ...",
+            "url": "https://www.war.gov/News/Contracts/Contract/Article/4535071/contracts-for-july-7-2026/"
+          },
+          {
+            "headline": "Lockheed Martin awarded $1B in military contracts as Iran war leads ...",
+            "summary": "The contract details available funding immediately obligated to Lockheed Martin, including money from the 2024, 2025 and 2026 fiscal years.",
+            "url": "https://fortworthreport.org/2026/05/31/lockheed-martin-awarded-1b-in-military-contracts-as-iran-war-leads-to-buildup/"
+          },
+          {
+            "headline": "Lockheed Martin and NATO Allies Accelerate PAC-3® Sustainment ...",
+            "summary": "In April, the U.S. government awarded Lockheed Martin a $4.7 billion contract to continue accelerating PAC-3 MSE production this year, ensuring ...",
+            "url": "https://news.lockheedmartin.com/2026-07-07-Lockheed-Martin-and-NATO-Allies-Accelerate-PAC-3-R-Sustainment-Across-Europe"
+          }
+        ],
+        "funding": [
+          {
+            "round": "Seed",
+            "amount": "$1B"
+          }
+        ],
+        "competitors": [
+          {
+            "name": "The Boeing Company"
+          },
+          {
+            "name": "BAE Systems Plc."
+          },
+          {
+            "name": "Raytheon Technologies Corporation"
+          },
+          {
+            "name": "General Dynamics Corporation"
+          },
+          {
+            "name": "Northrop Grumman Corp"
+          }
+        ],
+        "sources": [
+          {
+            "url": "https://www.lockheedmartin.com",
+            "title": "Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are/leadership-governance.html",
+            "title": "Leadership and Corporate Governance",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are/leadership-governance/james-taiclet.html",
+            "title": "Jim Taiclet",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.linkedin.com/in/james-taiclet",
+            "title": "Jim Taiclet - Chairman, President & CEO at Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.comparably.com/companies/lockheed-martin/executive-team",
+            "title": "Lockheed Martin Executive Team",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.historyoasis.com/post/lockheed-martin-ceo-history",
+            "title": "Lockheed Martin CEO History",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/products.html",
+            "title": "Lockheed Martin Products",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://en.wikipedia.org/wiki/Lockheed_Martin",
+            "title": "Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/index.html",
+            "title": "Lockheed Martin: Leading Aerospace and Defense",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are.html",
+            "title": "About Us",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.britannica.com/money/Lockheed-Martin-Corporation",
+            "title": "Lockheed Martin Corporation | Aerospace & Defense Giant",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are.html",
+            "title": "About Us",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://www.globaldata.com/company-profile/lockheed-martin-corp/",
+            "title": "Lockheed Martin Corp Company Profile - Overview",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://en.wikipedia.org/wiki/Lockheed_Martin",
+            "title": "Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:21:10.304Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://news.lockheedmartin.com/news-releases",
+            "title": "News Releases - Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:21:10.348Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/news.html",
+            "title": "Lockheed Martin News and Events",
+            "retrievedAt": "2026-07-10T14:21:10.348Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://www.war.gov/News/Contracts/Contract/Article/4535071/contracts-for-july-7-2026/",
+            "title": "Contracts for July 7, 2026 - Department of War",
+            "retrievedAt": "2026-07-10T14:21:10.348Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://fortworthreport.org/2026/05/31/lockheed-martin-awarded-1b-in-military-contracts-as-iran-war-leads-to-buildup/",
+            "title": "Lockheed Martin awarded $1B in military contracts as Iran war leads ...",
+            "retrievedAt": "2026-07-10T14:21:10.348Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://news.lockheedmartin.com/2026-07-07-Lockheed-Martin-and-NATO-Allies-Accelerate-PAC-3-R-Sustainment-Across-Europe",
+            "title": "Lockheed Martin and NATO Allies Accelerate PAC-3® Sustainment ...",
+            "retrievedAt": "2026-07-10T14:21:10.348Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://www.investopedia.com/articles/stock-analysis/081916/lockheed-martins-top-competitors-lmt.asp",
+            "title": "Lockheed Martin's Top Competitors (LMT) - Investopedia",
+            "retrievedAt": "2026-07-10T14:21:09.934Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.globaldata.com/company-profile/lockheed-martin-corp/competitors/",
+            "title": "Lockheed Martin Corp Peers & Key Competitors - GlobalData",
+            "retrievedAt": "2026-07-10T14:21:09.934Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.marketing91.com/lockheed-martin-competitors/",
+            "title": "Top 29 Lockheed Martin Competitors & Alternatives in 2026",
+            "retrievedAt": "2026-07-10T14:21:09.934Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.reddit.com/r/AerospaceEngineering/comments/179nsj0/which_would_you_rather_work_for_raytheon_boeing/",
+            "title": "Which would you rather work for Raytheon, Boeing, or Lockheed ...",
+            "retrievedAt": "2026-07-10T14:21:09.934Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://craft.co/lockheed-martin/competitors",
+            "title": "Top Lockheed Martin Competitors and Alternatives | Craft.co",
+            "retrievedAt": "2026-07-10T14:21:09.934Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are/lockheed-martin-ventures/news.html",
+            "title": "News",
+            "retrievedAt": "2026-07-10T14:21:10.821Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://globalventuring.com/corporate/industrial/defence-company-lockheed-martin-bumps-up-vc-investment-fund-to-1bn/",
+            "title": "Defence company Lockheed Martin bumps up VC ...",
+            "retrievedAt": "2026-07-10T14:21:10.821Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://tracxn.com/d/companies/lockheed-martin/__2sqoAf25-k-5YLh9-Wqp-AIJqLtItSTlEbR5dObKRLs",
+            "title": "Lockheed Martin - 2026 Company Profile & Team",
+            "retrievedAt": "2026-07-10T14:21:10.821Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://www.linkedin.com/posts/christilloyd_for-nearly-20-years-lockheed-martin-has-activity-7457858038343917568-KKxf",
+            "title": "Lockheed Martin Ventures Fund Reaches $1B Capacity",
+            "retrievedAt": "2026-07-10T14:21:10.821Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://www.crunchbase.com/organization/lockheed-martin",
+            "title": "Lockheed Martin - Crunchbase Company Profile & Funding",
+            "retrievedAt": "2026-07-10T14:21:10.821Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://www.sec.gov/Archives/edgar/data/936468/000093646825000009/ex19q42024.htm",
+            "title": "Document",
+            "retrievedAt": "2026-07-10T14:21:10.208Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://www.secform4.com/insider-trading/936468.htm",
+            "title": "LOCKHEED MARTIN CORP (LMT) - Insider Trades",
+            "retrievedAt": "2026-07-10T14:21:10.208Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://www.stocktitan.net/sec-filings/LMT/form-4-lockheed-martin-corp-insider-trading-activity-18d7ac9c038a.html",
+            "title": "[Form 4] LOCKHEED MARTIN CORP Insider Trading Activity",
+            "retrievedAt": "2026-07-10T14:21:10.208Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://journalistsresource.org/economics/insider-trading-sec-form-4/",
+            "title": "Insider trading reports: How to read an SEC Form 4 filing",
+            "retrievedAt": "2026-07-10T14:21:10.208Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://investors.lockheedmartin.com/static-files/8964158d-6c3f-4951-89f3-3fde4a684e10",
+            "title": "FORM 4",
+            "retrievedAt": "2026-07-10T14:21:10.208Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://www.insiderscreener.com/en/sec-form-4",
+            "title": "SEC Form 4 Tracker — Latest US Insider Trades",
+            "retrievedAt": "2026-07-10T14:21:10.208Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          }
+        ],
+        "federalSpending": [],
+        "insiderActivity": [
+          {
+            "filerName": "John",
+            "relationship": "Director",
+            "transactionType": "Sell"
+          },
+          {
+            "filerName": "S",
+            "relationship": "Director",
+            "transactionType": "Sell"
+          },
+          {
+            "filerName": "David B. Burritt",
+            "relationship": "Director",
+            "transactionType": "Other"
+          }
+        ],
+        "risks": [
+          "The U.S. Department of War's award of a 500 kW Joint Laser Weapon System contract to Lockheed Martin may be impacted by changes in the U.S. defense budget.",
+          "Lockheed Martin faces competition from The Boeing Company, BAE Systems Plc., Raytheon Technologies Corporation, General Dynamics Corporation, and Northrop Grumman Corp in the aerospace and defense industry.",
+          "Lockheed Martin's reliance on government contracts, such as the $502,381,686 contract awarded on July 7, 2026, and the $4.7 billion contract awarded in April, makes the company vulnerable to fluctuations in government spending."
+        ],
+        "opportunities": [
+          "Lockheed Martin has the opportunity to advance the United States' next generation cruise missile and unmanned aerial system defense architecture through the 500 kW Joint Laser Weapon System contract.",
+          "The company can increase its production of PAC-3 MSE through the $4.7 billion contract awarded by the U.S. government, ensuring the continued supply of these systems to NATO allies.",
+          "Lockheed Martin can utilize the $1B in military contracts awarded to the company to expand its operations and develop new technologies."
+        ]
+      }
+    },
+    {
+      "id": "49128d73-756d-423f-9daa-48b72f5a6f78",
+      "type": "company",
+      "subject": "Lockheed Martin",
+      "generatedAt": "2026-07-10T14:39:01.623Z",
+      "reportPath": "C:\\Users\\PC\\Downloads\\seline-intel\\reports\\lockheed-martin.md",
+      "bundle": {
+        "query": "Lockheed Martin",
+        "generatedAt": "2026-07-10T14:39:01.623Z",
+        "company": {
+          "name": "Lockheed Martin",
+          "website": "https://www.lockheedmartin.com",
+          "description": "Lockheed Martin manufactures security and aerospace products, serving global security and aerospace customers.",
+          "headquarters": "North Bethesda, Maryland",
+          "industry": "Aerospace and Defense"
+        },
+        "leadership": [
+          {
+            "name": "Jim Taiclet",
+            "title": "Chairman, President and Chief Executive Officer"
+          },
+          {
+            "name": "Frank St. John",
+            "title": ""
+          },
+          {
+            "name": "Evan Scott",
+            "title": ""
+          },
+          {
+            "name": "Tim Cahill",
+            "title": ""
+          },
+          {
+            "name": "Maria Demaree",
+            "title": ""
+          },
+          {
+            "name": "Dr. Anthony DeSimone",
+            "title": ""
+          },
+          {
+            "name": "Robert Head",
+            "title": ""
+          },
+          {
+            "name": "Stephanie C. Hill",
+            "title": ""
+          }
+        ],
+        "products": [
+          {
+            "name": "UGM-133 Trident II ballistic missile"
+          },
+          {
+            "name": "Orion spacecraft"
+          },
+          {
+            "name": "Next-Generation Overhead Persistent Infrared"
+          },
+          {
+            "name": "GPS Block III"
+          },
+          {
+            "name": "hypersonic weapons"
+          },
+          {
+            "name": "Precision Strike Missile (PrSM)"
+          },
+          {
+            "name": "LampreyMMAUV"
+          },
+          {
+            "name": "GMLRS Rockets"
+          }
+        ],
+        "news": [
+          {
+            "headline": "News Releases - Lockheed Martin",
+            "summary": "Media - Lockheed Martin - Releases Lockheed Martin Corporation Releases Newsroom News Releases Releases In this section of the Lockheed Martin Newsroom, you'll find our news releases. The releases are listed in chronological order and are archived by year. Month Year Su Mo Tu We Th Fr Sa Month Year Su Mo Tu We Th Fr Sa Get News Alerts by Email Jul 9, 2026 Lockheed Martin Awarded 500 kW Joint Laser Weapon System Contract The U.S. Department of War awarded Lockheed Martin a contract to advance the  United States’ next generation cruise missile and unmanned aerial system defense architecture. Und",
+            "url": "https://news.lockheedmartin.com/news-releases"
+          },
+          {
+            "headline": "Lockheed Martin Reports First Quarter 2026 Financial Results",
+            "summary": "Lockheed Martin Reports First Quarter 2026 Financial Results · (in millions, except per share data). 2026 Outlook · Sales. $77,500 - $80,000 · Business segment ...",
+            "url": "https://investors.lockheedmartin.com/news-releases/news-release-details/lockheed-martin-reports-first-quarter-2026-financial-results/"
+          },
+          {
+            "headline": "Lockheed Martin News and Events",
+            "summary": "Lockheed Martin Announces Second Quarter 2026 Earnings Results Webcast. READ MORE · Lockheed Martin Awarded $3 Billion to Produce GMLRS Rockets. Mon Jun 29 2026.",
+            "url": "https://www.lockheedmartin.com/en-us/news.html"
+          },
+          {
+            "headline": "Lockheed Martin: News & Events",
+            "summary": "HUNTSVILLE, Ala., June 24, 2026 – Lockheed Martin (NYSE:LMT) has announced a new hypersonic glide body that represents the future of defense through deterrence.",
+            "url": "https://news.lockheedmartin.com/"
+          },
+          {
+            "headline": "Lockheed Martin awarded $1B in military contracts as Iran war leads ...",
+            "summary": "The contract details available funding immediately obligated to Lockheed Martin, including money from the 2024, 2025 and 2026 fiscal years.",
+            "url": "https://fortworthreport.org/2026/05/31/lockheed-martin-awarded-1b-in-military-contracts-as-iran-war-leads-to-buildup/"
+          }
+        ],
+        "funding": [
+          {
+            "round": "Seed",
+            "amount": "$1B"
+          }
+        ],
+        "competitors": [
+          {
+            "name": "The Boeing Company"
+          },
+          {
+            "name": "BAE Systems Plc."
+          },
+          {
+            "name": "Raytheon Technologies Corporation"
+          },
+          {
+            "name": "General Dynamics Corporation"
+          },
+          {
+            "name": "Northrop Grumman Corp"
+          }
+        ],
+        "sources": [
+          {
+            "url": "https://www.lockheedmartin.com",
+            "title": "Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are/leadership-governance.html",
+            "title": "Leadership and Corporate Governance",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://en.wikipedia.org/wiki/James_Taiclet",
+            "title": "James Taiclet",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are/leadership-governance/james-taiclet.html",
+            "title": "Jim Taiclet",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.linkedin.com/in/james-taiclet",
+            "title": "Jim Taiclet - Chairman, President & CEO at Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.comparably.com/companies/lockheed-martin/executive-team",
+            "title": "Lockheed Martin Executive Team",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/products.html",
+            "title": "Lockheed Martin Products",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://en.wikipedia.org/wiki/Lockheed_Martin",
+            "title": "Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/index.html",
+            "title": "Lockheed Martin: Leading Aerospace and Defense",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are.html",
+            "title": "About Us",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/news/features/history.html",
+            "title": "Our History",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are.html",
+            "title": "About Us",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://www.globaldata.com/company-profile/lockheed-martin-corp/",
+            "title": "Lockheed Martin Corp Company Profile - Overview",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://en.wikipedia.org/wiki/Lockheed_Martin",
+            "title": "Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:38:53.128Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://news.lockheedmartin.com/news-releases",
+            "title": "News Releases - Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:38:58.530Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://investors.lockheedmartin.com/news-releases/news-release-details/lockheed-martin-reports-first-quarter-2026-financial-results/",
+            "title": "Lockheed Martin Reports First Quarter 2026 Financial Results",
+            "retrievedAt": "2026-07-10T14:38:58.530Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/news.html",
+            "title": "Lockheed Martin News and Events",
+            "retrievedAt": "2026-07-10T14:38:58.530Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://news.lockheedmartin.com/",
+            "title": "Lockheed Martin: News & Events",
+            "retrievedAt": "2026-07-10T14:38:58.530Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://fortworthreport.org/2026/05/31/lockheed-martin-awarded-1b-in-military-contracts-as-iran-war-leads-to-buildup/",
+            "title": "Lockheed Martin awarded $1B in military contracts as Iran war leads ...",
+            "retrievedAt": "2026-07-10T14:38:58.530Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://www.investopedia.com/articles/stock-analysis/081916/lockheed-martins-top-competitors-lmt.asp",
+            "title": "Lockheed Martin's Top Competitors (LMT)",
+            "retrievedAt": "2026-07-10T14:38:53.099Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.globaldata.com/company-profile/lockheed-martin-corp/competitors/",
+            "title": "Lockheed Martin Corp Peers & Key Competitors",
+            "retrievedAt": "2026-07-10T14:38:53.099Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.marketing91.com/lockheed-martin-competitors/",
+            "title": "Top 29 Lockheed Martin Competitors & Alternatives in 2026",
+            "retrievedAt": "2026-07-10T14:38:53.099Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.reddit.com/r/AerospaceEngineering/comments/179nsj0/which_would_you_rather_work_for_raytheon_boeing/",
+            "title": "Which would you rather work for Raytheon, Boeing, or ...",
+            "retrievedAt": "2026-07-10T14:38:53.099Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://craft.co/lockheed-martin/competitors",
+            "title": "Top Lockheed Martin Competitors and Alternatives",
+            "retrievedAt": "2026-07-10T14:38:53.099Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are/lockheed-martin-ventures/news.html",
+            "title": "News",
+            "retrievedAt": "2026-07-10T14:38:53.059Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://globalventuring.com/corporate/industrial/defence-company-lockheed-martin-bumps-up-vc-investment-fund-to-1bn/",
+            "title": "Defence company Lockheed Martin bumps up VC ...",
+            "retrievedAt": "2026-07-10T14:38:53.059Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://tracxn.com/d/companies/lockheed-martin/__2sqoAf25-k-5YLh9-Wqp-AIJqLtItSTlEbR5dObKRLs",
+            "title": "Lockheed Martin - 2026 Company Profile & Team",
+            "retrievedAt": "2026-07-10T14:38:53.059Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://www.linkedin.com/posts/christilloyd_for-nearly-20-years-lockheed-martin-has-activity-7457858038343917568-KKxf",
+            "title": "Lockheed Martin Ventures Fund Reaches $1B Capacity",
+            "retrievedAt": "2026-07-10T14:38:53.059Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://www.crunchbase.com/organization/lockheed-martin",
+            "title": "Lockheed Martin - Crunchbase Company Profile & Funding",
+            "retrievedAt": "2026-07-10T14:38:53.059Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://www.sec.gov/Archives/edgar/data/936468/000093646825000009/ex19q42024.htm",
+            "title": "Document - SEC.gov",
+            "retrievedAt": "2026-07-10T14:38:52.468Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://www.secform4.com/insider-trading/936468.htm",
+            "title": "LOCKHEED MARTIN CORP (LMT) - Insider Trading Form 4 Filings",
+            "retrievedAt": "2026-07-10T14:38:52.468Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://www.stocktitan.net/sec-filings/LMT/form-4-lockheed-martin-corp-insider-trading-activity-18d7ac9c038a.html",
+            "title": "[Form 4] LOCKHEED MARTIN CORP Insider Trading Activity",
+            "retrievedAt": "2026-07-10T14:38:52.468Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://journalistsresource.org/economics/insider-trading-sec-form-4/",
+            "title": "Insider trading reports: How to read an SEC Form 4 filing",
+            "retrievedAt": "2026-07-10T14:38:52.468Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://investors.lockheedmartin.com/static-files/b5548c6b-71f9-4b58-b171-20accb1e8713",
+            "title": "[PDF] Form 10-K for Lockheed Martin Corp filed 01/28/2025",
+            "retrievedAt": "2026-07-10T14:38:52.468Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://www.investopedia.com/terms/f/form4.asp",
+            "title": "SEC Form 4 Explained: Changes in Insider Beneficial Ownership",
+            "retrievedAt": "2026-07-10T14:38:52.468Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          }
+        ],
+        "federalSpending": [],
+        "insiderActivity": [
+          {
+            "filerName": "David B. Burritt",
+            "relationship": "director",
+            "transactionType": "Other"
+          }
+        ],
+        "risks": [
+          "The U.S. Department of War's award of a 500 kW Joint Laser Weapon System contract to Lockheed Martin may be impacted by changes in the U.S. Department of War's budget or priorities.",
+          "Lockheed Martin faces competition from The Boeing Company, BAE Systems Plc., Raytheon Technologies Corporation, General Dynamics Corporation, and Northrop Grumman Corp in the aerospace and defense industry.",
+          "Lockheed Martin's financial performance is subject to fluctuations in the global security and aerospace markets, as evidenced by the company's reported first quarter 2026 financial results."
+        ],
+        "opportunities": [
+          "Lockheed Martin has been awarded $3 billion to produce GMLRS Rockets, which presents an opportunity for the company to increase its revenue and expand its presence in the defense market.",
+          "The development of a new hypersonic glide body by Lockheed Martin represents an opportunity for the company to provide advanced defense solutions to its customers and stay ahead of its competitors.",
+          "Lockheed Martin's award of $1B in military contracts provides an opportunity for the company to increase its revenue and expand its presence in the defense market."
+        ]
+      }
+    },
+    {
+      "id": "60425b52-ff11-4a64-ae92-3be6ec4eb02c",
+      "type": "company",
+      "subject": "Lockheed Martin",
+      "generatedAt": "2026-07-10T14:41:46.360Z",
+      "reportPath": "C:\\Users\\PC\\Downloads\\seline-intel\\reports\\lockheed-martin.md",
+      "bundle": {
+        "query": "Lockheed Martin",
+        "generatedAt": "2026-07-10T14:41:46.360Z",
+        "company": {
+          "name": "Lockheed Martin",
+          "website": "https://www.lockheedmartin.com",
+          "description": "Lockheed Martin manufactures security and aerospace products, serving customers in the defense and aerospace sectors.",
+          "headquarters": "North Bethesda, Maryland",
+          "industry": "Aerospace and Defense"
+        },
+        "leadership": [
+          {
+            "name": "Jim Taiclet",
+            "title": "Chairman, President & CEO"
+          },
+          {
+            "name": "Frank St. John",
+            "title": ""
+          },
+          {
+            "name": "Evan Scott",
+            "title": ""
+          },
+          {
+            "name": "Tim Cahill",
+            "title": ""
+          },
+          {
+            "name": "Maria Demaree",
+            "title": ""
+          },
+          {
+            "name": "Anthony DeSimone",
+            "title": "Dr"
+          },
+          {
+            "name": "Robert Head",
+            "title": ""
+          },
+          {
+            "name": "Stephanie C. Hill",
+            "title": ""
+          }
+        ],
+        "products": [
+          {
+            "name": "UGM-133 Trident II ballistic missile"
+          },
+          {
+            "name": "Orion spacecraft"
+          },
+          {
+            "name": "Next-Generation Overhead Persistent Infrared"
+          },
+          {
+            "name": "GPS Block III"
+          },
+          {
+            "name": "hypersonic weapons"
+          },
+          {
+            "name": "Precision Strike Missile (PrSM)"
+          },
+          {
+            "name": "GMLRS Rockets"
+          },
+          {
+            "name": "LampreyMMAUV"
+          },
+          {
+            "name": "X-59"
+          },
+          {
+            "name": "Aegis Combat System"
+          }
+        ],
+        "news": [
+          {
+            "headline": "News Releases - Lockheed Martin",
+            "summary": "Media - Lockheed Martin - Releases Lockheed Martin Corporation Releases Newsroom News Releases Releases In this section of the Lockheed Martin Newsroom, you'll find our news releases. The releases are listed in chronological order and are archived by year. Month Year Su Mo Tu We Th Fr Sa Month Year Su Mo Tu We Th Fr Sa Get News Alerts by Email Jul 9, 2026 Lockheed Martin Awarded 500 kW Joint Laser Weapon System Contract The U.S. Department of War awarded Lockheed Martin a contract to advance the  United States’ next generation cruise missile and unmanned aerial system defense architecture. Und",
+            "url": "https://news.lockheedmartin.com/news-releases"
+          },
+          {
+            "headline": "Lockheed Martin Reports First Quarter 2026 Financial Results",
+            "summary": "Lockheed Martin Reports First Quarter 2026 Financial Results · (in millions, except per share data). 2026 Outlook · Sales. $77,500 - $80,000 · Business segment ...",
+            "url": "https://investors.lockheedmartin.com/news-releases/news-release-details/lockheed-martin-reports-first-quarter-2026-financial-results/"
+          },
+          {
+            "headline": "Lockheed Martin News and Events",
+            "summary": "Lockheed Martin Announces Second Quarter 2026 Earnings Results Webcast. READ MORE · Lockheed Martin Awarded $3 Billion to Produce GMLRS Rockets. Mon Jun 29 2026.",
+            "url": "https://www.lockheedmartin.com/en-us/news.html"
+          },
+          {
+            "headline": "Lockheed Martin awarded $1B in military contracts as Iran war leads ...",
+            "summary": "The contract details available funding immediately obligated to Lockheed Martin, including money from the 2024, 2025 and 2026 fiscal years.",
+            "url": "https://fortworthreport.org/2026/05/31/lockheed-martin-awarded-1b-in-military-contracts-as-iran-war-leads-to-buildup/"
+          },
+          {
+            "headline": "Lockheed Martin and Department of War Advance Landmark ...",
+            "summary": "Lockheed Martin will continue to work with the U.S. government toward an initial contract award, expected in final fiscal year 2026 ...",
+            "url": "https://news.lockheedmartin.com/2026-01-06-Lockheed-Martin-and-Department-of-War-Advance-Landmark-Acquisition-Transformation-to-Accelerate-PAC-3-R-MSE-Production"
+          }
+        ],
+        "funding": [
+          {
+            "round": "Seed",
+            "amount": "$1B"
+          }
+        ],
+        "competitors": [
+          {
+            "name": "The Boeing Company"
+          },
+          {
+            "name": "BAE Systems Plc."
+          },
+          {
+            "name": "Raytheon Technologies Corporation"
+          },
+          {
+            "name": "General Dynamics Corporation"
+          },
+          {
+            "name": "Northrop Grumman Corp"
+          }
+        ],
+        "sources": [
+          {
+            "url": "https://www.lockheedmartin.com",
+            "title": "Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are/leadership-governance.html",
+            "title": "Leadership and Corporate Governance",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://en.wikipedia.org/wiki/James_Taiclet",
+            "title": "James Taiclet",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are/leadership-governance/james-taiclet.html",
+            "title": "Jim Taiclet",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.linkedin.com/in/james-taiclet",
+            "title": "Jim Taiclet - Chairman, President & CEO at Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.comparably.com/companies/lockheed-martin/executive-team",
+            "title": "Lockheed Martin Executive Team",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "leadership"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/products.html",
+            "title": "Lockheed Martin Products",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://en.wikipedia.org/wiki/Lockheed_Martin",
+            "title": "Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/index.html",
+            "title": "Lockheed Martin: Leading Aerospace and Defense",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are.html",
+            "title": "About Us",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.britannica.com/money/Lockheed-Martin-Corporation",
+            "title": "Lockheed Martin Corporation | Aerospace & Defense Giant",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "products"
+            ]
+          },
+          {
+            "url": "https://www.globaldata.com/company-profile/lockheed-martin-corp/",
+            "title": "Lockheed Martin Corp Company Profile - Overview - GlobalData",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://en.wikipedia.org/wiki/Lockheed_Martin",
+            "title": "Lockheed Martin - Wikipedia",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/capabilities.html",
+            "title": "What We Do | Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:41:27.558Z",
+            "usedFor": [
+              "overview"
+            ]
+          },
+          {
+            "url": "https://news.lockheedmartin.com/news-releases",
+            "title": "News Releases - Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:41:33.378Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://investors.lockheedmartin.com/news-releases/news-release-details/lockheed-martin-reports-first-quarter-2026-financial-results/",
+            "title": "Lockheed Martin Reports First Quarter 2026 Financial Results",
+            "retrievedAt": "2026-07-10T14:41:33.378Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/news.html",
+            "title": "Lockheed Martin News and Events",
+            "retrievedAt": "2026-07-10T14:41:33.378Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://fortworthreport.org/2026/05/31/lockheed-martin-awarded-1b-in-military-contracts-as-iran-war-leads-to-buildup/",
+            "title": "Lockheed Martin awarded $1B in military contracts as Iran war leads ...",
+            "retrievedAt": "2026-07-10T14:41:33.378Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://news.lockheedmartin.com/2026-01-06-Lockheed-Martin-and-Department-of-War-Advance-Landmark-Acquisition-Transformation-to-Accelerate-PAC-3-R-MSE-Production",
+            "title": "Lockheed Martin and Department of War Advance Landmark ...",
+            "retrievedAt": "2026-07-10T14:41:33.378Z",
+            "usedFor": [
+              "news"
+            ]
+          },
+          {
+            "url": "https://www.investopedia.com/articles/stock-analysis/081916/lockheed-martins-top-competitors-lmt.asp",
+            "title": "Lockheed Martin's Top Competitors (LMT) - Investopedia",
+            "retrievedAt": "2026-07-10T14:41:27.546Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.globaldata.com/company-profile/lockheed-martin-corp/competitors/",
+            "title": "Lockheed Martin Corp Peers & Key Competitors - GlobalData",
+            "retrievedAt": "2026-07-10T14:41:27.546Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.marketing91.com/lockheed-martin-competitors/",
+            "title": "Top 29 Lockheed Martin Competitors & Alternatives in 2026",
+            "retrievedAt": "2026-07-10T14:41:27.546Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.reddit.com/r/AerospaceEngineering/comments/179nsj0/which_would_you_rather_work_for_raytheon_boeing/",
+            "title": "Which would you rather work for Raytheon, Boeing, or Lockheed ...",
+            "retrievedAt": "2026-07-10T14:41:27.546Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://craft.co/lockheed-martin/competitors",
+            "title": "Top Lockheed Martin Competitors and Alternatives | Craft.co",
+            "retrievedAt": "2026-07-10T14:41:27.546Z",
+            "usedFor": [
+              "competitors"
+            ]
+          },
+          {
+            "url": "https://www.lockheedmartin.com/en-us/who-we-are/lockheed-martin-ventures/news.html",
+            "title": "News | Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:41:28.361Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://globalventuring.com/corporate/industrial/defence-company-lockheed-martin-bumps-up-vc-investment-fund-to-1bn/",
+            "title": "Defence company Lockheed Martin bumps up VC investment fund ...",
+            "retrievedAt": "2026-07-10T14:41:28.361Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://tracxn.com/d/companies/lockheed-martin/__2sqoAf25-k-5YLh9-Wqp-AIJqLtItSTlEbR5dObKRLs",
+            "title": "Lockheed Martin - 2026 Company Profile & Team - Tracxn",
+            "retrievedAt": "2026-07-10T14:41:28.361Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://www.linkedin.com/posts/christilloyd_for-nearly-20-years-lockheed-martin-has-activity-7457858038343917568-KKxf",
+            "title": "Lockheed Martin Ventures Fund Reaches $1B Capacity - LinkedIn",
+            "retrievedAt": "2026-07-10T14:41:28.361Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://www.crunchbase.com/organization/lockheed-martin",
+            "title": "Lockheed Martin - Crunchbase Company Profile & Funding",
+            "retrievedAt": "2026-07-10T14:41:28.361Z",
+            "usedFor": [
+              "funding"
+            ]
+          },
+          {
+            "url": "https://www.sec.gov/Archives/edgar/data/936468/000093646825000009/ex19q42024.htm",
+            "title": "Document",
+            "retrievedAt": "2026-07-10T14:41:27.620Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://www.secform4.com/insider-trading/936468.htm",
+            "title": "LOCKHEED MARTIN CORP (LMT) - Insider Trades",
+            "retrievedAt": "2026-07-10T14:41:27.620Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://www.stocktitan.net/sec-filings/LMT/form-4-lockheed-martin-corp-insider-trading-activity-18d7ac9c038a.html",
+            "title": "[Form 4] LOCKHEED MARTIN CORP Insider Trading Activity",
+            "retrievedAt": "2026-07-10T14:41:27.620Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://journalistsresource.org/economics/insider-trading-sec-form-4/",
+            "title": "Insider trading reports: How to read an SEC Form 4 filing",
+            "retrievedAt": "2026-07-10T14:41:27.620Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://investors.lockheedmartin.com/static-files/b5548c6b-71f9-4b58-b171-20accb1e8713",
+            "title": "Form 10-K for Lockheed Martin Corp filed 01/28/2025",
+            "retrievedAt": "2026-07-10T14:41:27.620Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://www.investopedia.com/terms/f/form4.asp",
+            "title": "SEC Form 4 - Changes in Insider Beneficial Ownership",
+            "retrievedAt": "2026-07-10T14:41:27.620Z",
+            "usedFor": [
+              "insider-activity"
+            ]
+          },
+          {
+            "url": "https://www.usaspending.gov/search/?hash=&recipient_search_text=Lockheed%20Martin",
+            "title": "USASpending.gov — Lockheed Martin",
+            "retrievedAt": "2026-07-10T14:41:46.360Z",
+            "usedFor": [
+              "federal-spending"
+            ]
+          }
+        ],
+        "federalSpending": [
+          {
+            "awardId": "DEAC0494AL85000",
+            "awardingAgency": "Department of Energy",
+            "amount": "$48,063,737,196.35",
+            "date": "1993-10-15"
+          },
+          {
+            "awardId": "N0001917C0001",
+            "awardingAgency": "Department of Defense",
+            "amount": "$35,135,514,910.2",
+            "date": "2017-11-17",
+            "description": "LRIP LOT 12 ADVANCE ACQUISITION CONTRACT"
+          },
+          {
+            "awardId": "N0001902C3002",
+            "awardingAgency": "Department of Defense",
+            "amount": "$34,173,959,111.96",
+            "date": "2001-10-26",
+            "description": "200204!008532!1700!AF600 !NAVAL AIR SYSTEMS COMMAND       !N0001902C3002  !A!N! !N!                   !20011026!20120430!008016958!008016958!834951691!N!LOCKHEED MARTIN CORPORATION   !LOCKHEED BLVD             !FORT WORTH          !TX!76108!27000!439!48!FORT WORTH          !TARRANT               !TEXAS     !+000026000000!N!N!018981928201!AC15!RDTE/AIRCRAFT-ENG/MANUF DEVELOP                   !A1A!AIRFRAMES AND SPARES          !2AMA!JAST/JSF                      !336411!E! !3! ! ! ! ! !99990909!B! ! !A! !A!N!R!2!002!N!1A!A!N!Z!  !  !N!C!N! ! ! !A!A!A!A!000!A!C!N! ! ! !Y!    !N00019!0001!"
+          },
+          {
+            "awardId": "N0001920C0009",
+            "awardingAgency": "Department of Defense",
+            "amount": "$30,140,182,630.06",
+            "date": "2019-11-26",
+            "description": "THE PURPOSE OF THIS MODIFICATION IS TO AWARD F-35A LRIP 15 USAF  AIRCRAFT* LONG LEAD FUNDING"
+          },
+          {
+            "awardId": "N0001923C0003",
+            "awardingAgency": "Department of Defense",
+            "amount": "$24,500,661,983",
+            "date": "2022-12-23",
+            "description": "THE PURPOSE OF THIS CONTRACT IS TO AWARD LONG LEAD FUNDING FOR F-35A, F-35B, AND F-35C AIRCRAFT FOR U.S. SERVICES, NON-DOD PARTNERS, AND FMS CUSTOMERS"
+          },
+          {
+            "awardId": "DEAC0584OR21400",
+            "awardingAgency": "Department of Energy",
+            "amount": "$20,646,113,720.09",
+            "date": "1984-04-30",
+            "description": "MANAGEMENT AND OPERATION OF Y-12 PLANT AND OTHER PROGRAMS"
+          },
+          {
+            "awardId": "NNJ06TA25C",
+            "awardingAgency": "National Aeronautics and Space Administration",
+            "amount": "$15,555,973,334.93",
+            "date": "2006-09-06",
+            "description": "TAS::80 0124::TAS DESIGN, DEVELOPMENT, TEST&EVALUATION OF PROJECT ORION"
+          },
+          {
+            "awardId": "N0001916C0033",
+            "awardingAgency": "Department of Defense",
+            "amount": "$12,269,145,508.23",
+            "date": "2015-12-21",
+            "description": "LRIP 11 AAC"
+          },
+          {
+            "awardId": "N0001915C0003",
+            "awardingAgency": "Department of Defense",
+            "amount": "$10,550,927,664.07",
+            "date": "2015-05-26",
+            "description": "LRIP 10 AAC"
+          },
+          {
+            "awardId": "W31P4Q20C0023",
+            "awardingAgency": "Department of Defense",
+            "amount": "$10,478,694,385.9",
+            "date": "2020-04-30",
+            "description": "THE CONTRACT AWARD IS FOR THE FY21/FY22/FY23 BASE AND OPTION PRICING FOR PHASE ARRAY TRACKING RADAR TO INTERCEPT ON TARGET (PATRIOT) ADVANCED CAPABILITY-3 (PAC-3) PRODUCTION REQUIREMENTS FOR THE UNITED STATES (US) AND FOREIGN MILITARY SALES (FMS)"
+          }
+        ],
+        "insiderActivity": [
+          {
+            "filerName": "David B. Burritt",
+            "relationship": "director",
+            "transactionType": "Other"
+          }
+        ],
+        "risks": [
+          "Lockheed Martin faces competition from The Boeing Company, BAE Systems Plc., Raytheon Technologies Corporation, General Dynamics Corporation, and Northrop Grumman Corp in the aerospace and defense industry.",
+          "The U.S. Department of War's contract awards to Lockheed Martin, such as the 500 kW Joint Laser Weapon System Contract, may be impacted by changes in government funding and priorities."
+        ],
+        "opportunities": [
+          "Lockheed Martin has been awarded $1B in military contracts, including money from the 2024, 2025, and 2026 fiscal years, providing a significant source of funding for the company.",
+          "The company's work with the U.S. government on landmark acquisition transformation, such as the PAC-3 R-MSE production, presents an opportunity for Lockheed Martin to accelerate its production and delivery of defense systems."
+        ]
+      }
     }
   ],
   "watchlist": [

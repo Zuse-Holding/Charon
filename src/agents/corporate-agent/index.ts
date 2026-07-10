@@ -6,6 +6,7 @@ import {
 import { FetchProvider, SearchProvider } from "../../lib/providers.js";
 import { splitSentences } from "../../lib/nlp.js";
 import { FundingExtractionSchema, extractStructured } from "../../lib/llm.js";
+import { Form4Agent } from "../form4-agent/index.js";
 
 const AMOUNT_RE = /\$\s?\d+(?:[.,]\d+)?\s?(?:million|billion|M|B|K)\b/i;
 const ROUND_RE = /\b(Pre-[Ss]eed|[Ss]eed|Series [A-F])\b/;
@@ -22,16 +23,22 @@ const FUNDING_CONTEXT_RE = /\b(raised|raises|funding round|secured|closed a|inve
  * available or the call fails. See lib/llm.ts for the fallback policy.
  */
 export class CorporateAgent {
+  private form4Agent: Form4Agent;
+
   constructor(
     private fetcher: FetchProvider,
     private searcher: SearchProvider
-  ) {}
+  ) {
+    this.form4Agent = new Form4Agent(searcher);
+  }
 
   async run(companyName: string): Promise<CorporateAgentResult> {
-    const results = await this.searcher.search(
-      `${companyName} funding round investors raised`,
-      5
-    );
+    const [results, form4Result] = await Promise.all([
+      this.searcher.search(`${companyName} funding round investors raised`, 5),
+      // Insider activity (Round 2, item 5) — same "who owns/controls this
+      // company" question funding/ownership already answers here.
+      this.form4Agent.run(companyName),
+    ]);
 
     const sources: Source[] = results.map((r) => ({
       url: r.url,
@@ -99,6 +106,11 @@ export class CorporateAgent {
       ownership = ownershipSignal?.snippet;
     }
 
-    return { funding, ownership, sources };
+    return {
+      funding,
+      ownership,
+      insiderActivity: form4Result.filings,
+      sources: [...sources, ...form4Result.sources],
+    };
   }
 }

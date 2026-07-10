@@ -1,14 +1,19 @@
 "use client";
 import { useEffect, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
+import { useTier } from "../../lib/tier-context";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import styles from "./page.module.css";
 
 export default function Settings() {
+  const { displayName, updateDisplayName } = useTier();
   const [email, setEmail]           = useState<string>("");
   const [resetSent, setResetSent]   = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [nameInput, setNameInput]   = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameSaved, setNameSaved]   = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -16,6 +21,23 @@ export default function Settings() {
       if (data.user?.email) setEmail(data.user.email);
     });
   }, []);
+
+  // Seed the input once the context has resolved the current name —
+  // guarded so it doesn't stomp on what the user is actively typing.
+  useEffect(() => {
+    if (displayName && !nameInput) setNameInput(displayName);
+  }, [displayName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSaveName() {
+    setNameSaving(true);
+    setNameSaved(false);
+    const ok = await updateDisplayName(nameInput.trim());
+    setNameSaving(false);
+    if (ok) {
+      setNameSaved(true);
+      setTimeout(() => setNameSaved(false), 2500);
+    }
+  }
 
   async function handlePasswordReset() {
     if (!email) return;
@@ -57,6 +79,29 @@ export default function Settings() {
           <p className={styles.sub}>
             System configuration and account information for your Charon workspace.
           </p>
+
+          <div className={styles.group}>
+            <div className={styles.groupLabel}>PROFILE</div>
+            <div className={styles.row}>
+              <span className={styles.rowLabel}>Display Name</span>
+              <input
+                className={styles.nameInput}
+                type="text"
+                placeholder={email ? email.split("@")[0] : "Your name"}
+                value={nameInput}
+                maxLength={60}
+                onChange={(e) => { setNameInput(e.target.value); setNameSaved(false); }}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
+              />
+              <button
+                className={styles.resetBtn}
+                onClick={handleSaveName}
+                disabled={nameSaving}
+              >
+                {nameSaved ? "✓ Saved" : nameSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
 
           {SYSTEM_INFO.map((group) => (
             <div key={group.section} className={styles.group}>

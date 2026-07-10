@@ -3,6 +3,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PersonResearchBundle,
+  PoliticalResearchBundle,
   ProductResearchBundle,
   ResearchBundle,
   WatchlistEntry,
@@ -29,7 +30,7 @@ const DB_PATH = join(DB_DIR, "store.json");
  * products, reports, watchlist) for when cloud sync is needed later.
  */
 
-export type RunType = "company" | "person" | "product";
+export type RunType = "company" | "person" | "product" | "political";
 
 export interface ResearchRunRecord {
   id: string;
@@ -37,7 +38,7 @@ export interface ResearchRunRecord {
   subject: string;
   generatedAt: string;
   reportPath: string;
-  bundle: ResearchBundle | PersonResearchBundle | ProductResearchBundle;
+  bundle: ResearchBundle | PersonResearchBundle | ProductResearchBundle | PoliticalResearchBundle;
 }
 
 interface StoreShape {

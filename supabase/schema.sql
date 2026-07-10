@@ -124,3 +124,22 @@ CREATE INDEX IF NOT EXISTS idx_watchlist_user
 
 CREATE INDEX IF NOT EXISTS idx_deep_dives_user_company
   ON deep_dives (user_id, company);
+
+-- ============================================================
+-- Display name (Round 2, item 8)
+-- `profiles` already exists (tier, trial_expires_at live there —
+-- see server/agent-server.ts getUserTier) but its CREATE TABLE isn't
+-- captured in this file, so this is an ALTER rather than a fresh table.
+-- Nullable: the app falls back to an email-derived name when empty
+-- (see web/lib/tier-context.tsx deriveDisplayName).
+-- ============================================================
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS display_name TEXT;
+
+-- Reads/writes for this column go through the agent server's service-role
+-- key (server/agent-server.ts /tier and /profile routes), not a direct
+-- browser Supabase call, so no client-facing RLS policy is required for
+-- display_name specifically. If profiles RLS is ever tightened to block
+-- the service role too, add:
+--   CREATE POLICY "Users manage own profile" ON profiles FOR UPDATE
+--     USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
