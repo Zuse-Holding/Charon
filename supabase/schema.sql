@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS research_runs (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  type         TEXT        NOT NULL CHECK (type IN ('company', 'person', 'product')),
+  type         TEXT        NOT NULL CHECK (type IN ('company', 'person', 'product', 'political')),
   subject      TEXT        NOT NULL,
   generated_at TIMESTAMPTZ NOT NULL,
   report_path  TEXT,
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS research_runs (
 CREATE TABLE IF NOT EXISTS watchlist (
   id                   TEXT        PRIMARY KEY,
   user_id              UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  type                 TEXT        NOT NULL CHECK (type IN ('company', 'person', 'product')),
+  type                 TEXT        NOT NULL CHECK (type IN ('company', 'person', 'product', 'political')),
   subject              TEXT        NOT NULL,
   added_at             TIMESTAMPTZ NOT NULL,
   last_refreshed_at    TIMESTAMPTZ,
@@ -143,3 +143,22 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS display_name TEXT;
 -- the service role too, add:
 --   CREATE POLICY "Users manage own profile" ON profiles FOR UPDATE
 --     USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+
+-- ============================================================
+-- Political research type (Round 2, item 1)
+-- research_runs.type and watchlist.type were created with a CHECK
+-- constraint of ('company','person','product') before political
+-- research existed, which silently 500'd every political run at the
+-- DB insert step (app-level validation passed, Postgres rejected the
+-- row). The CREATE TABLE statements above are already updated for
+-- fresh databases; run this block against an existing database to
+-- widen the constraint on tables that already exist.
+-- ============================================================
+
+ALTER TABLE research_runs DROP CONSTRAINT IF EXISTS research_runs_type_check;
+ALTER TABLE research_runs ADD CONSTRAINT research_runs_type_check
+  CHECK (type IN ('company', 'person', 'product', 'political'));
+
+ALTER TABLE watchlist DROP CONSTRAINT IF EXISTS watchlist_type_check;
+ALTER TABLE watchlist ADD CONSTRAINT watchlist_type_check
+  CHECK (type IN ('company', 'person', 'product', 'political'));
