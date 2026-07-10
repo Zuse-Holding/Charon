@@ -213,6 +213,34 @@ export class ReportAgent {
     }
     lines.push(``);
 
+    // Jackal Person Research (Round 3) — only present on deep/internal-tier
+    // runs, so this section is omitted entirely rather than shown empty
+    // for everyone else.
+    if (bundle.corporateAffiliations && bundle.corporateAffiliations.length > 0) {
+      lines.push(`## Corporate Affiliations`);
+      for (const a of bundle.corporateAffiliations) {
+        const meta = [a.jurisdiction, a.startDate ? `since ${a.startDate}` : null, a.endDate ? `until ${a.endDate}` : null]
+          .filter(Boolean)
+          .join(", ");
+        lines.push(
+          `- ${a.companyUrl ? `[**${a.companyName}**](${a.companyUrl})` : `**${a.companyName}**`}${
+            a.position ? ` — ${a.position}` : ""
+          }${meta ? ` _(${meta})_` : ""}`
+        );
+      }
+      lines.push(``);
+    }
+
+    if (bundle.foiaRequests && bundle.foiaRequests.length > 0) {
+      lines.push(`## FOIA Requests`);
+      for (const f of bundle.foiaRequests) {
+        lines.push(
+          `- [${f.title}](${f.url})${f.status ? ` — ${f.status}` : ""}${f.agency ? ` (${f.agency})` : ""}`
+        );
+      }
+      lines.push(``);
+    }
+
     lines.push(`## Recent News`);
     if (bundle.news.length === 0) {
       lines.push(`_No recent news found._`);
@@ -391,6 +419,53 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+
+    // Real FEC data (federal candidates only) — separate from the
+    // search-synthesized Campaign Finance section above since this is
+    // sourced directly from api.open.fec.gov, not LLM extraction.
+    if (bundle.fecSummary || (bundle.fecDonorBreakdown && bundle.fecDonorBreakdown.length > 0)) {
+      lines.push(`## Federal Campaign Finance (FEC)`);
+      if (bundle.fecSummary) {
+        const s = bundle.fecSummary;
+        lines.push(`- **Cycle:** ${s.cycle ?? "Unknown"}`);
+        lines.push(`- **Total Raised:** ${s.totalReceipts ?? "Unknown"}`);
+        lines.push(`- **Total Spent:** ${s.totalDisbursements ?? "Unknown"}`);
+        lines.push(`- **Cash on Hand:** ${s.cashOnHand ?? "Unknown"}`);
+      }
+      if (bundle.fecDonorBreakdown && bundle.fecDonorBreakdown.length > 0) {
+        lines.push(``);
+        lines.push(`**Top Donor Employers:**`);
+        for (const d of bundle.fecDonorBreakdown) {
+          lines.push(`- ${d.employer} — ${d.total}`);
+        }
+      }
+      lines.push(``);
+    }
+
+    if (bundle.sponsoredLegislation && bundle.sponsoredLegislation.length > 0) {
+      lines.push(`## Sponsored Legislation`);
+      for (const b of bundle.sponsoredLegislation) {
+        const meta = [b.congress ? `${b.congress}th Congress` : null, b.introducedDate ? `introduced ${b.introducedDate}` : null]
+          .filter(Boolean)
+          .join(", ");
+        lines.push(
+          `- ${b.url ? `[**${b.billId}**](${b.url})` : `**${b.billId}**`} — ${b.title}${meta ? ` _(${meta})_` : ""}${
+            b.latestAction ? `\n  Latest action: ${b.latestAction}${b.latestActionDate ? ` (${b.latestActionDate})` : ""}` : ""
+          }`
+        );
+      }
+      lines.push(``);
+    }
+
+    if (bundle.foiaRequests && bundle.foiaRequests.length > 0) {
+      lines.push(`## FOIA Requests`);
+      for (const f of bundle.foiaRequests) {
+        lines.push(
+          `- [${f.title}](${f.url})${f.status ? ` — ${f.status}` : ""}${f.agency ? ` (${f.agency})` : ""}`
+        );
+      }
+      lines.push(``);
+    }
 
     lines.push(`## Opposition Research`);
     if (bundle.oppositionResearch.length === 0) {

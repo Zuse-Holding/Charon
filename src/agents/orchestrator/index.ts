@@ -5,6 +5,11 @@ import { CorporateAgent } from "../corporate-agent/index.js";
 import { PeopleAgent } from "../people-agent/index.js";
 import { ProductAgent } from "../product-agent/index.js";
 import { PoliticalAgent } from "../political-agent/index.js";
+import { CongressAgent } from "../congress-agent/index.js";
+import { LegiScanAgent } from "../legiscan-agent/index.js";
+import { OpenFecAgent } from "../openfec-agent/index.js";
+import { OpenCorporatesAgent } from "../opencorporates-agent/index.js";
+import { MuckRockAgent } from "../muckrock-agent/index.js";
 import { USASpendingAgent } from "../usaspending-agent/index.js";
 import { synthesizeRisksOpportunities } from "../synthesis-agent/index.js";
 import { ReportAgent } from "../report-agent/index.js";
@@ -40,6 +45,11 @@ export class ResearchOrchestrator {
   private peopleAgent: PeopleAgent;
   private productAgent: ProductAgent;
   private politicalAgent: PoliticalAgent;
+  private congressAgent: CongressAgent;
+  private legiScanAgent: LegiScanAgent;
+  private openFecAgent: OpenFecAgent;
+  private openCorporatesAgent: OpenCorporatesAgent;
+  private muckRockAgent: MuckRockAgent;
   private usaSpendingAgent: USASpendingAgent;
   private reportAgent: ReportAgent;
 
@@ -53,6 +63,11 @@ export class ResearchOrchestrator {
     this.peopleAgent = new PeopleAgent(fetcher, searcher);
     this.productAgent = new ProductAgent(fetcher, searcher);
     this.politicalAgent = new PoliticalAgent(fetcher, searcher);
+    this.congressAgent = new CongressAgent(searcher);
+    this.legiScanAgent = new LegiScanAgent();
+    this.openFecAgent = new OpenFecAgent();
+    this.openCorporatesAgent = new OpenCorporatesAgent();
+    this.muckRockAgent = new MuckRockAgent();
     this.usaSpendingAgent = new USASpendingAgent();
     this.reportAgent = new ReportAgent();
   }
@@ -110,13 +125,22 @@ export class ResearchOrchestrator {
 
   /**
    * @param deep Jackal Protocol (internal tier only, no daily/monthly
-   *   limits — see server/agent-server.ts). Deeper sourcing, same shape.
+   *   limits — see server/agent-server.ts). Deeper sourcing, same shape,
+   *   plus Jackal Person Research (Round 3): OpenCorporates
+   *   officer/directorship records across every jurisdiction it indexes.
+   *   Skipped entirely on non-Jackal runs — this is a broad "search
+   *   everywhere for this exact name" lookup that fits Jackal's
+   *   no-limits role, not a default-tier feature.
    */
   async researchPerson(personName: string, deep = false): Promise<{
     bundle: PersonResearchBundle;
     report: string;
   }> {
-    const result = await this.peopleAgent.run(personName, deep);
+    const [result, corporateResult, foiaResult] = await Promise.all([
+      this.peopleAgent.run(personName, deep),
+      deep ? this.openCorporatesAgent.run(personName) : Promise.resolve({ affiliations: [], sources: [] }),
+      deep ? this.muckRockAgent.run(personName) : Promise.resolve({ requests: [], sources: [] }),
+    ]);
 
     const bundle: PersonResearchBundle = {
       query: personName,
@@ -124,7 +148,9 @@ export class ResearchOrchestrator {
       person: result.person,
       careerHistory: result.careerHistory,
       news: result.news,
-      sources: result.sources,
+      sources: [...result.sources, ...corporateResult.sources, ...foiaResult.sources],
+      corporateAffiliations: corporateResult.affiliations.length > 0 ? corporateResult.affiliations : undefined,
+      foiaRequests: foiaResult.requests.length > 0 ? foiaResult.requests : undefined,
     };
 
     const report = this.reportAgent.generatePerson(bundle);
@@ -146,24 +172,57 @@ export class ResearchOrchestrator {
    * makeup, approval ratings, voting record, campaign finance.
    * @param deep Jackal Protocol (internal tier only) — deeper sourcing,
    *   including full-page reads for the top opposition-research sources.
+   *
+   * Round 2 v2: runs the search-synthesis political-agent alongside
+   * three real API integrations (Congress.gov, LegiScan, OpenFEC).
+   * Authoritative API data overrides the LLM-guessed profile fields
+   * (office/party/state/district) where available; LegiScan needs a
+   * state to resolve a legislative session, so it runs after
+   * congress-agent/political-agent have had a chance to supply one.
    */
   async researchPolitical(name: string, deep = false): Promise<{
     bundle: PoliticalResearchBundle;
     report: string;
   }> {
-    const result = await this.politicalAgent.run(name, deep);
+    const [searchResult, congressResult, fecResult, foiaResult] = await Promise.all([
+      this.politicalAgent.run(name, deep),
+      this.congressAgent.run(name),
+      this.openFecAgent.run(name),
+      deep ? this.muckRockAgent.run(name) : Promise.resolve({ requests: [], sources: [] }),
+    ]);
+
+    const state = congressResult.state ?? searchResult.profile.state;
+    const legiscanResult = await this.legiScanAgent.run(name, state);
+
+    const sources: Source[] = [
+      ...searchResult.sources,
+      ...congressResult.sources,
+      ...fecResult.sources,
+      ...legiscanResult.sources,
+      ...foiaResult.sources,
+    ];
 
     const bundle: PoliticalResearchBundle = {
       query: name,
       generatedAt: new Date().toISOString(),
-      profile: result.profile,
-      districtMakeup: result.districtMakeup,
-      approvalRating: result.approvalRating,
-      votingRecord: result.votingRecord,
-      campaignFinance: result.campaignFinance,
-      oppositionResearch: result.oppositionResearch,
-      news: result.news,
-      sources: result.sources,
+      profile: {
+        ...searchResult.profile,
+        office: congressResult.office ?? searchResult.profile.office,
+        party: congressResult.party ?? legiscanResult.party ?? searchResult.profile.party,
+        state: state ?? searchResult.profile.state,
+        district: congressResult.district ?? legiscanResult.district ?? searchResult.profile.district,
+      },
+      districtMakeup: searchResult.districtMakeup,
+      approvalRating: searchResult.approvalRating,
+      votingRecord: searchResult.votingRecord,
+      campaignFinance: searchResult.campaignFinance,
+      oppositionResearch: searchResult.oppositionResearch,
+      news: searchResult.news,
+      sources,
+      sponsoredLegislation: [...congressResult.sponsoredLegislation, ...legiscanResult.sponsoredLegislation],
+      fecSummary: fecResult.summary,
+      fecDonorBreakdown: fecResult.donorBreakdown,
+      foiaRequests: foiaResult.requests.length > 0 ? foiaResult.requests : undefined,
     };
 
     const report = this.reportAgent.generatePolitical(bundle);
