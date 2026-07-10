@@ -1,4 +1,4 @@
-import { PersonResearchBundle, ProductResearchBundle, ResearchBundle } from "../../types/research.js";
+import { PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle } from "../../types/research.js";
 
 /**
  * Report Agent
@@ -74,6 +74,32 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+
+    if (bundle.federalSpending && bundle.federalSpending.length > 0) {
+      lines.push(`## Federal Spending`);
+      for (const f of bundle.federalSpending) {
+        lines.push(
+          `- **${f.amount ?? "Undisclosed"}**${f.awardType ? ` (${f.awardType})` : ""} — ${
+            f.awardingAgency ?? "Unknown agency"
+          }${f.date ? ` (${f.date})` : ""}${f.description ? `: ${f.description}` : ""}`
+        );
+      }
+      lines.push(``);
+    }
+
+    if (bundle.insiderActivity && bundle.insiderActivity.length > 0) {
+      lines.push(`## Insider Activity`);
+      for (const f of bundle.insiderActivity) {
+        lines.push(
+          `- **${f.filerName}**${f.relationship ? ` (${f.relationship})` : ""} — ${
+            f.transactionType ?? "Filing"
+          }${f.shares ? ` · ${f.shares} shares` : ""}${f.value ? ` · ${f.value}` : ""}${
+            f.date ? ` (${f.date})` : ""
+          }`
+        );
+      }
+      lines.push(``);
+    }
 
     lines.push(`## Recent News`);
     if (bundle.news.length === 0) {
@@ -288,6 +314,113 @@ export class ReportAgent {
     bundle.sources.forEach((s, i) => {
       lines.push(`${i + 1}. [${s.title ?? s.url}](${s.url})`);
     });
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Political research report (Round 2, item 1). Nonpartisan framing
+   * throughout — this compiles what's publicly reported, it doesn't
+   * take a position.
+   */
+  generatePolitical(bundle: PoliticalResearchBundle): string {
+    const lines: string[] = [];
+
+    lines.push(`# ${bundle.profile.name} — Political Research Report`);
+    lines.push(``);
+    lines.push(`*Generated ${bundle.generatedAt}*`);
+    lines.push(``);
+
+    lines.push(`## Executive Summary`);
+    lines.push(
+      bundle.profile.summary
+        ? bundle.profile.summary
+        : `_No summary data found for ${bundle.profile.name}._`
+    );
+    lines.push(``);
+
+    lines.push(`## Profile`);
+    lines.push(`- **Office:** ${bundle.profile.office ?? "Unknown"}`);
+    lines.push(`- **Party:** ${bundle.profile.party ?? "Unknown"}`);
+    lines.push(`- **State:** ${bundle.profile.state ?? "Unknown"}`);
+    lines.push(`- **District:** ${bundle.profile.district ?? "Unknown"}`);
+    lines.push(``);
+
+    lines.push(`## District Makeup`);
+    if (bundle.districtMakeup && (bundle.districtMakeup.partisanLean || bundle.districtMakeup.demographics || bundle.districtMakeup.keyIssues)) {
+      if (bundle.districtMakeup.partisanLean) lines.push(`- **Partisan Lean:** ${bundle.districtMakeup.partisanLean}`);
+      if (bundle.districtMakeup.demographics) lines.push(`- **Demographics:** ${bundle.districtMakeup.demographics}`);
+      if (bundle.districtMakeup.keyIssues)    lines.push(`- **Key Issues:** ${bundle.districtMakeup.keyIssues}`);
+    } else {
+      lines.push(`_No district data collected in this pass._`);
+    }
+    lines.push(``);
+
+    lines.push(`## Approval Rating`);
+    if (bundle.approvalRating?.value) {
+      lines.push(
+        `- **Rating:** ${bundle.approvalRating.value}${
+          bundle.approvalRating.source ? ` _(${bundle.approvalRating.source}${bundle.approvalRating.asOf ? `, ${bundle.approvalRating.asOf}` : ""})_` : ""
+        }`
+      );
+    } else {
+      lines.push(`_No approval rating data collected in this pass._`);
+    }
+    lines.push(``);
+
+    lines.push(`## Voting Record`);
+    if (bundle.votingRecord.length === 0) {
+      lines.push(`_No voting record data collected in this pass._`);
+    } else {
+      for (const v of bundle.votingRecord) {
+        lines.push(`- **${v.bill}** — ${v.position}${v.note ? `: ${v.note}` : ""}`);
+      }
+    }
+    lines.push(``);
+
+    lines.push(`## Campaign Finance`);
+    if (bundle.campaignFinance.length === 0) {
+      lines.push(`_No campaign finance data collected in this pass._`);
+    } else {
+      for (const c of bundle.campaignFinance) {
+        lines.push(
+          `- ${c.cycle ? `**${c.cycle}:** ` : ""}${c.totalRaised ?? "Undisclosed"}${
+            c.topDonorTypes ? ` — ${c.topDonorTypes}` : ""
+          }${c.note ? ` (${c.note})` : ""}`
+        );
+      }
+    }
+    lines.push(``);
+
+    lines.push(`## Opposition Research`);
+    if (bundle.oppositionResearch.length === 0) {
+      lines.push(`_No opposition research findings in this pass._`);
+    } else {
+      for (const o of bundle.oppositionResearch) {
+        const severityTag = o.severity ? ` [${o.severity.toUpperCase()}]` : "";
+        lines.push(`- **${o.topic}**${severityTag} — ${o.finding}`);
+      }
+    }
+    lines.push(``);
+
+    lines.push(`## Recent News`);
+    if (bundle.news.length === 0) {
+      lines.push(`_No recent news found._`);
+    } else {
+      for (const n of bundle.news) {
+        lines.push(`- [${n.headline}](${n.url ?? "#"})${n.summary ? ` — ${n.summary}` : ""}`);
+      }
+    }
+    lines.push(``);
+
+    lines.push(`## Sources`);
+    if (bundle.sources.length === 0) {
+      lines.push(`_No sources recorded._`);
+    } else {
+      bundle.sources.forEach((s, i) => {
+        lines.push(`${i + 1}. [${s.title ?? s.url}](${s.url})`);
+      });
+    }
 
     return lines.join("\n");
   }

@@ -26,6 +26,10 @@ interface TierContextValue {
   email: string | null;
   can: (feature: keyof TierConfig) => boolean;
   refresh: () => void;
+  /** Sets the user's preferred display name (profiles.display_name).
+   *  Pass "" to clear it and fall back to the email-derived name.
+   *  Returns whether the save succeeded. */
+  updateDisplayName: (name: string) => Promise<boolean>;
 }
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
@@ -50,6 +54,7 @@ const TierContext = createContext<TierContextValue>({
   email: null,
   can: () => false,
   refresh: () => {},
+  updateDisplayName: async () => false,
 });
 
 /** Best-effort human-friendly name: metadata full name -> email local part. */
@@ -79,6 +84,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [emailDerivedName, setEmailDerivedName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,8 +97,10 @@ export function TierProvider({ children }: { children: ReactNode }) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { setLoading(false); return; }
 
+        const fallbackName = deriveDisplayName(user);
         if (!cancelled) {
-          setDisplayName(deriveDisplayName(user));
+          setEmailDerivedName(fallbackName);
+          setDisplayName(fallbackName);
           setEmail(user.email ?? null);
         }
 
@@ -103,6 +111,8 @@ export function TierProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setTier(data.tier);
           setConfig(data.config);
+          // Prefer the user's own saved preference over the email guess.
+          if (data.displayName) setDisplayName(data.displayName);
         }
       } catch {
         if (!cancelled) {
@@ -120,6 +130,25 @@ export function TierProvider({ children }: { children: ReactNode }) {
 
   const refresh = () => setTick(t => t + 1);
 
+  const updateDisplayName = async (name: string): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ displayName: name }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      // Server returns null when the name was cleared — fall back to the
+      // email-derived guess so the UI never shows a blank name.
+      setDisplayName(data.displayName || emailDerivedName);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const isInternal = tier === "internal";
 
   // can() lets components gate on a single feature flag cleanly
@@ -132,7 +161,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, can, refresh }}>
+    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, can, refresh, updateDisplayName }}>
       {children}
     </TierContext.Provider>
   );

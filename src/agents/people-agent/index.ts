@@ -22,12 +22,23 @@ export class PeopleAgent {
     private searcher: SearchProvider
   ) {}
 
-  async run(personName: string): Promise<PersonAgentResult> {
+  /**
+   * @param deep Jackal Protocol (internal tier, no daily/monthly limits —
+   *   see server/agent-server.ts). Pulls more results per query and reads
+   *   full page text from more bio sources instead of snippets alone.
+   *   Same extraction pipeline either way, just more raw material for it.
+   */
+  async run(personName: string, deep = false): Promise<PersonAgentResult> {
     const currentYear = new Date().getFullYear();
+    const resultCount = deep ? 10 : 5;
+    const bgResultCount = deep ? 8 : 4;
+    const fullTextSourceCount = deep ? 4 : 2;
+    const fullTextChars = deep ? 4000 : 2500;
+
     const [bioResults, newsResults, backgroundResults] = await Promise.all([
-      this.searcher.search(`${personName} current role position ${currentYear}`, 5),
-      this.searcher.search(`${personName} news ${currentYear}`, 5),
-      this.searcher.search(`${personName} education net worth background biography`, 4),
+      this.searcher.search(`${personName} current role position ${currentYear}`, resultCount),
+      this.searcher.search(`${personName} news ${currentYear}`, resultCount),
+      this.searcher.search(`${personName} education net worth background biography`, bgResultCount),
     ]);
     const sources: Source[] = [
       ...bioResults.map((r) => ({
@@ -53,9 +64,10 @@ export class PeopleAgent {
     const person: PersonProfile = { name: personName };
     let careerHistory: CareerEntry[] = [];
 
-    // Fetch full text from top 2 bio results for richer career context
+    // Fetch full text from the top bio results for richer career context
+    // (more sources + more chars per source in deep mode).
     const fetchedBios = await Promise.all(
-      bioResults.slice(0, 2).map(r => fetchPageText(r.url, this.fetcher, 2500))
+      bioResults.slice(0, fullTextSourceCount).map(r => fetchPageText(r.url, this.fetcher, fullTextChars))
     );
 
     const snippetText = bioResults

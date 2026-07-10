@@ -35,6 +35,7 @@ export async function GET() {
         exportAccess: false,
         jackalProtocol: false,
       },
+      displayName: null,
     });
   }
 }

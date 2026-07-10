@@ -497,3 +497,95 @@ export const ProductEntityExtractionSchema = AnyObject.transform((obj) => ({
   competitors: toCompetitorArray(obj.competitors ?? obj.alternatives ?? obj.competing_products),
 }));
 export type ProductEntityExtraction = z.infer<typeof ProductEntityExtractionSchema>;
+
+// --- Political extraction (Round 2, item 1) ---
+
+function toVotingRecordArray(v: unknown): { bill: string; position: string; note?: string }[] {
+  if (!v) return [];
+  const items = Array.isArray(v) ? v : [v];
+  return items.flatMap((item) => {
+    if (typeof item !== "object" || item === null) return [];
+    const o = item as Record<string, unknown>;
+    const bill = String(o.bill ?? o.legislation ?? o.name ?? "").replace(/\*\*/g, "").trim();
+    const position = String(o.position ?? o.vote ?? "").replace(/\*\*/g, "").trim();
+    if (!bill || !position) return [];
+    return [{ bill, position, note: toStringOrUndefined(o.note ?? o.context) }];
+  });
+}
+
+function toCampaignFinanceArray(v: unknown): { cycle?: string; totalRaised?: string; topDonorTypes?: string; note?: string }[] {
+  if (!v) return [];
+  const items = Array.isArray(v) ? v : [v];
+  return items.flatMap((item) => {
+    if (typeof item !== "object" || item === null) return [];
+    const o = item as Record<string, unknown>;
+    const entry = {
+      cycle: toStringOrUndefined(o.cycle ?? o.year),
+      totalRaised: toStringOrUndefined(o.totalRaised ?? o.total_raised ?? o.raised),
+      topDonorTypes: toStringOrUndefined(o.topDonorTypes ?? o.top_donor_types ?? o.donors),
+      note: toStringOrUndefined(o.note),
+    };
+    if (!entry.cycle && !entry.totalRaised && !entry.note) return [];
+    return [entry];
+  });
+}
+
+function toOppositionResearchArray(v: unknown): { topic: string; finding: string; severity?: "high" | "medium" | "low" }[] {
+  if (!v) return [];
+  const items = Array.isArray(v) ? v : [v];
+  return items.flatMap((item) => {
+    if (typeof item !== "object" || item === null) return [];
+    const o = item as Record<string, unknown>;
+    const topic = String(o.topic ?? o.category ?? "").replace(/\*\*/g, "").trim();
+    const finding = String(o.finding ?? o.description ?? o.detail ?? "").replace(/\*\*/g, "").trim();
+    if (!topic || !finding) return [];
+    const severityRaw = String(o.severity ?? "").toLowerCase();
+    const severity = severityRaw === "high" || severityRaw === "medium" || severityRaw === "low" ? severityRaw : undefined;
+    return [{ topic, finding, severity }];
+  });
+}
+
+// --- Form 4 / insider trading extraction (Round 2, item 5) ---
+
+function toForm4Array(v: unknown): { filerName: string; relationship?: string; transactionType?: string; shares?: string; value?: string; date?: string; filingUrl?: string }[] {
+  if (!v) return [];
+  const items = Array.isArray(v) ? v : [v];
+  return items.flatMap((item) => {
+    if (typeof item !== "object" || item === null) return [];
+    const o = item as Record<string, unknown>;
+    const filerName = String(o.filerName ?? o.filer_name ?? o.name ?? o.insider ?? "").replace(/\*\*/g, "").trim();
+    if (!filerName) return [];
+    return [{
+      filerName,
+      relationship: toStringOrUndefined(o.relationship ?? o.role ?? o.title),
+      transactionType: toStringOrUndefined(o.transactionType ?? o.transaction_type ?? o.type),
+      shares: toStringOrUndefined(o.shares ?? o.quantity),
+      value: toStringOrUndefined(o.value ?? o.amount),
+      date: toStringOrUndefined(o.date ?? o.filingDate ?? o.filing_date),
+      filingUrl: toStringOrUndefined(o.filingUrl ?? o.filing_url ?? o.url),
+    }];
+  });
+}
+
+export const Form4ExtractionSchema = AnyObject.transform((obj) => ({
+  filings: toForm4Array(obj.filings ?? obj.form4 ?? obj.insiderActivity ?? obj.insider_activity),
+}));
+export type Form4Extraction = z.infer<typeof Form4ExtractionSchema>;
+
+export const PoliticalExtractionSchema = AnyObject.transform((obj) => ({
+  office: toStringOrUndefined(obj.office ?? obj.title ?? obj.position),
+  party: toStringOrUndefined(obj.party),
+  state: toStringOrUndefined(obj.state),
+  district: toStringOrUndefined(obj.district),
+  summary: toStringOrUndefined(obj.summary),
+  districtPartisanLean: toStringOrUndefined(obj.districtPartisanLean ?? obj.partisan_lean ?? obj.partisanLean),
+  districtDemographics: toStringOrUndefined(obj.districtDemographics ?? obj.demographics),
+  districtKeyIssues: toStringOrUndefined(obj.districtKeyIssues ?? obj.keyIssues ?? obj.key_issues),
+  approvalValue: toStringOrUndefined(obj.approvalRating ?? obj.approval_rating ?? obj.approval),
+  approvalSource: toStringOrUndefined(obj.approvalSource ?? obj.approval_source),
+  approvalAsOf: toStringOrUndefined(obj.approvalAsOf ?? obj.approval_as_of),
+  votingRecord: toVotingRecordArray(obj.votingRecord ?? obj.voting_record),
+  campaignFinance: toCampaignFinanceArray(obj.campaignFinance ?? obj.campaign_finance),
+  oppositionResearch: toOppositionResearchArray(obj.oppositionResearch ?? obj.opposition_research),
+}));
+export type PoliticalExtraction = z.infer<typeof PoliticalExtractionSchema>;

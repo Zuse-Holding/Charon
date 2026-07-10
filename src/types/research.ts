@@ -63,6 +63,7 @@ export interface NewsAgentResult {
 export interface CorporateAgentResult {
   funding: FundingEntry[];
   ownership?: string;
+  insiderActivity: Form4Entry[];
   sources: Source[];
 }
 
@@ -167,7 +168,7 @@ export interface DeepDiveBundle {
 
 export interface WatchlistEntry {
   id: string;
-  type: "company" | "person" | "product";
+  type: "company" | "person" | "product" | "political";
   subject: string;
   addedAt: string;
   lastRefreshedAt?: string;
@@ -188,4 +189,108 @@ export interface ResearchBundle {
   sources: Source[];
   risks?: string[];
   opportunities?: string[];
+  federalSpending?: FederalSpendingEntry[];
+  insiderActivity?: Form4Entry[];
+}
+
+// --- Political research types (Round 2, item 1) ---
+
+export interface PoliticalProfile {
+  name: string;
+  office?: string;      // e.g. "U.S. Representative"
+  party?: string;
+  state?: string;
+  district?: string;    // e.g. "CA-30"
+  incumbent?: boolean;
+  summary?: string;
+}
+
+export interface DistrictMakeup {
+  partisanLean?: string;   // e.g. "R+8", "Lean Democratic", "Toss-up"
+  demographics?: string;   // short prose — urban/rural mix, notable industries, etc.
+  keyIssues?: string;
+}
+
+export interface ApprovalRating {
+  value?: string;    // e.g. "42% approve / 51% disapprove"
+  source?: string;
+  asOf?: string;
+}
+
+export interface VotingRecordEntry {
+  bill: string;
+  position: string;   // "Voted Yes" / "Voted No" / "Did not vote"
+  note?: string;
+}
+
+export interface CampaignFinanceEntry {
+  cycle?: string;      // e.g. "2024"
+  totalRaised?: string;
+  topDonorTypes?: string;
+  note?: string;
+}
+
+export interface OppositionResearchEntry {
+  topic: string;
+  finding: string;
+  severity?: RiskLevel;
+}
+
+export interface PoliticalAgentResult {
+  profile: PoliticalProfile;
+  districtMakeup?: DistrictMakeup;
+  approvalRating?: ApprovalRating;
+  votingRecord: VotingRecordEntry[];
+  campaignFinance: CampaignFinanceEntry[];
+  oppositionResearch: OppositionResearchEntry[];
+  news: NewsEntry[];
+  sources: Source[];
+}
+
+export interface PoliticalResearchBundle {
+  query: string;
+  generatedAt: string;
+  profile: PoliticalProfile;
+  districtMakeup?: DistrictMakeup;
+  approvalRating?: ApprovalRating;
+  votingRecord: VotingRecordEntry[];
+  campaignFinance: CampaignFinanceEntry[];
+  oppositionResearch: OppositionResearchEntry[];
+  news: NewsEntry[];
+  sources: Source[];
+}
+
+// --- USASpending (Round 2, item 3) ---
+// Federal contract/award data — free public API, no key required
+// (see src/agents/usaspending-agent). Folded into company research so
+// it shows up for every tier without any new gating.
+
+export interface FederalSpendingEntry {
+  awardId?: string;
+  awardingAgency?: string;
+  amount?: string;
+  date?: string;
+  awardType?: string;   // "Contract" | "Grant" | "IDV" etc
+  description?: string;
+}
+
+export interface USASpendingAgentResult {
+  awards: FederalSpendingEntry[];
+  sources: Source[];
+}
+
+// --- Form 4 / insider trading (Round 2, item 5) ---
+// SEC EDGAR Form 4 filings — free public API, no key required
+// (see src/agents/form4-agent). Surfaced alongside funding/ownership
+// data in the Corporate Agent since it's the same "who owns/controls
+// this company" question.
+
+export interface Form4Entry {
+  filerName: string;
+  relationship?: string;   // "Director", "Officer", "10% Owner", etc.
+  transactionType?: string; // "Buy" | "Sell" | "Grant" | "Other"
+  shares?: string;
+  value?: string;
+  date?: string;
+  filingUrl?: string;
 }

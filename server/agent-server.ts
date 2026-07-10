@@ -210,16 +210,25 @@ app.post("/research", async (req, res) => {
       outPath = type === "person" ? join(REPORTS_DIR, "people", `${slugify(subject)}.md`) : type === "product" ? join(REPORTS_DIR, "products", `${slugify(subject)}.md`) : join(REPORTS_DIR, `${slugify(subject)}.md`);
     } else {
       const orchestrator = new ResearchOrchestrator();
+      // Jackal Protocol (internal tier only): deeper sourcing on person/
+      // political research, on top of the unlimited quotas internal
+      // already gets everywhere else in this file.
+      const deep = tier === "internal";
+
       if (type === "company") {
         const result = await orchestrator.researchCompany(subject);
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, `${slugify(subject)}.md`);
       } else if (type === "person") {
-        const result = await orchestrator.researchPerson(subject);
+        const result = await orchestrator.researchPerson(subject, deep);
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, "people", `${slugify(subject)}.md`);
       } else if (type === "political") {
-        const result = await orchestrator.researchPerson(subject);
+        // Was a stub that silently ran regular person research and
+        // mislabeled it "political" — now runs the real political-agent
+        // (opposition research, district makeup, approval rating, voting
+        // record, campaign finance).
+        const result = await orchestrator.researchPolitical(subject, deep);
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, "political", `${slugify(subject)}.md`);
       } else {
@@ -335,7 +344,55 @@ app.get("/tier/:userId", async (req, res) => {
   if (!authCheck(req, res)) return;
   const tier = await getUserTier(req.params.userId);
   const config = getTierConfig(tier);
-  res.json({ tier, config });
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", req.params.userId)
+    .single();
+
+  res.json({ tier, config, displayName: profile?.display_name ?? null });
+});
+
+const MAX_DISPLAY_NAME_LENGTH = 60;
+
+/**
+ * Lets a user set a preferred display name (e.g. "Nick") instead of the
+ * app deriving one from their email locally on the client. Writes go
+ * through the service-role key here rather than a direct browser
+ * Supabase call — same pattern as every other profile read in this file.
+ */
+app.patch("/profile/:userId", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const raw = req.body?.displayName;
+  if (raw !== null && typeof raw !== "string") {
+    res.status(400).json({ error: "displayName must be a string or null" });
+    return;
+  }
+
+  const trimmed = typeof raw === "string" ? raw.trim() : null;
+  if (trimmed && trimmed.length > MAX_DISPLAY_NAME_LENGTH) {
+    res.status(400).json({ error: `displayName must be ${MAX_DISPLAY_NAME_LENGTH} characters or fewer` });
+    return;
+  }
+
+  // Empty string -> null, so clearing the field falls back to the
+  // email-derived name instead of storing/displaying blank text.
+  const displayName = trimmed || null;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ display_name: displayName })
+    .eq("id", req.params.userId);
+
+  if (error) {
+    console.error("[profile] display_name update failed:", JSON.stringify(error));
+    res.status(500).json({ error: "Failed to update display name" });
+    return;
+  }
+
+  res.json({ ok: true, displayName });
 });
 
 app.get("/health", (_, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));

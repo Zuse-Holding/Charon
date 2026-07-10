@@ -118,6 +118,26 @@ program
     console.log(`Report written to ${outPath}`);
   });
 
+// ── research-political ────────────────────────────────────────────────
+program
+  .command("research-political")
+  .argument("<name>")
+  .description("Political research: opposition research, district makeup, approval rating, voting record, campaign finance")
+  .option("--deep", "Jackal-style deeper sourcing (more results, full-page reads on opposition research)", false)
+  .action(async (name: string, opts: { deep: boolean }) => {
+    const dir = join(process.cwd(), "reports", "political");
+    mkdirSync(dir, { recursive: true });
+    const outPath = join(dir, `${slugify(name)}.md`);
+
+    console.log(`Researching (political) "${name}"...`);
+    warnIfNoSearchKey(); logLLMProvider();
+    const orchestrator = new ResearchOrchestrator();
+    const { bundle, report } = await orchestrator.researchPolitical(name, opts.deep);
+    writeFileSync(outPath, report, "utf-8");
+    recordRun({ id: randomUUID(), type: "political", subject: name, generatedAt: bundle.generatedAt, reportPath: outPath, bundle });
+    console.log(`Report written to ${outPath}`);
+  });
+
 // ── research-product ──────────────────────────────────────────────────
 program
   .command("research-product")
