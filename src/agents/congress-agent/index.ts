@@ -103,19 +103,17 @@ export class CongressAgent {
         const data = (await memberRes.json()) as Record<string, unknown>;
         const m = (data.member ?? data) as Record<string, unknown>;
         const partyHistory = m.partyHistory as Array<{ partyName?: string }> | undefined;
-        const terms = (m.terms as { item?: Array<{ chamber?: string }> } | undefined)?.item;
+        // Confirmed in production: `terms` is a plain array of
+        // {chamber, congress, startYear, ...} objects, not the
+        // {item: [...]} wrapper assumed earlier. The most recent term
+        // (last in the array — congress.gov returns them in ascending
+        // order) tells us their current chamber.
+        const terms = m.terms as Array<{ chamber?: string; congress?: number; startYear?: number }> | undefined;
         party = partyHistory?.[0]?.partyName ?? (m.currentParty as string | undefined);
         state = m.state as string | undefined;
         district = m.district !== undefined && m.district !== null ? String(m.district) : undefined;
-        office = terms?.slice(-1)?.[0]?.chamber ?? (m.chamber as string | undefined);
-        // Confirmed in production: party/state/district all resolve fine
-        // from this same response but office/chamber doesn't — the
-        // assumed terms.item[].chamber nesting isn't quite right. Dump
-        // the raw terms field once so the next run shows the actual
-        // shape instead of guessing blind again.
-        if (!office) {
-          console.warn(`[congress-agent] "${name}" (${bioguideId}) — could not resolve office/chamber, raw terms field: ${JSON.stringify(m.terms).slice(0, 500)}`);
-        }
+        const latestTerm = terms?.length ? [...terms].sort((a, b) => (a.startYear ?? 0) - (b.startYear ?? 0)).slice(-1)[0] : undefined;
+        office = latestTerm?.chamber ?? (m.chamber as string | undefined);
       } else if (memberRes && !memberRes.ok) {
         console.warn(`[congress-agent] "${name}" (${bioguideId}) — member lookup HTTP ${memberRes.status}`);
       }
