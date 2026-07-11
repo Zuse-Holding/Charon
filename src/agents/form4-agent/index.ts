@@ -1,6 +1,7 @@
 import { Form4Entry, Source } from "../../types/research.js";
 import { SearchProvider } from "../../lib/providers.js";
 import { Form4ExtractionSchema, extractStructured } from "../../lib/llm.js";
+import { findOverride } from "../../entity-validation.js";
 
 /**
  * Form 4 Agent (Round 2, item 5) — insider trading activity.
@@ -40,8 +41,21 @@ export class Form4Agent {
   constructor(private searcher: SearchProvider) {}
 
   async run(companyName: string): Promise<{ filings: Form4Entry[]; sources: Source[] }> {
+    // Resolve a rename/aka override (e.g. "Raytheon" -> "RTX
+    // Corporation") before searching. Confirmed in production: without
+    // this, the strict same-name grounding below — added specifically
+    // to prevent misattributing a transaction to the wrong company —
+    // was rejecting real, correctly-sourced RTX insider filings because
+    // recent SEC coverage refers to the company by its current legal
+    // name, not the name the user searched.
+    const override = findOverride(companyName);
+    const searchName = override?.canonical_name ?? companyName;
+    const acceptedNames = override
+      ? [...new Set([companyName, override.canonical_name, ...override.aka])]
+      : [companyName];
+
     const results = await this.searcher.search(
-      `${companyName} Form 4 insider trading SEC filing officer director buy sell shares`,
+      `${searchName} Form 4 insider trading SEC filing officer director buy sell shares`,
       6
     );
 
@@ -64,16 +78,16 @@ export class Form4Agent {
       .join("\n\n");
 
     const llmResult = await extractStructured(
-      `You are a financial research assistant extracting insider trading activity (SEC Form 4 filings) specifically for "${companyName}" from search results.
+      `You are a financial research assistant extracting insider trading activity (SEC Form 4 filings) specifically for "${searchName}" from search results.
 
 RULES:
-- Only include a transaction if the SAME numbered source explicitly names both the person AND ties them to "${companyName}" (as an officer, director, or 10% owner of this specific company). Never combine a name from one source with a role or company mentioned in a different source.
+- Only include a transaction if the SAME numbered source explicitly names both the person AND ties them to "${searchName}" (as an officer, director, or 10% owner of this specific company). ${acceptedNames.length > 1 ? `This company is also known as: ${acceptedNames.filter((n) => n !== searchName).join(", ")} — any of these names in a source counts as the same company.` : ""} Never combine a name from one source with a role or company mentioned in a different source.
 - filerName: the insider's FULL name (first and last name at minimum) exactly as it appears in that source. Never return a single word, a bare initial, or a truncated fragment — if the source text doesn't give a full name, skip that entry entirely rather than guessing or completing it.
 - relationship: their role, e.g. "CEO", "Director", "10% Owner", if stated.
 - transactionType: "Buy", "Sell", "Grant", or "Other" based on what's described.
 - shares/value: only if a specific number is given in the source text.
 - date: the filing or transaction date if mentioned.
-- If you are not confident a specific named person is actually an insider of "${companyName}" (as opposed to some other company that happened to appear in the search results), omit them.
+- If you are not confident a specific named person is actually an insider of "${searchName}" (as opposed to some other company that happened to appear in the search results), omit them.
 - Return an empty filings array if no source contains a specific, fully-named, clearly-attributed insider transaction — do not pad with generic or uncertain entries.`,
       combinedText,
       Form4ExtractionSchema

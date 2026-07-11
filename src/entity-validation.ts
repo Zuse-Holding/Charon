@@ -24,6 +24,18 @@ export const ENTITY_OVERRIDES: Record<string, EntityOverride> = {
     ceo: "Andrew McLeod",
     reject_domains: ["alan.com"],
   },
+  // Raytheon Technologies legally renamed to RTX Corporation in July
+  // 2023. Confirmed cause of a real production bug: SEC filings and
+  // USASpending federal contract records are now filed under "RTX", so
+  // searching "Raytheon" was failing the strict same-name grounding
+  // checks in form4-agent and the recipient-name-match filter in
+  // usaspending-agent — both correctly built to prevent misattribution,
+  // but too strict for a company that legitimately changed its name.
+  "raytheon": {
+    canonical_name: "RTX Corporation",
+    canonical_domain: "rtx.com",
+    aka: ["Raytheon Technologies", "Raytheon Technologies Corporation", "Raytheon Company", "RTX Corp", "RTX"],
+  },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

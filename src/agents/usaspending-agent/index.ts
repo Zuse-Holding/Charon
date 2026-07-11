@@ -1,4 +1,5 @@
 import { FederalSpendingEntry, Source, USASpendingAgentResult } from "../../types/research.js";
+import { findOverride } from "../../entity-validation.js";
 
 /**
  * USASpending Agent (Round 2, item 3)
@@ -106,22 +107,34 @@ export class USASpendingAgent {
 
   async run(companyName: string): Promise<USASpendingAgentResult> {
     try {
+      // Resolve a rename/aka override before querying — confirmed in
+      // production this was exactly the predicted failure mode: Raytheon
+      // renamed to RTX Corporation in 2023, federal contracts are now
+      // registered under the new name, and searching "Raytheon" both
+      // missed the recipient_search_text match AND would have failed
+      // the name-match guard below even if USASpending's own fuzzy
+      // search had found something.
+      const override = findOverride(companyName);
+      const searchName = override?.canonical_name ?? companyName;
+      const acceptedNeedles = override
+        ? [...new Set([companyName, override.canonical_name, ...override.aka])].map((n) => n.toLowerCase())
+        : [companyName.toLowerCase()];
+
       const [contracts, grants] = await Promise.all([
-        this.searchByType(companyName, CONTRACT_TYPE_CODES),
-        this.searchByType(companyName, GRANT_TYPE_CODES),
+        this.searchByType(searchName, CONTRACT_TYPE_CODES),
+        this.searchByType(searchName, GRANT_TYPE_CODES),
       ]);
       const results = [...contracts, ...grants];
 
-      console.log(`[usaspending-agent] "${companyName}": ${contracts.length} contract result(s), ${grants.length} grant result(s) before name-match filtering.`);
+      console.log(`[usaspending-agent] "${companyName}"${searchName !== companyName ? ` (searched as "${searchName}")` : ""}: ${contracts.length} contract result(s), ${grants.length} grant result(s) before name-match filtering.`);
 
       // Guard against a loose recipient_search_text match returning
       // awards for an unrelated namesake — only keep results whose
-      // recipient name actually contains the searched company name
-      // (case-insensitive).
-      const needle = companyName.toLowerCase();
+      // recipient name actually contains the searched company name (or
+      // one of its known aka/rename variants) case-insensitively.
       const filtered = results.filter((r) => {
         const recipient = toStr(r["Recipient Name"])?.toLowerCase() ?? "";
-        return recipient.includes(needle) || needle.includes(recipient);
+        return acceptedNeedles.some((needle) => recipient.includes(needle) || needle.includes(recipient));
       });
 
       if (results.length > 0 && filtered.length === 0) {
