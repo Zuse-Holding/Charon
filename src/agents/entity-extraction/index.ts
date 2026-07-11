@@ -56,16 +56,25 @@ export interface EntityExtractionResult {
 export class EntityExtractionAgent {
   async extract(
     reportMarkdown: string,
-    primarySubject: { name: string; type: "company" | "person" | "product" }
+    primarySubject: { name: string; type: "company" | "person" | "product" | "political" }
   ): Promise<EntityExtractionResult> {
     const truncated = reportMarkdown.slice(0, 4000);
+
+    // The knowledge graph's entity type only has three kinds (matches
+    // the kg_entities DB CHECK constraint) — "political" isn't a graph
+    // entity type, it's a research-run type. A politician is a person
+    // for graph purposes. Confirmed in production: passing "political"
+    // straight into the prompt as "(political)" got the LLM to echo
+    // "political" back as an entity type, which the schema (rightly)
+    // rejects, silently dropping every entity in that batch.
+    const graphType = primarySubject.type === "political" ? "person" : primarySubject.type;
 
     // Use gpt-oss-120b via OpenRouter for better structured extraction
     // Falls back to Groq llama if OpenRouter key not set
     const GPT_OSS = "openai/gpt-oss-120b";
     const prompt = `You are extracting named entities and relationships from a business research report about "${primarySubject.name}" for a knowledge graph.
 
-The primary subject is: "${primarySubject.name}" (${primarySubject.type})
+The primary subject is: "${primarySubject.name}" (${graphType})
 
 Return JSON with:
 - entities: array of {name, type} where type is "company", "person", or "product"
@@ -91,7 +100,7 @@ Always include "${primarySubject.name}" in entities. If it is a person, add CEO_
 
     if (!result) {
       return {
-        entities: [{ name: primarySubject.name, type: primarySubject.type }],
+        entities: [{ name: primarySubject.name, type: graphType }],
         relationships: [],
       };
     }
@@ -148,7 +157,7 @@ Always include "${primarySubject.name}" in entities. If it is a person, add CEO_
 
     const rawEntities = hasPrimary
       ? result.entities
-      : [{ name: primarySubject.name, type: primarySubject.type }, ...result.entities];
+      : [{ name: primarySubject.name, type: graphType }, ...result.entities];
 
     const entities = rawEntities
       .map(e => {

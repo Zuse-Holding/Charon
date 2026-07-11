@@ -26,6 +26,32 @@ import { SponsoredBillEntry, Source } from "../../types/research.js";
 
 const LEGISCAN_BASE = "https://api.legiscan.com/";
 
+// congress-agent's `state` comes straight from Congress.gov's API, which
+// returns the full state name ("California"), not a USPS code — but
+// LegiScan's getSessionList requires a two-letter code and fails with a
+// bare "ERROR" status (no useful detail) on anything else. Confirmed in
+// production: a real run for a real member of Congress silently failed
+// this step because "California" was passed through unconverted.
+const STATE_NAME_TO_CODE: Record<string, string> = {
+  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
+  colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA",
+  hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA",
+  kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD",
+  massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO",
+  montana: "MT", nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ",
+  "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND", ohio: "OH",
+  oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC",
+  "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT",
+  virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY",
+  "district of columbia": "DC", "puerto rico": "PR",
+};
+
+function normalizeStateCode(state: string): string {
+  const trimmed = state.trim();
+  if (/^[A-Za-z]{2}$/.test(trimmed)) return trimmed.toUpperCase();
+  return STATE_NAME_TO_CODE[trimmed.toLowerCase()] ?? trimmed;
+}
+
 interface LsSessionListItem {
   session_id: number;
   year_end?: number;
@@ -84,6 +110,7 @@ export class LegiScanAgent {
     sources: Source[];
   }> {
     if (!this.apiKey || !state) return { sponsoredLegislation: [], sources: [] };
+    state = normalizeStateCode(state);
 
     const sessionData = await this.call<{ sessions?: LsSessionListItem[] }>("getSessionList", { state });
     const sessions = sessionData?.sessions ?? [];
@@ -137,6 +164,8 @@ export class LegiScanAgent {
       retrievedAt: new Date().toISOString(),
       usedFor: ["voting-record"],
     }];
+
+    console.log(`[legiscan-agent] "${name}" (${state}) — matched people_id=${match.people_id}, role=${match.role ?? "?"}, ${sponsoredLegislation.length} sponsored bill(s)`);
 
     return {
       sponsoredLegislation,
