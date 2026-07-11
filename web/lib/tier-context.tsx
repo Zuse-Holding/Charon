@@ -4,7 +4,7 @@ import { createClient } from "../lib/supabase/client";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type Tier = "internal" | "team" | "pro" | "basic" | "free";
+export type Tier = "internal" | "team" | "pro" | "basic" | "free" | "trial";
 
 export interface TierConfig {
   dailyResearchLimit: number;   // -1 = unlimited

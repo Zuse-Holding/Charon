@@ -1,27 +1,70 @@
 "use client";
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import styles from "./page.module.css";
 
 function LoginPage() {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName]   = useState("");
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode]         = useState<"signin" | "signup">("signin");
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [message, setMessage]   = useState<string | null>(null);
+
+  // Forgot-password (pre-login) flow — separate from the recovery
+  // landing below. This just sends the reset email.
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+
+  // Recovery landing — when a user clicks the link from that email,
+  // Supabase parses the URL on load, establishes a temporary session,
+  // and fires a PASSWORD_RECOVERY auth event. We catch that here and
+  // swap the whole card over to a "set new password" form.
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [recoveryDone, setRecoveryDone] = useState(false);
+
   const router   = useRouter();
   const params   = useSearchParams();
   const next     = params.get("next") ?? "/app";
   const supabase = createClient();
 
+  useEffect(() => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") setRecoveryMode(true);
+    });
+    return () => listener.subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleEmail() {
     if (!email || !password) { setError("Email and password required."); return; }
+    if (mode === "signup" && (!firstName.trim() || !lastName.trim())) {
+      setError("First and last name required.");
+      return;
+    }
     setLoading(true); setError(null); setMessage(null);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              full_name: fullName,
+            },
+          },
+        });
         if (error) throw error;
         setMessage("Check your email to confirm your account, or sign in directly if confirmation is disabled.");
       } else {
@@ -46,6 +89,73 @@ function LoginPage() {
     if (error) { setError(error.message); setLoading(false); }
   }
 
+  async function handleForgotPassword() {
+    if (!email) { setError("Enter your email above first."); return; }
+    setForgotLoading(true); setError(null);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/login`,
+    });
+    setForgotLoading(false);
+    if (error) { setError(error.message); return; }
+    setForgotSent(true);
+  }
+
+  async function handleSetNewPassword() {
+    if (newPassword.length < 8) { setRecoveryError("Password must be at least 8 characters."); return; }
+    if (newPassword !== confirmPassword) { setRecoveryError("Passwords don't match."); return; }
+    setRecoveryLoading(true); setRecoveryError(null);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setRecoveryLoading(false);
+    if (error) { setRecoveryError(error.message); return; }
+    setRecoveryDone(true);
+    setTimeout(() => { router.push("/app"); router.refresh(); }, 1500);
+  }
+
+  // ── Recovery landing view ──────────────────────────────────────────
+  if (recoveryMode) {
+    return (
+      <div className={styles.shell}>
+        <div className={styles.card}>
+          <div className={styles.logo}>
+            <div className={styles.logoMark}>CHARON</div>
+            <div className={styles.logoSub}>ZUSE HOLDINGS // INTELLIGENCE PLATFORM</div>
+          </div>
+
+          <div className={styles.fields}>
+            <div className={styles.sectionNote}>Set a new password for your account.</div>
+            <input
+              className={styles.input}
+              type="password"
+              placeholder="New password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSetNewPassword()}
+            />
+            <input
+              className={styles.input}
+              type="password"
+              placeholder="Confirm new password"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSetNewPassword()}
+            />
+          </div>
+
+          {recoveryError && <div className={styles.error}>{recoveryError}</div>}
+          {recoveryDone && <div className={styles.success}>Password updated — taking you in...</div>}
+
+          <button
+            className={styles.submitBtn}
+            onClick={handleSetNewPassword}
+            disabled={recoveryLoading || recoveryDone}
+          >
+            {recoveryLoading ? "..." : "Set New Password →"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.shell}>
       <div className={styles.card}>
@@ -57,11 +167,11 @@ function LoginPage() {
         <div className={styles.tabRow}>
           <button
             className={`${styles.modeTab} ${mode === "signin" ? styles.modeActive : ""}`}
-            onClick={() => { setMode("signin"); setError(null); }}
+            onClick={() => { setMode("signin"); setError(null); setForgotOpen(false); }}
           >Sign In</button>
           <button
             className={`${styles.modeTab} ${mode === "signup" ? styles.modeActive : ""}`}
-            onClick={() => { setMode("signup"); setError(null); }}
+            onClick={() => { setMode("signup"); setError(null); setForgotOpen(false); }}
           >Create Account</button>
         </div>
 
@@ -77,35 +187,98 @@ function LoginPage() {
 
         <div className={styles.divider}><span>or</span></div>
 
-        <div className={styles.fields}>
-          <input
-            className={styles.input}
-            type="email"
-            placeholder="Email address"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleEmail()}
-          />
-          <input
-            className={styles.input}
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleEmail()}
-          />
-        </div>
+        {forgotOpen ? (
+          <>
+            <div className={styles.fields}>
+              <div className={styles.sectionNote}>
+                Enter your email and we&apos;ll send you a reset link.
+              </div>
+              <input
+                className={styles.input}
+                type="email"
+                placeholder="Email address"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleForgotPassword()}
+              />
+            </div>
 
-        {error   && <div className={styles.error}>{error}</div>}
-        {message && <div className={styles.success}>{message}</div>}
+            {error && <div className={styles.error}>{error}</div>}
+            {forgotSent && <div className={styles.success}>Reset email sent — check your inbox.</div>}
 
-        <button
-          className={styles.submitBtn}
-          onClick={handleEmail}
-          disabled={loading}
-        >
-          {loading ? "..." : mode === "signin" ? "Sign In →" : "Create Account →"}
-        </button>
+            <button
+              className={styles.submitBtn}
+              onClick={handleForgotPassword}
+              disabled={forgotLoading || forgotSent}
+            >
+              {forgotLoading ? "..." : forgotSent ? "✓ Email Sent" : "Send Reset Link →"}
+            </button>
+
+            <button
+              className={styles.backLink}
+              onClick={() => { setForgotOpen(false); setForgotSent(false); setError(null); }}
+            >← Back to sign in</button>
+          </>
+        ) : (
+          <>
+            <div className={styles.fields}>
+              {mode === "signup" && (
+                <div className={styles.nameRow}>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="First name"
+                    value={firstName}
+                    onChange={e => setFirstName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleEmail()}
+                  />
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="Last name"
+                    value={lastName}
+                    onChange={e => setLastName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleEmail()}
+                  />
+                </div>
+              )}
+              <input
+                className={styles.input}
+                type="email"
+                placeholder="Email address"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleEmail()}
+              />
+              <input
+                className={styles.input}
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleEmail()}
+              />
+            </div>
+
+            {mode === "signin" && (
+              <button
+                className={styles.forgotLink}
+                onClick={() => { setForgotOpen(true); setError(null); setMessage(null); }}
+              >Forgot password?</button>
+            )}
+
+            {error   && <div className={styles.error}>{error}</div>}
+            {message && <div className={styles.success}>{message}</div>}
+
+            <button
+              className={styles.submitBtn}
+              onClick={handleEmail}
+              disabled={loading}
+            >
+              {loading ? "..." : mode === "signin" ? "Sign In →" : "Create Account →"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
