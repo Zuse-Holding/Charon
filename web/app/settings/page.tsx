@@ -15,6 +15,12 @@ export default function Settings() {
   const [nameSaving, setNameSaving] = useState(false);
   const [nameSaved, setNameSaved]   = useState(false);
 
+  const [newPassword, setNewPassword]         = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwSaving, setPwSaving]     = useState(false);
+  const [pwSaved, setPwSaved]       = useState(false);
+  const [pwError, setPwError]       = useState<string | null>(null);
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
@@ -48,6 +54,22 @@ export default function Settings() {
     });
     setResetSent(true);
     setResetLoading(false);
+  }
+
+  async function handlePasswordUpdate() {
+    setPwError(null);
+    setPwSaved(false);
+    if (newPassword.length < 8) { setPwError("Password must be at least 8 characters."); return; }
+    if (newPassword !== confirmPassword) { setPwError("Passwords don't match."); return; }
+    setPwSaving(true);
+    const supabase = createClient();
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPwSaving(false);
+    if (error) { setPwError(error.message); return; }
+    setPwSaved(true);
+    setNewPassword("");
+    setConfirmPassword("");
+    setTimeout(() => setPwSaved(false), 2500);
   }
 
   const SYSTEM_INFO = [
@@ -123,16 +145,43 @@ export default function Settings() {
           <div className={styles.group}>
             <div className={styles.groupLabel}>SECURITY</div>
             <div className={styles.row}>
-              <span className={styles.rowLabel}>Password</span>
-              <span className={styles.rowValue}>••••••••</span>
+              <span className={styles.rowLabel}>New Password</span>
+              <input
+                className={styles.nameInput}
+                type="password"
+                placeholder="At least 8 characters"
+                value={newPassword}
+                onChange={(e) => { setNewPassword(e.target.value); setPwError(null); }}
+                onKeyDown={(e) => e.key === "Enter" && handlePasswordUpdate()}
+              />
+            </div>
+            <div className={styles.row}>
+              <span className={styles.rowLabel}>Confirm Password</span>
+              <input
+                className={styles.nameInput}
+                type="password"
+                placeholder="Repeat password"
+                value={confirmPassword}
+                onChange={(e) => { setConfirmPassword(e.target.value); setPwError(null); }}
+                onKeyDown={(e) => e.key === "Enter" && handlePasswordUpdate()}
+              />
               <button
                 className={styles.resetBtn}
-                onClick={handlePasswordReset}
-                disabled={resetLoading || resetSent}
+                onClick={handlePasswordUpdate}
+                disabled={pwSaving || !newPassword || !confirmPassword}
               >
-                {resetSent ? "✓ Email sent" : resetLoading ? "Sending..." : "Reset password"}
+                {pwSaved ? "✓ Updated" : pwSaving ? "Saving..." : "Update Password"}
               </button>
             </div>
+            {pwError && <div className={styles.fieldError}>{pwError}</div>}
+
+            <button
+              className={styles.emailResetLink}
+              onClick={handlePasswordReset}
+              disabled={resetLoading || resetSent}
+            >
+              {resetSent ? "✓ Reset email sent" : resetLoading ? "Sending..." : "Or send a reset link to your email instead"}
+            </button>
           </div>
 
           <div className={styles.group}>
