@@ -108,6 +108,14 @@ export class CongressAgent {
         state = m.state as string | undefined;
         district = m.district !== undefined && m.district !== null ? String(m.district) : undefined;
         office = terms?.slice(-1)?.[0]?.chamber ?? (m.chamber as string | undefined);
+        // Confirmed in production: party/state/district all resolve fine
+        // from this same response but office/chamber doesn't — the
+        // assumed terms.item[].chamber nesting isn't quite right. Dump
+        // the raw terms field once so the next run shows the actual
+        // shape instead of guessing blind again.
+        if (!office) {
+          console.warn(`[congress-agent] "${name}" (${bioguideId}) — could not resolve office/chamber, raw terms field: ${JSON.stringify(m.terms).slice(0, 500)}`);
+        }
       } else if (memberRes && !memberRes.ok) {
         console.warn(`[congress-agent] "${name}" (${bioguideId}) — member lookup HTTP ${memberRes.status}`);
       }
