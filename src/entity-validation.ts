@@ -132,17 +132,46 @@ export function validateAndCorrectFact(
   return { field: fact.field, value: fact.value, flagged: false };
 }
 
-/** Convenience: look up an override by any known alias */
+/**
+ * Convenience: look up an override by any known alias.
+ *
+ * Two match strategies:
+ *  1. Exact match against the registry key or a full aka string.
+ *  2. Prefix match — the query is a word-boundary-safe prefix of the
+ *     canonical name or an aka (e.g. "Raytheon Tech" -> "Raytheon
+ *     Technologies"). Requires the query to be at least two words (or
+ *     one long-ish word) so short, ambiguous queries like "co" can't
+ *     match everything.
+ *
+ * (1) alone missed a real production case: "Raytheon Tech" isn't a
+ * literal aka string, so it fell straight through the exact-match check
+ * and reproduced the exact bug the "raytheon" override exists to fix,
+ * just under a different informal name. Prefix matching covers informal
+ * shorthand without needing every possible truncation listed by hand.
+ */
 export function findOverride(entityName: string): EntityOverride | undefined {
   const key = entityName.toLowerCase().trim();
+  if (!key) return undefined;
   if (ENTITY_OVERRIDES[key]) return ENTITY_OVERRIDES[key];
 
-  for (const [, override] of Object.entries(ENTITY_OVERRIDES)) {
-    const match = override.aka
-      .map((a) => a.toLowerCase().trim())
-      .find((a) => a === key);
-    if (match && match.split(/\s+/).length >= 2) {
-      return override;
+  const queryWordCount = key.split(/\s+/).filter(Boolean).length;
+  const longEnough = queryWordCount >= 2 || key.length >= 6;
+
+  for (const [overrideKey, override] of Object.entries(ENTITY_OVERRIDES)) {
+    const candidates = [
+      overrideKey,
+      override.canonical_name.toLowerCase().trim(),
+      ...override.aka.map((a) => a.toLowerCase().trim()),
+    ];
+
+    const exact = candidates.find((c) => c === key && c.split(/\s+/).length >= 1);
+    if (exact) return override;
+
+    if (longEnough) {
+      const prefixMatch = candidates.find(
+        (c) => c.split(/\s+/).length >= 2 && c.startsWith(key)
+      );
+      if (prefixMatch) return override;
     }
   }
   return undefined;
