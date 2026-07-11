@@ -6,8 +6,20 @@ import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import styles from "./page.module.css";
 
+// Internal accounts show "Charon" here (Charon Protocol) rather than the
+// raw tier name — this is the one place that designator surfaces at all,
+// since the sidebar badge deliberately hides it for internal accounts.
+const PLAN_LABEL: Record<string, string> = {
+  internal: "Charon",
+  team: "Team",
+  pro: "Pro",
+  basic: "Basic",
+  free: "Free",
+  trial: "Trial",
+};
+
 export default function Settings() {
-  const { displayName, updateDisplayName } = useTier();
+  const { displayName, updateDisplayName, tier } = useTier();
   const [email, setEmail]           = useState<string>("");
   const [resetSent, setResetSent]   = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
@@ -90,8 +102,8 @@ export default function Settings() {
       { label: "Knowledge Graph", value: "Phase 1 — collecting", status: "active" },
     ]},
     { section: "ACCOUNT", items: [
-      { label: "Email", value: email || "Loading...", status: "" },
-      { label: "Plan",  value: "Basic",               status: "active" },
+      { label: "Email", value: email || "Loading...",                    status: "" },
+      { label: "Plan",  value: tier ? (PLAN_LABEL[tier] ?? tier) : "—",  status: "active" },
     ]},
   ];
 

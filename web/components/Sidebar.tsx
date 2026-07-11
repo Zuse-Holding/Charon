@@ -37,7 +37,10 @@ export default function Sidebar() {
   const initials = displayName
     ? displayName.split(" ").filter(Boolean).map(w => w[0]).slice(0, 2).join("").toUpperCase()
     : "?";
-  const badge = tier ? TIER_BADGE[tier] : undefined;
+  // Internal accounts (Charon Protocol) skip the sidebar badge entirely —
+  // that designator stays low-profile, visible only in Settings > Account
+  // for the account holder themselves rather than displayed at a glance.
+  const badge = tier && tier !== "internal" ? TIER_BADGE[tier] : undefined;
 
   async function signOut() {
     router.push("/logout");
