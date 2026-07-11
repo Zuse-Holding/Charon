@@ -102,6 +102,14 @@ export class OpenFecAgent {
             totalDisbursements: formatUsd(latest.disbursements),
             cashOnHand: formatUsd(latest.cash_on_hand_end_period),
           };
+          // Confirmed in production: receipts resolves fine but cycle
+          // sometimes doesn't, meaning the assumed field name isn't
+          // quite right for every response shape. Rather than guess
+          // again blind, dump the raw object once so the next run shows
+          // exactly what's actually there.
+          if (!summary.cycle) {
+            console.warn(`[openfec-agent] "${name}" — totals result missing "cycle", raw object: ${JSON.stringify(latest).slice(0, 500)}`);
+          }
         }
       } else if (totalsRes && !totalsRes.ok) {
         console.warn(`[openfec-agent] "${name}" — totals HTTP ${totalsRes.status}`);
