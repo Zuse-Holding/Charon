@@ -4,6 +4,10 @@
   flex-shrink: 0;
 }
 
+@media (max-width: 400px) {
+  .wrap { width: 100%; }
+}
+
 .input {
   width: 100%;
   padding: 9px 12px;

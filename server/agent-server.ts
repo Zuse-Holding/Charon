@@ -410,10 +410,14 @@ app.patch("/profile/:userId", async (req, res) => {
   // email-derived name instead of storing/displaying blank text.
   const displayName = trimmed || null;
 
+  // upsert, not update — if this user has no profiles row yet (e.g. no
+  // signup trigger ever created one), a plain .update() matches zero rows
+  // and silently no-ops: no error, but nothing is written, so the save
+  // "succeeds" in the UI and then reverts on next load. Upsert guarantees
+  // a row exists after this call either way.
   const { error } = await supabase
     .from("profiles")
-    .update({ display_name: displayName })
-    .eq("id", req.params.userId);
+    .upsert({ id: req.params.userId, display_name: displayName }, { onConflict: "id" });
 
   if (error) {
     console.error("[profile] display_name update failed:", JSON.stringify(error));

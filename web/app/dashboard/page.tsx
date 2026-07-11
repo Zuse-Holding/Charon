@@ -170,6 +170,20 @@ export default function DashboardPage() {
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
   const [time, setTime] = useState(new Date());
 
+  // Layout is inline styles (see S above), so responsive behavior can't
+  // come from @media in a stylesheet — track viewport width directly and
+  // switch the two-panel rows to a stacked column below the same 900px
+  // breakpoint Sidebar/Topbar use to go mobile, so everything flips at
+  // once instead of the nav going mobile while panels stay squeezed.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    setIsMobile(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
   // Live clock
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
@@ -235,7 +249,10 @@ export default function DashboardPage() {
         <Topbar />
 
         {/* Greeting */}
-        <div style={S.greetingRow}>
+        <div style={{
+          ...S.greetingRow,
+          ...(isMobile ? { flexDirection: "column" as const, alignItems: "flex-start", gap: 4 } : {}),
+        }}>
           <div>
             <div style={S.greetingTitle}>
               {getGreeting(time.getHours())}{displayName ? `, ${displayName.split(" ")[0]}` : ""}
@@ -252,7 +269,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Tab bar */}
-        <div style={S.tabBar}>
+        <div style={{ ...S.tabBar, ...(isMobile ? { overflowX: "auto" as const, flexWrap: "nowrap" as const } : {}) }}>
           <button style={S.tab(tab === "dashboard")} onClick={() => setTab("dashboard")}>
             Dashboard
           </button>
@@ -261,20 +278,22 @@ export default function DashboardPage() {
               Admin
             </button>
           )}
-          <div style={{ marginLeft: "auto", fontSize: 11, color: "#374151", alignSelf: "center", fontFamily: "monospace" }}>
-            {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-          </div>
+          {!isMobile && (
+            <div style={{ marginLeft: "auto", fontSize: 11, color: "#374151", alignSelf: "center", fontFamily: "monospace" }}>
+              {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </div>
+          )}
         </div>
 
-        <div style={S.body}>
+        <div style={{ ...S.body, ...(isMobile ? { padding: "16px" } : {}) }}>
 
           {/* ── DASHBOARD TAB ── */}
           {tab === "dashboard" && (
             <>
               {/* Row 1: Brief + Watchlist */}
-              <div style={S.row}>
+              <div style={{ ...S.row, ...(isMobile ? { flexDirection: "column" as const } : {}) }}>
                 {/* Morning Brief */}
-                <div style={{ ...S.panel("#E8A020"), flex: "0 0 42%" }}>
+                <div style={{ ...S.panel("#E8A020"), flex: isMobile ? "1 1 auto" : "0 0 42%" }}>
                   <div style={S.panelTitle}>
                     Morning Brief
                     <span style={S.badge("#E8A020")}>{new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
@@ -347,7 +366,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Row 2: Intel Feed + Recent Research */}
-              <div style={S.row}>
+              <div style={{ ...S.row, ...(isMobile ? { flexDirection: "column" as const } : {}) }}>
                 {/* Intel Feed */}
                 <div style={S.panel("#4A90D9")}>
                   <div style={S.panelTitle}>
@@ -374,7 +393,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Recent Research */}
-                <div style={{ ...S.panel("#6B7A99"), flex: "0 0 35%" }}>
+                <div style={{ ...S.panel("#6B7A99"), flex: isMobile ? "1 1 auto" : "0 0 35%" }}>
                   <div style={S.panelTitle}>Recent Research</div>
                   {recentRuns.length === 0 && (
                     <EmptyState size="compact" icon="⊞" title="No research yet" description="Run your first query above." />
@@ -402,23 +421,23 @@ export default function DashboardPage() {
           {tab === "admin" && isInternal && (
             <>
               {/* Stat row */}
-              <div style={S.row}>
-                <div style={S.stat("#34D399")}>
+              <div style={{ ...S.row, ...(isMobile ? { flexWrap: "wrap" as const } : {}) }}>
+                <div style={{ ...S.stat("#34D399"), ...(isMobile ? { flex: "1 1 45%" } : {}) }}>
                   <div style={S.statLabel}>Total Users</div>
                   <div style={S.statValue("#34D399")}>{adminStats?.totalUsers ?? "—"}</div>
                 </div>
-                <div style={S.stat("#E8A020")}>
+                <div style={{ ...S.stat("#E8A020"), ...(isMobile ? { flex: "1 1 45%" } : {}) }}>
                   <div style={S.statLabel}>Researches Today</div>
                   <div style={S.statValue("#E8A020")}>{adminStats?.runsToday ?? recentRuns.filter(r => {
                     const today = new Date(); today.setHours(0,0,0,0);
                     return new Date(r.generated_at) >= today;
                   }).length}</div>
                 </div>
-                <div style={S.stat("#4A90D9")}>
+                <div style={{ ...S.stat("#4A90D9"), ...(isMobile ? { flex: "1 1 45%" } : {}) }}>
                   <div style={S.statLabel}>Deep Dives Today</div>
                   <div style={S.statValue("#4A90D9")}>{adminStats?.deepDivesToday ?? "—"}</div>
                 </div>
-                <div style={S.stat("#F87171")}>
+                <div style={{ ...S.stat("#F87171"), ...(isMobile ? { flex: "1 1 45%" } : {}) }}>
                   <div style={S.statLabel}>Deep Dives Running</div>
                   <div style={S.statValue("#F87171")}>{adminStats?.deepDivesRunning ?? 0}</div>
                   <div style={S.statSub}>right now</div>
@@ -426,9 +445,9 @@ export default function DashboardPage() {
               </div>
 
               {/* Tier breakdown + recent runs */}
-              <div style={S.row}>
+              <div style={{ ...S.row, ...(isMobile ? { flexDirection: "column" as const } : {}) }}>
                 {/* Tier breakdown */}
-                <div style={{ ...S.panel("#E8A020"), flex: "0 0 280px" }}>
+                <div style={{ ...S.panel("#E8A020"), flex: isMobile ? "1 1 auto" : "0 0 280px" }}>
                   <div style={S.panelTitle}>Users by Tier</div>
                   {(adminStats?.tierBreakdown ?? []).map((t) => (
                     <div key={t.tier} style={{
