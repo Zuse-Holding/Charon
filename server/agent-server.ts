@@ -68,21 +68,23 @@ interface TierConfig {
   watchlistLimit: number;
   knowledgeGraphAccess: boolean;
   exportAccess: boolean;
-  jackalProtocol: boolean;
+  charonProtocol: boolean;
   chatWidgetAccess: boolean;
 }
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: true, chatWidgetAccess: true },
-  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: false, chatWidgetAccess: true },
-  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: false, chatWidgetAccess: true },
-  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, jackalProtocol: false, chatWidgetAccess: false },
-  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, jackalProtocol: false, chatWidgetAccess: false },
-  // Time-boxed trial tier for external demo/feedback users (e.g. investor trials).
-  // No political research, no Jackal Protocol, no chat widget (protects API cost
-  // exposure on an unmetered-feeling trial). Expiry enforced via
-  // profiles.trial_expires_at, checked in getUserTier below.
-  trial:    { dailyResearchLimit: 30, dailyDeepDiveLimit: 10, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, jackalProtocol: false, chatWidgetAccess: false },
+  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true },
+  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true },
+  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true },
+  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false },
+  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false },
+  // Time-boxed tier for external demo/partner accounts (limited partners,
+  // investor trials, etc). Deliberately mirrors "team" limits and features
+  // so the demo shows the platform at full strength — the ONLY things it
+  // withholds are politicalAccess and charonProtocol, which stay off
+  // regardless of what tier gets requested for these accounts. Expiry
+  // enforced via profiles.trial_expires_at, checked in getUserTier below.
+  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true },
 };
 
 /**
@@ -113,7 +115,7 @@ async function getUserTier(userId: string): Promise<Tier | "expired"> {
 const EXPIRED_CONFIG: TierConfig = {
   dailyResearchLimit: 0, dailyDeepDiveLimit: 0, deepDiveAccess: false,
   politicalAccess: false, watchlistLimit: 0, knowledgeGraphAccess: false,
-  exportAccess: false, jackalProtocol: false, chatWidgetAccess: false,
+  exportAccess: false, charonProtocol: false, chatWidgetAccess: false,
 };
 
 function getTierConfig(tier: Tier | "expired"): TierConfig {
@@ -168,7 +170,7 @@ async function logPersonSearch(userId: string, subject: string, ipAddress?: stri
 }
 
 function tierDenied(res: express.Response, message: string, upgradeHint?: string) {
-  res.status(403).json({ error: "tier_limit", message, upgradeHint: upgradeHint ?? "Upgrade your plan at charonv1-silk.vercel.app/pricing" });
+  res.status(403).json({ error: "tier_limit", message, upgradeHint: upgradeHint ?? "Upgrade your plan at metisanalytic.com/pricing" });
 }
 
 const REPORTS_DIR = join(process.cwd(), "reports");
@@ -194,7 +196,7 @@ app.post("/research", async (req, res) => {
   const config = getTierConfig(tier);
 
   if (tier === "expired") {
-    return tierDenied(res, "Your trial has ended. Contact us to continue using Charon.", "Contact hello@charon.example to discuss plans.");
+    return tierDenied(res, "Your trial has ended. Contact us to continue using Metis.", "Contact hello@metisanalytic.com to discuss plans.");
   }
 
   if (type === "political" && !hasPoliticalAccess(userId, config)) {
@@ -232,7 +234,7 @@ app.post("/research", async (req, res) => {
       outPath = type === "person" ? join(REPORTS_DIR, "people", `${slugify(subject)}.md`) : type === "product" ? join(REPORTS_DIR, "products", `${slugify(subject)}.md`) : join(REPORTS_DIR, `${slugify(subject)}.md`);
     } else {
       const orchestrator = new ResearchOrchestrator();
-      // Jackal Protocol (internal tier only): deeper sourcing on person/
+      // Charon Protocol (internal tier only): deeper sourcing on person/
       // political research, on top of the unlimited quotas internal
       // already gets everywhere else in this file.
       const deep = tier === "internal";
@@ -288,7 +290,7 @@ app.post("/research", async (req, res) => {
       );
     }
 
-    res.json({ ok: true, reportPath: outPath, tier, jackal: config.jackalProtocol });
+    res.json({ ok: true, reportPath: outPath, tier, charon: config.charonProtocol });
 
     if (type === "company" || type === "person" || type === "product" || type === "political") {
       const entityAgent = new EntityExtractionAgent();
@@ -318,7 +320,7 @@ app.post("/deep-dive", async (req, res) => {
   const config = getTierConfig(tier);
 
   if (tier === "expired") {
-    return tierDenied(res, "Your trial has ended. Contact us to continue using Charon.");
+    return tierDenied(res, "Your trial has ended. Contact us to continue using Metis.");
   }
 
   if (!config.deepDiveAccess) {

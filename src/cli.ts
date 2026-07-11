@@ -123,7 +123,7 @@ program
   .command("research-political")
   .argument("<name>")
   .description("Political research: opposition research, district makeup, approval rating, voting record, campaign finance")
-  .option("--deep", "Jackal-style deeper sourcing (more results, full-page reads on opposition research)", false)
+  .option("--deep", "Charon-style deeper sourcing (more results, full-page reads on opposition research)", false)
   .action(async (name: string, opts: { deep: boolean }) => {
     const dir = join(process.cwd(), "reports", "political");
     mkdirSync(dir, { recursive: true });

@@ -20,11 +20,12 @@ const SYSTEM_NAV = [
 
 // Badge shown for every tier, not just internal — label + accent color.
 const TIER_BADGE: Record<string, { label: string; color: string }> = {
-  internal: { label: "◈ JACKAL PROTOCOL", color: "#E8A020" },
+  internal: { label: "◈ CHARON",          color: "#E8A020" },
   team:     { label: "◈ TEAM",            color: "#4A90D9" },
   pro:      { label: "◈ PRO",             color: "#2DD4BF" },
   basic:    { label: "◈ BASIC",           color: "#6B7A99" },
   free:     { label: "◈ FREE",            color: "#6B7A99" },
+  trial:    { label: "◈ TRIAL",           color: "#2DD4BF" },
 };
 
 export default function Sidebar() {
@@ -45,7 +46,7 @@ export default function Sidebar() {
   return (
     <aside className={styles.sidebar}>
       <div className={styles.logo} onClick={() => router.push("/")} style={{ cursor: "pointer" }}>
-        <div className={styles.logoMark}>CHARON</div>
+        <div className={styles.logoMark}>METIS</div>
         <div className={styles.logoSub}>ZUSE HOLDINGS</div>
       </div>
 
@@ -93,7 +94,7 @@ export default function Sidebar() {
       <div className={styles.footer}>
         <span className={styles.dot} />
         <span className={styles.footerText}>
-          {isInternal ? "JACKAL · SELENE" : "GROQ · Selene"}
+          {isInternal ? "CHARON · SELENE" : "GROQ · Selene"}
         </span>
         <button className={styles.signOut} onClick={signOut} title="Sign out">⏻</button>
       </div>

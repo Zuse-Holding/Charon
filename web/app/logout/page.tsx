@@ -20,7 +20,7 @@ export default function LogoutPage() {
   return (
     <div className={styles.shell}>
       <div className={styles.card}>
-        <div className={styles.logoMark}>CHARON</div>
+        <div className={styles.logoMark}>METIS</div>
         <div className={styles.logoSub}>ZUSE HOLDINGS // INTELLIGENCE PLATFORM</div>
         <div className={styles.divider} />
         <div className={styles.icon}>◐</div>

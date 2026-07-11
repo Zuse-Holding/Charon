@@ -28,7 +28,7 @@ import { PoliticalExtractionSchema, extractStructured } from "../../lib/llm.js";
  * yet — see the note at the bottom of this file for what a v2 would
  * swap in. This gets real, useful output today with zero new credentials.
  *
- * deep=true (Jackal Protocol, internal tier only — see orchestrator)
+ * deep=true (Charon Protocol, internal tier only — see orchestrator)
  * pulls more search results per query and fetches full page text for
  * the top opposition-research sources instead of relying on snippets
  * alone, for a materially more thorough pass.

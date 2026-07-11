@@ -124,12 +124,12 @@ export class ResearchOrchestrator {
   }
 
   /**
-   * @param deep Jackal Protocol (internal tier only, no daily/monthly
+   * @param deep Charon Protocol (internal tier only, no daily/monthly
    *   limits — see server/agent-server.ts). Deeper sourcing, same shape,
-   *   plus Jackal Person Research (Round 3): OpenCorporates
+   *   plus Charon Person Research (Round 3): OpenCorporates
    *   officer/directorship records across every jurisdiction it indexes.
-   *   Skipped entirely on non-Jackal runs — this is a broad "search
-   *   everywhere for this exact name" lookup that fits Jackal's
+   *   Skipped entirely on non-Charon runs — this is a broad "search
+   *   everywhere for this exact name" lookup that fits Charon's
    *   no-limits role, not a default-tier feature.
    */
   async researchPerson(personName: string, deep = false): Promise<{
@@ -170,7 +170,7 @@ export class ResearchOrchestrator {
   /**
    * Political research (Round 2, item 1): opposition research, district
    * makeup, approval ratings, voting record, campaign finance.
-   * @param deep Jackal Protocol (internal tier only) — deeper sourcing,
+   * @param deep Charon Protocol (internal tier only) — deeper sourcing,
    *   including full-page reads for the top opposition-research sources.
    *
    * Round 2 v2: runs the search-synthesis political-agent alongside

@@ -236,7 +236,7 @@ export default function DashboardPage() {
     },
     {
       tag: "PLATFORM",
-      text: `You're on the ${tier?.toUpperCase() ?? "BASIC"} tier.${isInternal ? " Jackal Protocol active." : ""}`,
+      text: `You're on the ${tier?.toUpperCase() ?? "BASIC"} tier.${isInternal ? " Charon Protocol active." : ""}`,
       flag: "low",
     },
   ].filter(Boolean) as { tag: string; text: string; flag: string }[];

@@ -14,7 +14,7 @@ export interface TierConfig {
   watchlistLimit: number;       // -1 = unlimited
   knowledgeGraphAccess: boolean;
   exportAccess: boolean;
-  jackalProtocol: boolean;
+  charonProtocol: boolean;
 }
 
 interface TierContextValue {
@@ -44,7 +44,7 @@ const DEFAULT_CONFIG: TierConfig = {
   watchlistLimit: 2,
   knowledgeGraphAccess: false,
   exportAccess: false,
-  jackalProtocol: false,
+  charonProtocol: false,
 };
 
 const TierContext = createContext<TierContextValue>({

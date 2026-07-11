@@ -1,7 +1,7 @@
 import { CorporateAffiliationEntry, Source } from "../../types/research.js";
 
 /**
- * OpenCorporates Agent (Round 3 — Jackal Person Research, part 1 of 3)
+ * OpenCorporates Agent (Round 3 — Charon Person Research, part 1 of 3)
  *
  * Corporate officer/directorship records: every company OpenCorporates
  * has on file where this person shows up as an officer, director, or
@@ -9,10 +9,10 @@ import { CorporateAffiliationEntry, Source } from "../../types/research.js";
  * key at low volume — set OPENCORPORATES_API_TOKEN to raise the rate
  * limit if usage grows, but it's optional, not required.
  *
- * This is intentionally scoped to Jackal (internal tier) — it's a
+ * This is intentionally scoped to Charon (internal tier) — it's a
  * "search every jurisdiction OpenCorporates indexes for this exact
  * name" query, which is the kind of broad, no-limits lookup that fits
- * the Jackal Protocol's role in this app (see political-agent,
+ * the Charon Protocol's role in this app (see political-agent,
  * people-agent deep mode) rather than something every tier should get
  * by default.
  *

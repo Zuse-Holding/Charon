@@ -132,7 +132,7 @@ export interface CareerEntry {
   note?: string;
 }
 
-// Jackal Person Research (Round 3) — corporate officer/directorship
+// Charon Person Research (Round 3) — corporate officer/directorship
 // records from OpenCorporates. See src/agents/opencorporates-agent.
 export interface CorporateAffiliationEntry {
   companyName: string;
@@ -143,7 +143,7 @@ export interface CorporateAffiliationEntry {
   companyUrl?: string;
 }
 
-// MuckRock FOIA request search (Round 3) — Jackal-only, wired into both
+// MuckRock FOIA request search (Round 3) — Charon-only, wired into both
 // political and person research. See src/agents/muckrock-agent.
 export interface FoiaRequestEntry {
   title: string;

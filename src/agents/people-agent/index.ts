@@ -23,7 +23,7 @@ export class PeopleAgent {
   ) {}
 
   /**
-   * @param deep Jackal Protocol (internal tier, no daily/monthly limits —
+   * @param deep Charon Protocol (internal tier, no daily/monthly limits —
    *   see server/agent-server.ts). Pulls more results per query and reads
    *   full page text from more bio sources instead of snippets alone.
    *   Same extraction pipeline either way, just more raw material for it.

@@ -4,17 +4,17 @@ import { ResearchProvider } from "../lib/research-context";
 import { TierProvider } from "../lib/tier-context";
 
 export const metadata: Metadata = {
-  title: "Charon — Business Intelligence",
+  title: "Metis — Business Intelligence",
   description: "AI-powered business intelligence research on any company, person, or product. Analyst-grade reports in seconds. Built for founders, operators, and BD teams.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "Charon — Business Intelligence",
+    title: "Metis — Business Intelligence",
     description: "AI-powered research on any company, person, or product. Analyst-grade reports in seconds.",
-    url: "https://charonv1-silk.vercel.app",
-    siteName: "Charon",
+    url: "https://metisanalytic.com",
+    siteName: "Metis",
     type: "website",
   },
 };
