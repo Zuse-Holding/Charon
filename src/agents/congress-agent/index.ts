@@ -137,6 +137,8 @@ export class CongressAgent {
         usedFor: ["profile", "voting-record"],
       }];
 
+      console.log(`[congress-agent] "${name}" (${bioguideId}) — resolved: office=${office ?? "?"} party=${party ?? "?"} state=${state ?? "?"} district=${district ?? "?"}, ${sponsoredLegislation.length} sponsored bill(s)`);
+
       return { sponsoredLegislation, office, party, state, district, sources };
     } catch (err) {
       console.warn(`[congress-agent] "${name}" — lookup failed:`, err instanceof Error ? err.message : err);

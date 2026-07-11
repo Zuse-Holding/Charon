@@ -124,6 +124,8 @@ export class OpenFecAgent {
         usedFor: ["campaign-finance"],
       }];
 
+      console.log(`[openfec-agent] "${name}" — resolved candidate_id=${candidate.candidate_id}, cycle=${summary.cycle ?? "?"}, receipts=${summary.totalReceipts ?? "?"}, ${donorBreakdown.length} donor-employer entries`);
+
       return { summary, donorBreakdown, sources };
     } catch (err) {
       console.warn(`[openfec-agent] "${name}" — lookup failed:`, err instanceof Error ? err.message : err);
