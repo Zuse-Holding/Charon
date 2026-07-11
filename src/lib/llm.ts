@@ -143,8 +143,8 @@ async function extractViaOpenRouter<T>(
       headers: {
         "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://charonv1-silk.vercel.app",
-        "X-Title": "Charon Intelligence",
+        "HTTP-Referer": "https://metisanalytic.com",
+        "X-Title": "Metis Intelligence",
       },
       body: JSON.stringify({
         model,

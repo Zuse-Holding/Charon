@@ -1,7 +1,7 @@
 import { FoiaRequestEntry, Source } from "../../types/research.js";
 
 /**
- * MuckRock Agent (Round 3 — Jackal builds) — searches MuckRock's public
+ * MuckRock Agent (Round 3 — Charon builds) — searches MuckRock's public
  * archive of filed FOIA/public-records requests for a name (person,
  * company, or political figure).
  *
@@ -23,7 +23,7 @@ import { FoiaRequestEntry, Source } from "../../types/research.js";
  *      accounts/endpoints do accept it, but the static key is what
  *      MuckRock's own examples use for `api_v1/foia/`.
  *
- * Jackal-only (internal tier), same reasoning as opencorporates-agent —
+ * Charon-only (internal tier), same reasoning as opencorporates-agent —
  * this is a broad "search everything indexed for this exact name" pull,
  * not a default-tier feature.
  *

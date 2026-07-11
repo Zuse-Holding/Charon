@@ -103,7 +103,7 @@ export default function Settings() {
         <div className={styles.content}>
           <h1 className={styles.title}>Settings</h1>
           <p className={styles.sub}>
-            System configuration and account information for your Charon workspace.
+            System configuration and account information for your Metis workspace.
           </p>
 
           <div className={styles.group}>
@@ -195,7 +195,7 @@ export default function Settings() {
               <div className={styles.upgradeText}>
                 Unlock Deep Dive, Knowledge Graph, and unlimited watchlist tracking with Pro.
               </div>
-              <a href="mailto:hello@zuseholdings.com?subject=Charon Pro Upgrade" className={styles.upgradeBtn}>
+              <a href="mailto:hello@metisanalytic.com?subject=Metis Pro Upgrade" className={styles.upgradeBtn}>
                 Contact us to upgrade →
               </a>
             </div>

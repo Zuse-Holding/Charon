@@ -213,7 +213,7 @@ export class ReportAgent {
     }
     lines.push(``);
 
-    // Jackal Person Research (Round 3) — only present on deep/internal-tier
+    // Charon Person Research (Round 3) — only present on deep/internal-tier
     // runs, so this section is omitted entirely rather than shown empty
     // for everyone else.
     if (bundle.corporateAffiliations && bundle.corporateAffiliations.length > 0) {

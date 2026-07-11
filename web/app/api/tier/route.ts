@@ -33,7 +33,7 @@ export async function GET() {
         watchlistLimit: 5,
         knowledgeGraphAccess: false,
         exportAccess: false,
-        jackalProtocol: false,
+        charonProtocol: false,
       },
       displayName: null,
     });

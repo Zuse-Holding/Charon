@@ -102,7 +102,7 @@ export default function Landing() {
         <div className={styles.navLogo}>
           <div className={styles.logoIcon} />
           <div>
-            <div className={styles.logoMark}>CHARON</div>
+            <div className={styles.logoMark}>METIS</div>
             <div className={styles.logoSub}>ZUSE HOLDINGS · SELENE</div>
           </div>
         </div>
@@ -258,7 +258,7 @@ export default function Landing() {
                 className={`${styles.planCta} ${plan.highlight ? styles.planCtaFeatured : ""} ${plan.isEnterprise ? styles.planCtaEnterprise : ""}`}
                 onClick={() => {
                   if (plan.isEnterprise) {
-                    window.location.href = "mailto:hello@zuseholdings.com?subject=Charon Enterprise";
+                    window.location.href = "mailto:hello@metisanalytic.com?subject=Metis Enterprise";
                   } else {
                     router.push("/login");
                   }
@@ -282,7 +282,7 @@ export default function Landing() {
 
       <footer className={styles.footer}>
         <span>© 2026 ZUSE HOLDINGS</span>
-        <a href="mailto:hello@zuseholdings.com" className={styles.footerLink}>hello@zuseholdings.com</a>
+        <a href="mailto:hello@metisanalytic.com" className={styles.footerLink}>hello@metisanalytic.com</a>
         <span>POWERED BY SELENE</span>
       </footer>
     </div>

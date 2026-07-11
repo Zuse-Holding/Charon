@@ -1,6 +1,6 @@
 /**
  * TikTok Creator Intelligence Agent
- * Jackal Protocol — Sprint 1
+ * Charon Protocol — Sprint 1
  *
  * Flow:
  * 1. For each keyword, fetch videos from the hashtag feed

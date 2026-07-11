@@ -175,7 +175,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
         <div className={styles.drawerOverlay} onClick={() => setMenuOpen(false)}>
           <div className={styles.drawer} onClick={e => e.stopPropagation()}>
             <div className={styles.drawerHeader}>
-              <span className={styles.drawerLogo}>CHARON</span>
+              <span className={styles.drawerLogo}>METIS</span>
               <button className={styles.drawerClose} onClick={() => setMenuOpen(false)}>✕</button>
             </div>
             {[

@@ -59,7 +59,7 @@ export class DirectFetchProvider implements FetchProvider {
       const res = await fetch(url, {
         signal: controller.signal,
         headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; CharonResearchBot/1.0; +https://charon.zuseholdings.com)",
+          "User-Agent": "Mozilla/5.0 (compatible; MetisResearchBot/1.0; +https://metisanalytic.com)",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "en-US,en;q=0.5",
         },
