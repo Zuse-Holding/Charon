@@ -39,6 +39,25 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Political access allowlist — demo safety net on top of tier config.
+// Tier config alone (politicalAccess: true on internal/team/pro) means
+// ANY account you set to team/pro for a demo, or any tier misconfig,
+// would get political search too. This is a second, explicit gate:
+// even if config.politicalAccess is true, political research is denied
+// unless the userId is also in this set. Add your own Supabase user
+// UUID here (Dashboard → Authentication → Users) before demoing —
+// until you do, this is empty and has no effect (falls back to
+// tier-only gating, same as before).
+const POLITICAL_ACCESS_USER_IDS = new Set<string>([
+  // "your-supabase-user-id-here",  ← replace with your actual UUID
+]);
+
+function hasPoliticalAccess(userId: string, config: TierConfig): boolean {
+  if (!config.politicalAccess) return false;
+  if (POLITICAL_ACCESS_USER_IDS.size === 0) return true; // not configured yet — tier-only gating
+  return POLITICAL_ACCESS_USER_IDS.has(userId);
+}
+
 type Tier = "internal" | "team" | "pro" | "basic" | "free" | "trial";
 
 interface TierConfig {
@@ -178,8 +197,11 @@ app.post("/research", async (req, res) => {
     return tierDenied(res, "Your trial has ended. Contact us to continue using Charon.", "Contact hello@charon.example to discuss plans.");
   }
 
-  if (type === "political" && !config.politicalAccess) {
-    return tierDenied(res, "Political research requires Pro or higher.");
+  if (type === "political" && !hasPoliticalAccess(userId, config)) {
+    // Generic message on purpose — if the allowlist is what's blocking
+    // this (not tier), "requires Pro or higher" would be misleading for
+    // an account that's actually already on Pro/Team.
+    return tierDenied(res, "Political research is not enabled for this account.");
   }
 
   if (config.dailyResearchLimit !== -1) {
@@ -351,7 +373,14 @@ app.get("/tier/:userId", async (req, res) => {
     .eq("id", req.params.userId)
     .single();
 
-  res.json({ tier, config, displayName: profile?.display_name ?? null });
+  // Reflect the real, allowlist-aware political access here too — not
+  // just tier config — so the frontend's "POL" pill hides itself for
+  // any account the allowlist blocks, instead of being clickable and
+  // then failing on submit. Same check /research enforces server-side;
+  // this is just so the UI doesn't advertise something it'll refuse.
+  const effectiveConfig = { ...config, politicalAccess: hasPoliticalAccess(req.params.userId, config) };
+
+  res.json({ tier, config: effectiveConfig, displayName: profile?.display_name ?? null });
 });
 
 const MAX_DISPLAY_NAME_LENGTH = 60;
