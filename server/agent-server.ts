@@ -410,19 +410,33 @@ app.patch("/profile/:userId", async (req, res) => {
   // email-derived name instead of storing/displaying blank text.
   const displayName = trimmed || null;
 
-  // upsert, not update — if this user has no profiles row yet (e.g. no
-  // signup trigger ever created one), a plain .update() matches zero rows
-  // and silently no-ops: no error, but nothing is written, so the save
-  // "succeeds" in the UI and then reverts on next load. Upsert guarantees
-  // a row exists after this call either way.
-  const { error } = await supabase
+  // Update first, then only insert if nothing matched. Deliberately not
+  // using .upsert(onConflict:"id") here — that requires Postgres to already
+  // have a unique/primary-key constraint registered on "id", and if this
+  // profiles table doesn't actually have one, upsert fails outright rather
+  // than falling back to update. This two-step version works regardless.
+  const { data: updated, error: updateError } = await supabase
     .from("profiles")
-    .upsert({ id: req.params.userId, display_name: displayName }, { onConflict: "id" });
+    .update({ display_name: displayName })
+    .eq("id", req.params.userId)
+    .select("id");
 
-  if (error) {
-    console.error("[profile] display_name update failed:", JSON.stringify(error));
-    res.status(500).json({ error: "Failed to update display name" });
+  if (updateError) {
+    console.error("[profile] display_name update failed:", JSON.stringify(updateError));
+    res.status(500).json({ error: `Failed to update display name: ${updateError.message}` });
     return;
+  }
+
+  if (!updated || updated.length === 0) {
+    const { error: insertError } = await supabase
+      .from("profiles")
+      .insert({ id: req.params.userId, display_name: displayName });
+
+    if (insertError) {
+      console.error("[profile] display_name insert failed:", JSON.stringify(insertError));
+      res.status(500).json({ error: `Failed to update display name: ${insertError.message}` });
+      return;
+    }
   }
 
   res.json({ ok: true, displayName });
