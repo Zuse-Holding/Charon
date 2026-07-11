@@ -28,8 +28,10 @@ interface TierContextValue {
   refresh: () => void;
   /** Sets the user's preferred display name (profiles.display_name).
    *  Pass "" to clear it and fall back to the email-derived name.
-   *  Returns whether the save succeeded. */
-  updateDisplayName: (name: string) => Promise<boolean>;
+   *  Returns whether the save succeeded, and the server's error message
+   *  (if any) so callers can actually show what went wrong instead of a
+   *  silent no-op. */
+  updateDisplayName: (name: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
@@ -54,7 +56,7 @@ const TierContext = createContext<TierContextValue>({
   email: null,
   can: () => false,
   refresh: () => {},
-  updateDisplayName: async () => false,
+  updateDisplayName: async () => ({ ok: false }),
 });
 
 /** Best-effort human-friendly name: metadata full name -> email local part. */
@@ -130,7 +132,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
 
   const refresh = () => setTick(t => t + 1);
 
-  const updateDisplayName = async (name: string): Promise<boolean> => {
+  const updateDisplayName = async (name: string): Promise<{ ok: boolean; error?: string }> => {
     try {
       const res = await fetch("/api/profile", {
         method: "PATCH",
@@ -138,14 +140,14 @@ export function TierProvider({ children }: { children: ReactNode }) {
         credentials: "include",
         body: JSON.stringify({ displayName: name }),
       });
-      if (!res.ok) return false;
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: data.error ?? `Save failed (HTTP ${res.status}).` };
       // Server returns null when the name was cleared — fall back to the
       // email-derived guess so the UI never shows a blank name.
       setDisplayName(data.displayName || emailDerivedName);
-      return true;
-    } catch {
-      return false;
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "Network error." };
     }
   };
 

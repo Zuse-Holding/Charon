@@ -14,6 +14,7 @@ export default function Settings() {
   const [nameInput, setNameInput]   = useState("");
   const [nameSaving, setNameSaving] = useState(false);
   const [nameSaved, setNameSaved]   = useState(false);
+  const [nameError, setNameError]   = useState<string | null>(null);
 
   const [newPassword, setNewPassword]         = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -37,11 +38,14 @@ export default function Settings() {
   async function handleSaveName() {
     setNameSaving(true);
     setNameSaved(false);
-    const ok = await updateDisplayName(nameInput.trim());
+    setNameError(null);
+    const { ok, error } = await updateDisplayName(nameInput.trim());
     setNameSaving(false);
     if (ok) {
       setNameSaved(true);
       setTimeout(() => setNameSaved(false), 2500);
+    } else {
+      setNameError(error ?? "Save failed — please try again.");
     }
   }
 
@@ -112,7 +116,7 @@ export default function Settings() {
                 placeholder={email ? email.split("@")[0] : "Your name"}
                 value={nameInput}
                 maxLength={60}
-                onChange={(e) => { setNameInput(e.target.value); setNameSaved(false); }}
+                onChange={(e) => { setNameInput(e.target.value); setNameSaved(false); setNameError(null); }}
                 onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
               />
               <button
@@ -123,6 +127,7 @@ export default function Settings() {
                 {nameSaved ? "✓ Saved" : nameSaving ? "Saving..." : "Save"}
               </button>
             </div>
+            {nameError && <div className={styles.fieldError}>{nameError}</div>}
           </div>
 
           {SYSTEM_INFO.map((group) => (
