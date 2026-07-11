@@ -372,20 +372,37 @@ export class ReportAgent {
     );
     lines.push(``);
 
+    // Senators represent an entire state, not a numbered district — show
+    // that plainly instead of "Unknown", which reads like missing data
+    // rather than a structural fact about the office.
+    const isSenate = /senat/i.test(bundle.profile.office ?? "");
+    const districtDisplay = bundle.profile.district
+      ? bundle.profile.district
+      : isSenate ? "Statewide (Senate — no numbered district)" : "Unknown";
+
     lines.push(`## Profile`);
     lines.push(`- **Office:** ${bundle.profile.office ?? "Unknown"}`);
     lines.push(`- **Party:** ${bundle.profile.party ?? "Unknown"}`);
     lines.push(`- **State:** ${bundle.profile.state ?? "Unknown"}`);
-    lines.push(`- **District:** ${bundle.profile.district ?? "Unknown"}`);
+    lines.push(`- **District:** ${districtDisplay}`);
     lines.push(``);
 
+    // District Makeup / Approval Rating / (roll-call) Voting Record /
+    // Campaign Finance below are search-synthesized, not pulled from a
+    // structured API — unlike Profile (Congress.gov) and Federal
+    // Campaign Finance (OpenFEC) elsewhere in this report. Framed
+    // explicitly as best-effort rather than left to read like a gap,
+    // since coverage genuinely varies by how much public data exists
+    // for a given office.
     lines.push(`## District Makeup`);
     if (bundle.districtMakeup && (bundle.districtMakeup.partisanLean || bundle.districtMakeup.demographics || bundle.districtMakeup.keyIssues)) {
       if (bundle.districtMakeup.partisanLean) lines.push(`- **Partisan Lean:** ${bundle.districtMakeup.partisanLean}`);
       if (bundle.districtMakeup.demographics) lines.push(`- **Demographics:** ${bundle.districtMakeup.demographics}`);
       if (bundle.districtMakeup.keyIssues)    lines.push(`- **Key Issues:** ${bundle.districtMakeup.keyIssues}`);
+    } else if (isSenate) {
+      lines.push(`_Senators represent their entire state — district-level partisan lean and demographics don't apply the way they do for House seats. See the state's own political profile for this kind of context._`);
     } else {
-      lines.push(`_No district data collected in this pass._`);
+      lines.push(`_Best-effort from open sources — no specific district partisan-lean or demographic data surfaced for this pass. Not every district has this level of public detail readily available._`);
     }
     lines.push(``);
 
@@ -397,13 +414,13 @@ export class ReportAgent {
         }`
       );
     } else {
-      lines.push(`_No approval rating data collected in this pass._`);
+      lines.push(`_Best-effort from open sources — most individual members of Congress don't have recent, publicly available polling to draw from. This section only populates when a specific poll surfaces._`);
     }
     lines.push(``);
 
     lines.push(`## Voting Record`);
     if (bundle.votingRecord.length === 0) {
-      lines.push(`_No voting record data collected in this pass._`);
+      lines.push(`_Best-effort from open sources — specific named votes only appear here when public coverage discusses them directly. See Sponsored Legislation below for a complete, API-verified list of bills this member has introduced._`);
     } else {
       for (const v of bundle.votingRecord) {
         lines.push(`- **${v.bill}** — ${v.position}${v.note ? `: ${v.note}` : ""}`);
@@ -413,7 +430,7 @@ export class ReportAgent {
 
     lines.push(`## Campaign Finance`);
     if (bundle.campaignFinance.length === 0) {
-      lines.push(`_No campaign finance data collected in this pass._`);
+      lines.push(`_Best-effort from open sources — see Federal Campaign Finance below for verified FEC totals and donor breakdown._`);
     } else {
       for (const c of bundle.campaignFinance) {
         lines.push(
