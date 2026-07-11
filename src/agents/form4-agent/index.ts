@@ -59,7 +59,10 @@ export class Form4Agent {
       6
     );
 
-    if (results.length === 0) return { filings: [], sources: [] };
+    if (results.length === 0) {
+      console.log(`[form4-agent] "${companyName}"${searchName !== companyName ? ` (searched as "${searchName}")` : ""} — 0 search results, nothing to extract from`);
+      return { filings: [], sources: [] };
+    }
 
     const sources: Source[] = results.map((r) => ({
       url: r.url,
@@ -93,9 +96,12 @@ RULES:
       Form4ExtractionSchema
     );
 
+    const rawCount = llmResult?.filings?.length ?? 0;
     const filings: Form4Entry[] = (llmResult?.filings ?? []).filter((f) =>
       looksLikeFullPersonName(f.filerName)
     );
+
+    console.log(`[form4-agent] "${companyName}"${searchName !== companyName ? ` (searched as "${searchName}")` : ""} — ${results.length} search result(s), LLM returned ${rawCount}, ${filings.length} passed name validation`);
 
     return { filings, sources };
   }

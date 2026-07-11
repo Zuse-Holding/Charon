@@ -23,10 +23,15 @@ interface FecCandidateSearchResult {
 }
 
 interface FecTotalsResult {
-  cycle?: number;
+  cycle?: number | null;
   receipts?: number;
   disbursements?: number;
   cash_on_hand_end_period?: number;
+  // Confirmed in production: for a currently-serving member not yet in
+  // an active election cycle, `cycle` comes back null. This field was
+  // present in that same response and is arguably more useful anyway —
+  // it says which election the money's being raised toward.
+  candidate_election_year?: number;
 }
 
 interface FecEmployerResult {
@@ -97,18 +102,18 @@ export class OpenFecAgent {
         if (latest) {
           summary = {
             ...summary,
-            cycle: latest.cycle ? String(latest.cycle) : undefined,
+            cycle: latest.cycle ? String(latest.cycle) : latest.candidate_election_year ? String(latest.candidate_election_year) : undefined,
             totalReceipts: formatUsd(latest.receipts),
             totalDisbursements: formatUsd(latest.disbursements),
             cashOnHand: formatUsd(latest.cash_on_hand_end_period),
           };
-          // Confirmed in production: receipts resolves fine but cycle
-          // sometimes doesn't, meaning the assumed field name isn't
-          // quite right for every response shape. Rather than guess
-          // again blind, dump the raw object once so the next run shows
-          // exactly what's actually there.
-          if (!summary.cycle) {
-            console.warn(`[openfec-agent] "${name}" — totals result missing "cycle", raw object: ${JSON.stringify(latest).slice(0, 500)}`);
+          // cashOnHand specifically is still unconfirmed — the raw dump
+          // that caught the "cycle" bug got truncated at 500 chars
+          // before reaching that field. Un-truncated this time, and
+          // checked independently of cycle (which now has a fallback
+          // and would otherwise mask this warning going forward).
+          if (!summary.cashOnHand) {
+            console.warn(`[openfec-agent] "${name}" — totals result missing "cash_on_hand_end_period", raw object: ${JSON.stringify(latest)}`);
           }
         }
       } else if (totalsRes && !totalsRes.ok) {
