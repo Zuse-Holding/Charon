@@ -18,6 +18,32 @@ const PLAN_LABEL: Record<string, string> = {
   trial: "Trial",
 };
 
+// Show/hide toggle for password fields — plain SVG eye / eye-off icons,
+// no icon library dependency for one small control.
+function PasswordToggle({ show, onToggle }: { show: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={styles.pwToggle}
+      onClick={onToggle}
+      tabIndex={-1}
+      aria-label={show ? "Hide password" : "Show password"}
+    >
+      {show ? (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M1 1l22 22" strokeLinecap="round"/>
+        </svg>
+      ) : (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" strokeLinecap="round" strokeLinejoin="round"/>
+          <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export default function Settings() {
   const { displayName, updateDisplayName, tier } = useTier();
   const [email, setEmail]           = useState<string>("");
@@ -33,6 +59,8 @@ export default function Settings() {
   const [pwSaving, setPwSaving]     = useState(false);
   const [pwSaved, setPwSaved]       = useState(false);
   const [pwError, setPwError]       = useState<string | null>(null);
+  const [showNewPassword, setShowNewPassword]         = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -163,25 +191,31 @@ export default function Settings() {
             <div className={styles.groupLabel}>SECURITY</div>
             <div className={styles.row}>
               <span className={styles.rowLabel}>New Password</span>
-              <input
-                className={styles.nameInput}
-                type="password"
-                placeholder="At least 8 characters"
-                value={newPassword}
-                onChange={(e) => { setNewPassword(e.target.value); setPwError(null); }}
-                onKeyDown={(e) => e.key === "Enter" && handlePasswordUpdate()}
-              />
+              <div className={styles.pwWrap}>
+                <input
+                  className={`${styles.nameInput} ${styles.pwInput}`}
+                  type={showNewPassword ? "text" : "password"}
+                  placeholder="At least 8 characters"
+                  value={newPassword}
+                  onChange={(e) => { setNewPassword(e.target.value); setPwError(null); }}
+                  onKeyDown={(e) => e.key === "Enter" && handlePasswordUpdate()}
+                />
+                <PasswordToggle show={showNewPassword} onToggle={() => setShowNewPassword((v) => !v)} />
+              </div>
             </div>
             <div className={styles.row}>
               <span className={styles.rowLabel}>Confirm Password</span>
-              <input
-                className={styles.nameInput}
-                type="password"
-                placeholder="Repeat password"
-                value={confirmPassword}
-                onChange={(e) => { setConfirmPassword(e.target.value); setPwError(null); }}
-                onKeyDown={(e) => e.key === "Enter" && handlePasswordUpdate()}
-              />
+              <div className={styles.pwWrap}>
+                <input
+                  className={`${styles.nameInput} ${styles.pwInput}`}
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="Repeat password"
+                  value={confirmPassword}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setPwError(null); }}
+                  onKeyDown={(e) => e.key === "Enter" && handlePasswordUpdate()}
+                />
+                <PasswordToggle show={showConfirmPassword} onToggle={() => setShowConfirmPassword((v) => !v)} />
+              </div>
               <button
                 className={styles.resetBtn}
                 onClick={handlePasswordUpdate}
