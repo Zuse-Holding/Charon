@@ -228,6 +228,14 @@ export interface PoliticalProfile {
   district?: string;    // e.g. "CA-30"
   incumbent?: boolean;
   summary?: string;
+  education?: string;
+  // Best-effort classification used to route which API sources get
+  // called (Congress.gov/OpenFEC are federal-only, LegiScan is state
+  // legislators, statewide-executives table is governors/AG/SoS/etc).
+  // "unknown" falls back to trying every source, same as before this
+  // existed — this only ever narrows dispatch, never blocks a source.
+  // See src/lib/office-classifier.ts.
+  officeType?: "federal" | "state-legislator" | "statewide-executive" | "local" | "unknown";
   // Set when the exact queried name never appears in any gathered
   // source text — a strong signal the search engine fuzzy-matched to a
   // different (if similar-sounding) real person. When set, no profile
@@ -235,6 +243,13 @@ export interface PoliticalProfile {
   // results, to avoid attributing a real person's facts/allegations to
   // the wrong name. See src/agents/political-agent.
   nameMismatchWarning?: string;
+  // Set when no source (search-synthesis, Congress.gov, OpenFEC,
+  // LegiScan, or the statewide-executives table) could confirm even
+  // basic office/party/state for this person — an explicit "we don't
+  // have this" flag instead of a silently blank or LLM-guessed profile.
+  // Matches the ENTITY_OVERRIDES philosophy: say what you don't know
+  // rather than paper over the gap.
+  dataUnavailable?: boolean;
 }
 
 export interface DistrictMakeup {
