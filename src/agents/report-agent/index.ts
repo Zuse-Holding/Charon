@@ -362,6 +362,9 @@ export class ReportAgent {
     if (bundle.profile.nameMismatchWarning) {
       lines.push(`> ⚠️ **Name not confirmed:** ${bundle.profile.nameMismatchWarning} Profile and opposition-research data below reflects only what real API integrations (Congress.gov, OpenFEC, LegiScan) could independently verify — nothing was synthesized from search results under this name. Double-check the spelling and re-run.`);
       lines.push(``);
+    } else if (bundle.profile.dataUnavailable) {
+      lines.push(`> ℹ️ **Limited public data available:** No source — search synthesis, Congress.gov, OpenFEC, LegiScan, or the statewide-executives table — could confirm this person's current office, party, or state. This likely means they don't currently hold elected office, hold a role outside what these sources cover (e.g. a local or appointed position), or simply have a limited public footprint. Anything below is best-effort context, not a verified profile.`);
+      lines.push(``);
     }
 
     lines.push(`## Executive Summary`);
@@ -385,6 +388,7 @@ export class ReportAgent {
     lines.push(`- **Party:** ${bundle.profile.party ?? "Unknown"}`);
     lines.push(`- **State:** ${bundle.profile.state ?? "Unknown"}`);
     lines.push(`- **District:** ${districtDisplay}`);
+    if (bundle.profile.education) lines.push(`- **Education:** ${bundle.profile.education}`);
     lines.push(``);
 
     // District Makeup / Approval Rating / (roll-call) Voting Record /

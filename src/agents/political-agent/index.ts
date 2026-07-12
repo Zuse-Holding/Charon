@@ -87,6 +87,13 @@ export class PoliticalAgent {
       `${name} voting record key votes`,
       `${name} campaign finance donors fundraising FEC`,
       `${name} controversy criticism opposition record scandal`,
+      // Political research fix #4/#5: same education signal person-agent
+      // gathers for non-political people. Congress.gov's API doesn't
+      // return education at all (confirmed against its actual response
+      // shape — partyHistory/terms/state/district/chamber only), so
+      // federal and state/local officials alike need this same
+      // bio-extraction fallback rather than two different code paths.
+      `${name} education college degree alma mater`,
     ];
 
     const searchResults = await Promise.all(
@@ -100,6 +107,7 @@ export class PoliticalAgent {
       votingResults,
       financeResults,
       oppoResults,
+      educationResults,
     ] = searchResults;
 
     const sources: Source[] = [];
@@ -114,6 +122,7 @@ export class PoliticalAgent {
     tag(votingResults, "voting-record");
     tag(financeResults, "campaign-finance");
     tag(oppoResults, "opposition-research");
+    tag(educationResults, "profile");
 
     // Deep mode: fetch full page text for the top opposition-research
     // sources rather than relying on two-line snippets — this is the
@@ -136,6 +145,7 @@ export class PoliticalAgent {
       votingResults.length ? `VOTING RECORD SEARCH:\n${votingResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
       financeResults.length ? `CAMPAIGN FINANCE SEARCH:\n${financeResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
       oppoResults.length ? `OPPOSITION RESEARCH SEARCH:\n${oppoResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
+      educationResults.length ? `EDUCATION SEARCH:\n${educationResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
       oppoFullText,
     ].filter(Boolean).join("\n\n");
 
@@ -159,6 +169,7 @@ CRITICAL RULES:
 - Report facts as found in the source text. Do not editorialize, take a side, or use loaded language — this is a research briefing, not commentary.
 - office/party/state/district: only if explicitly stated. Omit rather than guess.
 - summary: 1-2 sentences — who they are, their current office/role, and their district or constituency if applicable.
+- education: where they studied, what degree, if available (e.g. "JD, Harvard Law School") — only from source text, omit rather than guess.
 - districtPartisanLean: e.g. "R+8", "D+12", "Toss-up" — only if a specific rating is mentioned in the source text.
 - districtDemographics: brief factual description (urban/suburban/rural mix, notable industries) — only from source text.
 - approvalRating: report the specific number(s) found (e.g. "44% approve / 49% disapprove"), which poll/pollster, and roughly when. Omit if no specific poll is mentioned — do not estimate.
@@ -177,6 +188,7 @@ CRITICAL RULES:
         if (llmResult.state) profile.state = llmResult.state;
         if (llmResult.district) profile.district = llmResult.district;
         if (llmResult.summary) profile.summary = llmResult.summary;
+        if (llmResult.education) profile.education = llmResult.education;
 
         if (llmResult.districtPartisanLean || llmResult.districtDemographics || llmResult.districtKeyIssues) {
           districtMakeup = {

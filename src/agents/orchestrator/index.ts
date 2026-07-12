@@ -16,6 +16,7 @@ import { ReportAgent } from "../report-agent/index.js";
 import {
   DirectFetchProvider,
   SerperSearchProvider,
+  SearchProvider,
 } from "../../lib/providers.js";
 import {
   PersonResearchBundle,
@@ -24,6 +25,8 @@ import {
   ResearchBundle,
   Source,
 } from "../../types/research.js";
+import { classifyOfficeType } from "../../lib/office-classifier.js";
+import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
 
 /**
  * Research Orchestrator
@@ -52,10 +55,12 @@ export class ResearchOrchestrator {
   private muckRockAgent: MuckRockAgent;
   private usaSpendingAgent: USASpendingAgent;
   private reportAgent: ReportAgent;
+  private searcher: SearchProvider;
 
   constructor() {
     const fetcher = new DirectFetchProvider();
     const searcher = new SerperSearchProvider();
+    this.searcher = searcher;
     this.websiteAgent = new WebsiteAgent(fetcher, searcher);
     this.newsAgent = new NewsAgent(fetcher, searcher);
     this.competitorAgent = new CompetitorAgent(fetcher, searcher);
@@ -173,26 +178,42 @@ export class ResearchOrchestrator {
    * @param deep Charon Protocol (internal tier only) — deeper sourcing,
    *   including full-page reads for the top opposition-research sources.
    *
-   * Round 2 v2: runs the search-synthesis political-agent alongside
-   * three real API integrations (Congress.gov, LegiScan, OpenFEC).
-   * Authoritative API data overrides the LLM-guessed profile fields
-   * (office/party/state/district) where available; LegiScan needs a
-   * state to resolve a legislative session, so it runs after
-   * congress-agent/political-agent have had a chance to supply one.
+   * Round 2 v2: runs the search-synthesis political-agent alongside real
+   * API integrations (Congress.gov, LegiScan, OpenFEC, statewide-
+   * executives table). Authoritative API/table data overrides the
+   * LLM-guessed profile fields (office/party/state/district) where
+   * available; LegiScan needs a state to resolve a legislative session,
+   * so it runs after the others have had a chance to supply one.
+   *
+   * Political research fix #1: classifies office type first (federal /
+   * state-legislator / statewide-executive / local / unknown) and uses
+   * it to route dispatch — Congress.gov and OpenFEC are federal-only, so
+   * there's no reason to call either for a governor or state senator.
+   * "unknown" always falls back to trying every source, identical to the
+   * pre-classifier behavior — this only narrows dispatch, never blocks a
+   * legitimate source.
    */
   async researchPolitical(name: string, deep = false): Promise<{
     bundle: PoliticalResearchBundle;
     report: string;
   }> {
-    const [searchResult, congressResult, fecResult, foiaResult] = await Promise.all([
+    const officeType = await classifyOfficeType(name, this.searcher);
+    const runFederalSources = officeType === "federal" || officeType === "unknown";
+    const runStatewideLookup = officeType === "statewide-executive" || officeType === "unknown";
+    const skipLegiscan = officeType === "local";
+
+    const [searchResult, congressResult, fecResult, foiaResult, statewideResult] = await Promise.all([
       this.politicalAgent.run(name, deep),
-      this.congressAgent.run(name),
-      this.openFecAgent.run(name),
+      runFederalSources ? this.congressAgent.run(name) : Promise.resolve({ sponsoredLegislation: [], sources: [] }),
+      runFederalSources ? this.openFecAgent.run(name) : Promise.resolve({ donorBreakdown: [], sources: [] }),
       deep ? this.muckRockAgent.run(name) : Promise.resolve({ requests: [], sources: [] }),
+      runStatewideLookup ? lookupStatewideExecutive(name) : Promise.resolve({ found: false }),
     ]);
 
-    const state = congressResult.state ?? searchResult.profile.state;
-    const legiscanResult = await this.legiScanAgent.run(name, state);
+    const state = congressResult.state ?? statewideResult.state ?? searchResult.profile.state;
+    const legiscanResult = skipLegiscan
+      ? { sponsoredLegislation: [], sources: [] }
+      : await this.legiScanAgent.run(name, state);
 
     const sources: Source[] = [
       ...searchResult.sources,
@@ -201,16 +222,44 @@ export class ResearchOrchestrator {
       ...legiscanResult.sources,
       ...foiaResult.sources,
     ];
+    if (statewideResult.found && statewideResult.sourceUrl) {
+      sources.push({
+        url: statewideResult.sourceUrl,
+        title: `Statewide executive record — ${name}`,
+        retrievedAt: new Date().toISOString(),
+        usedFor: ["profile"],
+      });
+    }
+
+    const office = congressResult.office ?? statewideResult.office ?? searchResult.profile.office;
+    const party = congressResult.party ?? legiscanResult.party ?? statewideResult.party ?? searchResult.profile.party;
+    const resolvedState = state ?? searchResult.profile.state;
+    const district = congressResult.district ?? legiscanResult.district ?? searchResult.profile.district;
+
+    // Political research fix #3: an explicit "we don't have this" flag
+    // instead of a silent blank or LLM-guessed-only profile, once every
+    // authoritative source has had a chance to weigh in and still came
+    // up empty. Skipped on a name mismatch — that's a different, more
+    // specific warning already.
+    const dataUnavailable =
+      !searchResult.profile.nameMismatchWarning &&
+      !office && !party && !resolvedState &&
+      congressResult.sponsoredLegislation.length === 0 &&
+      legiscanResult.sponsoredLegislation.length === 0 &&
+      !fecResult.summary &&
+      !statewideResult.found;
 
     const bundle: PoliticalResearchBundle = {
       query: name,
       generatedAt: new Date().toISOString(),
       profile: {
         ...searchResult.profile,
-        office: congressResult.office ?? searchResult.profile.office,
-        party: congressResult.party ?? legiscanResult.party ?? searchResult.profile.party,
-        state: state ?? searchResult.profile.state,
-        district: congressResult.district ?? legiscanResult.district ?? searchResult.profile.district,
+        office,
+        party,
+        state: resolvedState,
+        district,
+        officeType,
+        dataUnavailable: dataUnavailable || undefined,
       },
       districtMakeup: searchResult.districtMakeup,
       approvalRating: searchResult.approvalRating,

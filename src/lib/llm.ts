@@ -578,6 +578,7 @@ export const PoliticalExtractionSchema = AnyObject.transform((obj) => ({
   state: toStringOrUndefined(obj.state),
   district: toStringOrUndefined(obj.district),
   summary: toStringOrUndefined(obj.summary),
+  education: toStringOrUndefined(obj.education ?? obj.academic_background ?? obj.alma_mater),
   districtPartisanLean: toStringOrUndefined(obj.districtPartisanLean ?? obj.partisan_lean ?? obj.partisanLean),
   districtDemographics: toStringOrUndefined(obj.districtDemographics ?? obj.demographics),
   districtKeyIssues: toStringOrUndefined(obj.districtKeyIssues ?? obj.keyIssues ?? obj.key_issues),
