@@ -4,6 +4,32 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import styles from "./page.module.css";
 
+// Show/hide toggle for password fields — plain SVG eye / eye-off icons,
+// no icon library dependency for one small control.
+function PasswordToggle({ show, onToggle }: { show: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={styles.pwToggle}
+      onClick={onToggle}
+      tabIndex={-1}
+      aria-label={show ? "Hide password" : "Show password"}
+    >
+      {show ? (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M1 1l22 22" strokeLinecap="round"/>
+        </svg>
+      ) : (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" strokeLinecap="round" strokeLinejoin="round"/>
+          <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function LoginPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName]   = useState("");
@@ -30,6 +56,10 @@ function LoginPage() {
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [recoveryDone, setRecoveryDone] = useState(false);
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const router   = useRouter();
   const params   = useSearchParams();
@@ -123,22 +153,28 @@ function LoginPage() {
 
           <div className={styles.fields}>
             <div className={styles.sectionNote}>Set a new password for your account.</div>
-            <input
-              className={styles.input}
-              type="password"
-              placeholder="New password"
-              value={newPassword}
-              onChange={e => setNewPassword(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleSetNewPassword()}
-            />
-            <input
-              className={styles.input}
-              type="password"
-              placeholder="Confirm new password"
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleSetNewPassword()}
-            />
+            <div className={styles.pwWrap}>
+              <input
+                className={`${styles.input} ${styles.pwInput}`}
+                type={showNewPassword ? "text" : "password"}
+                placeholder="New password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSetNewPassword()}
+              />
+              <PasswordToggle show={showNewPassword} onToggle={() => setShowNewPassword(v => !v)} />
+            </div>
+            <div className={styles.pwWrap}>
+              <input
+                className={`${styles.input} ${styles.pwInput}`}
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="Confirm new password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSetNewPassword()}
+              />
+              <PasswordToggle show={showConfirmPassword} onToggle={() => setShowConfirmPassword(v => !v)} />
+            </div>
           </div>
 
           {recoveryError && <div className={styles.error}>{recoveryError}</div>}
@@ -250,14 +286,17 @@ function LoginPage() {
                 onChange={e => setEmail(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleEmail()}
               />
-              <input
-                className={styles.input}
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleEmail()}
-              />
+              <div className={styles.pwWrap}>
+                <input
+                  className={`${styles.input} ${styles.pwInput}`}
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleEmail()}
+                />
+                <PasswordToggle show={showPassword} onToggle={() => setShowPassword(v => !v)} />
+              </div>
             </div>
 
             {mode === "signin" && (

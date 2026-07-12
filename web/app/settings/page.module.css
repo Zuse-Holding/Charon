@@ -41,6 +41,25 @@
 .nameInput:focus { border-color: var(--orange); }
 .nameInput::placeholder { color: var(--muted); }
 
+.pwWrap { position: relative; flex: 1; display: flex; }
+.pwInput { padding-right: 32px; width: 100%; }
+.pwToggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.pwToggle:hover { color: var(--text); }
+
 .badge {
   font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em;
   padding: 2px 8px; border-radius: 4px; flex-shrink: 0;
