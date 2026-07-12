@@ -49,7 +49,7 @@ const supabase = createClient(
 // until you do, this is empty and has no effect (falls back to
 // tier-only gating, same as before).
 const POLITICAL_ACCESS_USER_IDS = new Set<string>([
-  // "your-supabase-user-id-here",  ← replace with your actual UUID
+  "251f3f4f-9878-4264-8335-2c191a937428", // Nick — superuser/internal account
 ]);
 
 function hasPoliticalAccess(userId: string, config: TierConfig): boolean {
