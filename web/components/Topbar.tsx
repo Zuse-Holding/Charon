@@ -19,6 +19,14 @@ interface TopbarProps {
 export default function Topbar({ onResearchStart, onResearchComplete }: TopbarProps) {
   const [query, setQuery]       = useState("");
   const [type, setType]         = useState<ResearchType>("company");
+  // Tracks whether the user has explicitly picked a type (pill click or
+  // mobile dropdown) for the search currently being typed. Auto-detect
+  // was overwriting a manual selection on every keystroke — click
+  // "Person", start typing, and it'd silently flip back to "Company"
+  // (the heuristic's fallback) since a partial word never matches the
+  // "First Last" person pattern. Once the user picks manually, auto-
+  // detect stays out of the way until the field is cleared again.
+  const [typeManuallySet, setTypeManuallySet] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [status, setStatus]     = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -64,6 +72,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
     setLoading(true);
     setStatus(`Researching "${subject}"...`);
     setQuery("");
+    setTypeManuallySet(false);
 
     startResearch(subject, type as "company" | "person" | "product");
     onResearchStart?.(subject, type);
@@ -110,9 +119,13 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
             placeholder="Research a company, person, product, or political figure..."
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value);
-              if (e.target.value.trim().length > 2) {
-                setType(detectEntityType(e.target.value.trim()) as ResearchType);
+              const val = e.target.value;
+              setQuery(val);
+              // Clearing the field resets to fresh auto-detect for the
+              // next search rather than staying locked to a prior pick.
+              if (!val.trim()) { setTypeManuallySet(false); return; }
+              if (!typeManuallySet && val.trim().length > 2) {
+                setType(detectEntityType(val.trim()) as ResearchType);
               }
             }}
             onKeyDown={(e) => e.key === "Enter" && handleRun()}
@@ -125,7 +138,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
             <button
               key={t.value}
               className={`${styles.pill} ${type === t.value ? styles.active : ""} ${t.gated ? styles.gated ?? "" : ""}`}
-              onClick={() => !t.gated && setType(t.value)}
+              onClick={() => { if (!t.gated) { setType(t.value); setTypeManuallySet(true); } }}
               title={t.gated ? "Upgrade to Pro to unlock political research" : undefined}
               style={t.gated ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
             >
@@ -139,7 +152,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
         <select
           className={styles.mobileSelect}
           value={type}
-          onChange={(e) => setType(e.target.value as ResearchType)}
+          onChange={(e) => { setType(e.target.value as ResearchType); setTypeManuallySet(true); }}
         >
           <option value="company">Company</option>
           <option value="person">Person</option>

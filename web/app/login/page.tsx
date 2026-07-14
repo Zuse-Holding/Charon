@@ -84,7 +84,7 @@ function LoginPage() {
     try {
       if (mode === "signup") {
         const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -96,7 +96,20 @@ function LoginPage() {
           },
         });
         if (error) throw error;
-        setMessage("Check your email to confirm your account, or sign in directly if confirmation is disabled.");
+        // Supabase tells us definitively which state we're in — a session
+        // coming back means confirmation wasn't required (or this address
+        // was already confirmed), so log them straight in instead of
+        // showing a "check your email" message that wouldn't apply. No
+        // session means confirmation is genuinely required, so say that
+        // plainly rather than hedging with "...or sign in directly if
+        // confirmation is disabled," which left people unsure which case
+        // they were actually in.
+        if (data.session) {
+          router.push(next);
+          router.refresh();
+        } else {
+          setMessage("Check your email to confirm your account, then sign in.");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
