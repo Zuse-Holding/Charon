@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { detectEntityType } from "../lib/detect-entity-type";
 import { useResearch } from "../lib/research-context";
@@ -197,13 +198,16 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
               </button>
             ))}
             <div className={styles.drawerDivider} />
-            <button
+            {/* Real href, not JS-only onClick — works via native browser
+                navigation even if client hydration fails. */}
+            <Link
               className={`${styles.drawerItem} ${styles.drawerItemDanger}`}
-              onClick={() => { setMenuOpen(false); router.push("/logout"); }}
+              href="/logout"
+              onClick={() => setMenuOpen(false)}
             >
               <span className={styles.drawerIcon}>◐</span>
               Sign Out
-            </button>
+            </Link>
           </div>
         </div>
       )}

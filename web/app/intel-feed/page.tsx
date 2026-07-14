@@ -38,6 +38,7 @@ export default function IntelFeed() {
   const router = useRouter();
   const [feeds, setFeeds]   = useState<Record<string, SectorFeed>>({});
   const [states, setStates] = useState<Record<string, SectorState>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(new Set());
 
@@ -45,11 +46,24 @@ export default function IntelFeed() {
     setStates(prev => ({ ...prev, [sectorId]: "loading" }));
     try {
       const res = await fetch(`/api/intel-feed?sector=${sectorId}`);
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        // Read the real reason instead of swallowing it — a generic
+        // "failed" state with no detail is undiagnosable when this only
+        // reproduces on one machine/network and can't be reproduced here.
+        const body = await res.json().catch(() => ({}));
+        const reason = body.error ? `${body.error} (HTTP ${res.status})` : `HTTP ${res.status}`;
+        console.error(`[intel-feed] ${sectorId} failed:`, reason, body);
+        setErrors(prev => ({ ...prev, [sectorId]: reason }));
+        setStates(prev => ({ ...prev, [sectorId]: "error" }));
+        return;
+      }
       const data: SectorFeed = await res.json();
       setFeeds(prev => ({ ...prev, [sectorId]: data }));
       setStates(prev => ({ ...prev, [sectorId]: "loaded" }));
-    } catch {
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "Network error";
+      console.error(`[intel-feed] ${sectorId} failed:`, reason);
+      setErrors(prev => ({ ...prev, [sectorId]: reason }));
       setStates(prev => ({ ...prev, [sectorId]: "error" }));
     }
   }, []);
@@ -208,6 +222,9 @@ export default function IntelFeed() {
 
                   {state === "error" && (
                     <div className={styles.errorState}>
+                      {errors[sector.id] && (
+                        <div className={styles.errorDetail}>{errors[sector.id]}</div>
+                      )}
                       <button className={styles.retryBtn} onClick={() => loadSector(sector.id)}>
                         Retry
                       </button>
