@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "../lib/supabase/client";
 import { useResearch } from "../lib/research-context";
@@ -41,10 +42,6 @@ export default function Sidebar() {
   // that designator stays low-profile, visible only in Settings > Account
   // for the account holder themselves rather than displayed at a glance.
   const badge = tier && tier !== "internal" ? TIER_BADGE[tier] : undefined;
-
-  async function signOut() {
-    router.push("/logout");
-  }
 
   return (
     <aside className={styles.sidebar}>
@@ -99,7 +96,11 @@ export default function Sidebar() {
         <span className={styles.footerText}>
           {isInternal ? "CHARON · SELENE" : "GROQ · Selene"}
         </span>
-        <button className={styles.signOut} onClick={signOut} title="Sign out">⏻</button>
+        {/* Real href, not a JS-only onClick — works via native browser
+            navigation even if client hydration fails (e.g. the SSO/proxy
+            interference some corporate laptops hit), so sign-out never
+            silently stops responding. */}
+        <Link className={styles.signOut} href="/logout" title="Sign out">⏻</Link>
       </div>
 
       {badge && (

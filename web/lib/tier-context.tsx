@@ -151,6 +151,37 @@ export function TierProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // ── Auto-logout after inactivity ─────────────────────────────────────
+  // Security requirement: sign the user out after 20 minutes with no
+  // mouse/keyboard/scroll/touch activity. Gated on `tier` being set — that
+  // only happens once a real session is confirmed, so this never fires on
+  // public pages (login, landing) where there's no session to time out.
+  // Full navigation (window.location) rather than router.push, matching
+  // the same "don't rely solely on JS routing" reasoning behind the
+  // sign-out link fix — guarantees the redirect fires even if client
+  // routing is in a bad state.
+  useEffect(() => {
+    if (!tier) return;
+
+    const INACTIVITY_LIMIT_MS = 20 * 60 * 1000;
+    let lastActivity = Date.now();
+    const markActive = () => { lastActivity = Date.now(); };
+
+    const events: Array<keyof WindowEventMap> = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
+    events.forEach(evt => window.addEventListener(evt, markActive, { passive: true }));
+
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivity >= INACTIVITY_LIMIT_MS) {
+        window.location.href = "/logout";
+      }
+    }, 30_000);
+
+    return () => {
+      events.forEach(evt => window.removeEventListener(evt, markActive));
+      clearInterval(interval);
+    };
+  }, [tier]);
+
   const isInternal = tier === "internal";
 
   // can() lets components gate on a single feature flag cleanly

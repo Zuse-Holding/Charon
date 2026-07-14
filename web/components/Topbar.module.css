@@ -219,6 +219,7 @@
   font-family: var(--font-display);
   cursor: pointer;
   text-align: left;
+  text-decoration: none;
   width: 100%;
   transition: background 0.12s;
 }

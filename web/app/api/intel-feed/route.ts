@@ -59,7 +59,12 @@ function extractCompanyName(headline: string): string | null {
 export async function GET(req: NextRequest) {
   const sector = req.nextUrl.searchParams.get("sector");
   if (!sector || !SECTOR_QUERIES[sector]) {
-    return NextResponse.json({ error: "Invalid sector" }, { status: 400 });
+    // Logged so a 400 reported from an unusual environment (corporate
+    // proxy/laptop stripping or rewriting query params, stale cached JS
+    // bundle sending an old sector id, etc.) is actually diagnosable from
+    // server logs instead of just "it 400'd" with no context.
+    console.warn(`[intel-feed] Rejected request — sector param was: ${JSON.stringify(sector)}. Full query: ${req.nextUrl.search}`);
+    return NextResponse.json({ error: "Invalid sector", received: sector }, { status: 400 });
   }
 
   const apiKey = process.env.SERPER_API_KEY;
