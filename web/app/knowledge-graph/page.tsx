@@ -178,7 +178,11 @@ export default function KnowledgeGraph() {
       if (!canvas || !ctx) return;
       const dpr  = window.devicePixelRatio || 1;
       const cssW = canvas.parentElement?.clientWidth ?? 900;
-      const cssH = 520;
+      // Shorter canvas on narrow viewports — matches the old mobile CSS
+      // max-height's intent, but computed here so it's the actual
+      // coordinate space nodes get laid out in, not a separate box the
+      // rendered image gets squeezed into afterward.
+      const cssH = cssW < 640 ? 360 : 520;
       canvas.width        = Math.round(cssW * dpr);
       canvas.height       = Math.round(cssH * dpr);
       canvas.style.width  = cssW + "px";

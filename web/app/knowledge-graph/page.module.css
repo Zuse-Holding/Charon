@@ -116,7 +116,10 @@
   .content { padding: 16px; }
   .statsRow { grid-template-columns: repeat(3, 1fr); }
   .featuresGrid { grid-template-columns: 1fr; }
-  .canvas { max-height: 300px; }
+  /* No canvas max-height here anymore — the canvas's actual rendered
+     height is computed in JS (resizeCanvas in page.tsx) so the drawing
+     coordinate space always matches the visible box. A CSS clamp here
+     used to fight that and squish the whole graph vertically. */
 }
 
 .nodeActions { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
