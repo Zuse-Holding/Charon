@@ -162,3 +162,49 @@ ALTER TABLE research_runs ADD CONSTRAINT research_runs_type_check
 ALTER TABLE watchlist DROP CONSTRAINT IF EXISTS watchlist_type_check;
 ALTER TABLE watchlist ADD CONSTRAINT watchlist_type_check
   CHECK (type IN ('company', 'person', 'product', 'political'));
+
+-- ============================================================
+-- Auto-create profiles row on signup
+-- `profiles` rows were only ever created lazily, the first time a user
+-- saved a display name (PATCH /profile in server/agent-server.ts). Any
+-- account that never opened Settings has no profiles row at all, which
+-- broke anything with a foreign key into profiles(id) — specifically
+-- person_search_audit, seen failing in production logs with:
+--   insert or update on table "person_search_audit" violates foreign
+--   key constraint "person_search_audit_user_id_fkey"
+-- getUserTier() already tolerates a missing row (falls back to "basic"),
+-- so this never showed up as a tier bug — only as a silent audit-log
+-- failure, which also meant the 25/month person-search cap was never
+-- actually being enforced for these accounts, since their searches never
+-- got logged in the first place.
+-- ============================================================
+
+-- Auto-create a profiles row whenever a new auth user is created — covers
+-- every signup path (email/password, Google OAuth, etc.) uniformly,
+-- rather than depending on a specific app code path running. Matches
+-- Supabase's own documented pattern for this exact problem.
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+  INSERT INTO public.profiles (id)
+  VALUES (NEW.id)
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- Backfill every existing account that signed up before this trigger
+-- existed — fixes the account already failing in production
+-- (675633e2-2521-4f0a-833c-75eeb208e8cc) and any other pre-existing
+-- account in the same state.
+INSERT INTO public.profiles (id)
+SELECT id FROM auth.users
+ON CONFLICT (id) DO NOTHING;
