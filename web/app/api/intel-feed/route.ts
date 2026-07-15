@@ -1,4 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
+import { createServerSupabaseClient } from "../../../lib/supabase/server";
+
+const AGENT_URL    = process.env.AGENT_SERVER_URL ?? "http://localhost:4000";
+const AGENT_SECRET = process.env.AGENT_SECRET ?? "change-me-in-production";
+
+// Best-effort tier lookup for error context — mirrors /api/tier's pattern.
+// Never throws; a failure here shouldn't block error reporting itself.
+async function getTierForContext(): Promise<string> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return "anonymous";
+
+    const res = await fetch(`${AGENT_URL}/tier/${user.id}`, {
+      headers: { "x-agent-secret": AGENT_SECRET },
+    });
+    if (!res.ok) return "unknown";
+
+    const data = await res.json();
+    return data.tier ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 const SECTOR_QUERIES: Record<string, string> = {
   tech:       "tech startup funding acquisition product launch 2026",
@@ -103,6 +128,15 @@ export async function GET(req: NextRequest) {
       generatedAt: new Date().toISOString(),
     });
   } catch (err) {
+    const tier = await getTierForContext();
+    Sentry.captureException(err, {
+      tags: { route: "intel-feed" },
+      extra: {
+        sector,
+        query: req.nextUrl.search,
+        tier,
+      },
+    });
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
