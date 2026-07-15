@@ -42,6 +42,9 @@
 .metricMini.time .val { color: var(--dim2); font-weight: normal; font-size: 13px; }
 
 .main { display: flex; flex: 1; overflow: hidden; position: relative; }
+.placeholderView { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.placeholderTitle { font-size: 13px; letter-spacing: 2px; color: var(--dim2); }
+.placeholderText { font-size: 11px; color: var(--dim); }
 
 .sidebar { width: 224px; background: var(--panel); border-right: 1px solid var(--border); padding: 12px 8px; overflow-y: auto; font-size: 12px; z-index: 20; }
 .sidebarSection { margin-bottom: 4px; }
@@ -107,6 +110,8 @@
 .node .label { font-size: 10px; color: var(--dim2); text-align: center; letter-spacing: 0.5px; }
 .node .sub { font-size: 9px; color: var(--dim); opacity: 0.8; }
 .node.core .label { font-size: 12px; color: var(--text); letter-spacing: 2px; font-weight: bold; }
+.node.dimmed { opacity: 0.28; transition: opacity 0.25s; }
+.node.dimmed:hover { opacity: 0.6; }
 .statCorner { position: absolute; font-size: 9px; color: var(--dim); letter-spacing: 1px; z-index: 5;}
 .statCorner.tl { top: 14px; left: 14px; }
 .statCorner.br { bottom: 14px; right: 14px; text-align: right; }
