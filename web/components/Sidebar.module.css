@@ -6,6 +6,13 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* iPadOS Safari's 100vh doesn't account for its own toolbar chrome,
+     worst in landscape where there's less vertical room to begin with —
+     the sidebar ends up taller than what's actually visible, cutting off
+     the sign-out row at the bottom. 100dvh is the corrected dynamic
+     value; older browsers that don't support it just ignore this line
+     and keep the 100vh above. */
+  height: 100dvh;
 }
 
 .logo {

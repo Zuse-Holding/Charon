@@ -56,36 +56,73 @@ function extractCompanyName(headline: string): string | null {
   return null;
 }
 
+// Best-effort date parse — Serper's per-result "date" field is often a
+// relative string ("2 hours ago") rather than ISO, which Date() can't
+// parse. Falling back to "now" rather than emitting an Invalid Date that
+// would break the dashboard widget's relative-time display.
+function safeIsoDate(input?: string): string {
+  if (!input) return new Date().toISOString();
+  const d = new Date(input);
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
+async function fetchSectorNews(sector: string, apiKey: string, num: number) {
+  const res = await fetch("https://google.serper.dev/news", {
+    method: "POST",
+    headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ q: SECTOR_QUERIES[sector], num }),
+  });
+  if (!res.ok) throw new Error(`Serper error: ${res.status}`);
+  const data = await res.json();
+  return (data.news ?? data.organic ?? []) as any[];
+}
+
 export async function GET(req: NextRequest) {
   const sector = req.nextUrl.searchParams.get("sector");
-  if (!sector || !SECTOR_QUERIES[sector]) {
-    // Logged so a 400 reported from an unusual environment (corporate
-    // proxy/laptop stripping or rewriting query params, stale cached JS
-    // bundle sending an old sector id, etc.) is actually diagnosable from
-    // server logs instead of just "it 400'd" with no context.
-    console.warn(`[intel-feed] Rejected request — sector param was: ${JSON.stringify(sector)}. Full query: ${req.nextUrl.search}`);
-    return NextResponse.json({ error: "Invalid sector", received: sector }, { status: 400 });
-  }
-
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "Search not configured" }, { status: 503 });
   }
 
+  // The Dashboard's compact "Intelligence Feed" widget calls this route
+  // with no sector at all, expecting a flat digest — this used to
+  // unconditionally 400 (root cause of tonight's intel-feed 400 reports),
+  // since the route was built sector-first for the dedicated Intel Feed
+  // page. Handle it as its own mode instead of rejecting it.
+  if (!sector) {
+    const digestSectors = ["tech", "fintech", "ai"];
+    try {
+      const results = await Promise.all(
+        digestSectors.map((s) => fetchSectorNews(s, apiKey, 4).catch(() => []))
+      );
+      const items = results
+        .flat()
+        .filter((r) => !NOISE_DOMAINS.some((d) => (r.link ?? r.url ?? "").includes(d)))
+        .slice(0, 6)
+        .map((r, i) => ({
+          id:           r.link ?? r.url ?? `digest-${i}`,
+          title:        r.title,
+          source:       r.source ?? "",
+          url:          r.link ?? r.url ?? "#",
+          published_at: safeIsoDate(r.date),
+        }));
+      return NextResponse.json(items);
+    } catch (err) {
+      console.error("[intel-feed] digest error:", err);
+      // Empty array, not an error — the widget already has a graceful
+      // "Feed is quiet" empty state for exactly this case.
+      return NextResponse.json([]);
+    }
+  }
+
+  if (!SECTOR_QUERIES[sector]) {
+    console.warn(`[intel-feed] Rejected request — unknown sector: ${JSON.stringify(sector)}. Full query: ${req.nextUrl.search}`);
+    return NextResponse.json({ error: "Invalid sector", received: sector }, { status: 400 });
+  }
+
   try {
-    const res = await fetch("https://google.serper.dev/news", {
-      method: "POST",
-      headers: {
-        "X-API-KEY": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ q: SECTOR_QUERIES[sector], num: 8 }),
-    });
-
-    if (!res.ok) throw new Error(`Serper error: ${res.status}`);
-    const data = await res.json();
-
-    const items = (data.news ?? data.organic ?? [])
+    const raw = await fetchSectorNews(sector, apiKey, 8);
+    const items = raw
       .filter((r: any) => !NOISE_DOMAINS.some(d => (r.link ?? r.url ?? "").includes(d)))
       .slice(0, 5)
       .map((r: any) => ({
