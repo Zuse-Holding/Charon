@@ -572,6 +572,33 @@ export const Form4ExtractionSchema = AnyObject.transform((obj) => ({
 }));
 export type Form4Extraction = z.infer<typeof Form4ExtractionSchema>;
 
+// --- Corporate affiliations extraction (OpenCorporates search-and-
+// synthesize fallback — see opencorporates-agent) ---
+
+function toCorporateAffiliationArray(v: unknown): { companyName: string; position?: string; jurisdiction?: string; startDate?: string; endDate?: string; companyUrl?: string }[] {
+  if (!v) return [];
+  const items = Array.isArray(v) ? v : [v];
+  return items.flatMap((item) => {
+    if (typeof item !== "object" || item === null) return [];
+    const o = item as Record<string, unknown>;
+    const companyName = String(o.companyName ?? o.company_name ?? o.company ?? o.name ?? "").replace(/\*\*/g, "").trim();
+    if (!companyName) return [];
+    return [{
+      companyName,
+      position: toStringOrUndefined(o.position ?? o.role ?? o.title),
+      jurisdiction: toStringOrUndefined(o.jurisdiction ?? o.location),
+      startDate: toStringOrUndefined(o.startDate ?? o.start_date),
+      endDate: toStringOrUndefined(o.endDate ?? o.end_date),
+      companyUrl: toStringOrUndefined(o.companyUrl ?? o.company_url ?? o.url),
+    }];
+  });
+}
+
+export const CorporateAffiliationExtractionSchema = AnyObject.transform((obj) => ({
+  affiliations: toCorporateAffiliationArray(obj.affiliations ?? obj.directorships ?? obj.companies),
+}));
+export type CorporateAffiliationExtraction = z.infer<typeof CorporateAffiliationExtractionSchema>;
+
 export const PoliticalExtractionSchema = AnyObject.transform((obj) => ({
   office: toStringOrUndefined(obj.office ?? obj.title ?? obj.position),
   party: toStringOrUndefined(obj.party),

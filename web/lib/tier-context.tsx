@@ -15,6 +15,11 @@ export interface TierConfig {
   knowledgeGraphAccess: boolean;
   exportAccess: boolean;
   charonProtocol: boolean;
+  // Charon-only UI buttons — separate flags so each can be tuned
+  // independently later, even though all three are internal-tier-only today.
+  personResearchAccess: boolean;
+  muckrockAccess: boolean;
+  adminAccess: boolean;
 }
 
 interface TierContextValue {
@@ -45,6 +50,9 @@ const DEFAULT_CONFIG: TierConfig = {
   knowledgeGraphAccess: false,
   exportAccess: false,
   charonProtocol: false,
+  personResearchAccess: false,
+  muckrockAccess: false,
+  adminAccess: false,
 };
 
 const TierContext = createContext<TierContextValue>({
