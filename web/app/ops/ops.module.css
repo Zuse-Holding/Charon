@@ -168,3 +168,32 @@
 .terminalBox .line { margin-bottom: 3px; opacity: 0.9; }
 .terminalBox .dimLine { color: var(--dim); }
 .cursorBlink { display:inline-block; width:6px; background:var(--green); animation: blink 1s step-end infinite; }
+
+/* ============================================================
+ * Mobile layout
+ * Desktop uses a fixed-height, overflow:hidden, three-column flex
+ * layout (sidebar / canvas / feed) that has no way to scroll and
+ * squishes to nothing below ~768px. Below that width, stack
+ * everything vertically and let the page scroll instead.
+ * ============================================================ */
+@media (max-width: 768px) {
+  .opsRoot { height: auto; min-height: 100vh; overflow-y: auto; overflow-x: hidden; }
+
+  .topbar { flex-wrap: wrap; height: auto; padding: 10px 14px; gap: 10px; row-gap: 8px; }
+  .viewTabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; max-width: 100%; }
+  .metricsBar { flex-wrap: wrap; gap: 12px 18px; justify-content: flex-start; }
+
+  .main { flex-direction: column; overflow: visible; height: auto; }
+
+  .sidebar { width: 100%; max-height: 280px; border-right: none; border-bottom: 1px solid var(--border); }
+
+  .canvasWrap { flex: none; }
+  .canvas { min-height: 420px; }
+
+  .feedPanel { width: 100%; max-height: 320px; border-left: none; border-top: 1px solid var(--border); }
+
+  .voicebar { flex-wrap: wrap; justify-content: center; row-gap: 6px; padding: 12px; }
+  .wake { position: static; }
+
+  .placeholderView { min-height: 240px; }
+}
