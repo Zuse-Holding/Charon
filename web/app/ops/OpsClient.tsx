@@ -39,6 +39,13 @@ const NODE_COLORS: Record<string, string> = {
 };
 const DEFAULT_PARTICLE_COLOR = "#4de3ff"; // was #ff3b30 pre-Tron-blue swap
 
+// Venture assignment: Metis Analytics = the product and its own ops;
+// Zuse Holdings = the parent company's own business dealings.
+const NODE_VENTURE: Record<string, "metis" | "zuse"> = {
+  bug: "metis", deploy: "metis", supabase: "metis", briefing: "metis", political: "metis", kg: "metis",
+  oaktree: "zuse", formation: "zuse",
+};
+
 const VIEW_TABS = ["business", "personal", "folders", "team", "usage", "memory"];
 
 interface TermLine { text: string; dim?: boolean; cursor?: boolean; }
@@ -211,6 +218,21 @@ export default function OpsClient() {
     });
   }
 
+  function requestNewStrand() {
+    const name = typeof window !== "undefined" ? window.prompt("Name the new strand:") : null;
+    if (!name || !name.trim()) return;
+    addFeedItem(`Strand "${name.trim()}" requested — not automated yet, needs manual setup`);
+  }
+
+  function showRunnerInfo() {
+    setTerminal([
+      { text: "$ selene runners" },
+      { text: "Selene — active, running the daily briefing and intel-feed bug loop", dim: true },
+      { text: "1 runner total. No additional agents provisioned.", dim: true },
+      { text: "$", cursor: true },
+    ]);
+  }
+
   // ── Wiring lines: draw on mount + resize ────────────────────────────
   useEffect(() => {
     drawLines();
@@ -365,6 +387,9 @@ export default function OpsClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const metisCount = SIDEBAR_NODE_IDS.filter(id => NODE_VENTURE[id] === "metis").reduce((sum, id) => sum + (sidebarCounts[id] ?? 0), 0);
+  const zuseCount = SIDEBAR_NODE_IDS.filter(id => NODE_VENTURE[id] === "zuse").reduce((sum, id) => sum + (sidebarCounts[id] ?? 0), 0);
+
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className={styles.opsRoot}>
@@ -393,6 +418,13 @@ export default function OpsClient() {
       </div>
 
       <div className={styles.main}>
+        {activeTab !== "business" ? (
+          <div className={styles.placeholderView}>
+            <div className={styles.placeholderTitle}>{activeTab.toUpperCase()}</div>
+            <div className={styles.placeholderText}>This view isn&apos;t built yet.</div>
+          </div>
+        ) : (
+        <>
         <div className={styles.sidebar}>
           <div className={styles.sidebarSection}>
             <div className={styles.groupLabel}>Ventures <span>2</span></div>
@@ -400,15 +432,17 @@ export default function OpsClient() {
               className={`${styles.strand} ${activeVenture === "metis" ? styles.active : ""}`}
               onClick={() => setActiveVenture("metis")}
             >
-              <div className={styles.name}><span className={styles.icon}>◈</span>Metis Analytics</div><span className={styles.count}>5</span>
+              <div className={styles.name}><span className={styles.icon}>◈</span>Metis Analytics</div><span className={styles.count}>{metisCount}</span>
             </div>
             <div
               className={`${styles.strand} ${activeVenture === "zuse" ? styles.active : ""}`}
               onClick={() => setActiveVenture("zuse")}
             >
-              <div className={styles.name}><span className={styles.icon}>⌘</span>Zuse Holdings</div><span className={styles.count}>3</span>
+              <div className={styles.name}><span className={styles.icon}>⌘</span>Zuse Holdings</div><span className={styles.count}>{zuseCount}</span>
             </div>
           </div>
+          {activeVenture === "metis" && (
+          <>
           <div className={styles.sidebarSection}>
             <div className={styles.groupLabel}>Products <span>4</span></div>
             <div className={`${styles.strand} ${styles.nested}`} onClick={() => flareNode("bug")}>
@@ -433,6 +467,9 @@ export default function OpsClient() {
               <div className={styles.name}><span className={styles.icon}>⌘</span>Supabase</div><span className={styles.count}>{sidebarCounts.supabase}</span>
             </div>
           </div>
+          </>
+          )}
+          {activeVenture === "zuse" && (
           <div className={styles.sidebarSection}>
             <div className={styles.groupLabel}>Business <span>2</span></div>
             <div className={`${styles.strand} ${styles.nested}`} onClick={() => flareNode("oaktree")}>
@@ -442,9 +479,10 @@ export default function OpsClient() {
               <div className={styles.name}><span className={styles.icon}>⚖</span>Formation / Legal</div><span className={styles.count}>{sidebarCounts.formation}</span>
             </div>
           </div>
+          )}
           <div className={styles.sidebarFooter}>
-            <div className={styles.pill} onClick={() => addFeedItem("New strand creation requested (not yet wired to backend)")}>+ New Strand</div>
-            <div className={styles.pill}>Runners: 1</div>
+            <div className={styles.pill} onClick={requestNewStrand}>+ New Strand</div>
+            <div className={styles.pill} onClick={showRunnerInfo}>Runners: 1</div>
           </div>
         </div>
 
@@ -465,6 +503,7 @@ export default function OpsClient() {
 
               {NODES.map(n => {
                 const status: NodeStatus = n.id === "bug" ? (sidebarCounts.bug > 0 ? "warn" : "good") : n.status;
+                const dimmed = NODE_VENTURE[n.id] !== activeVenture;
                 return (
                   <div
                     key={n.id}
@@ -473,6 +512,7 @@ export default function OpsClient() {
                       status === "warn" ? styles.warn : "",
                       status === "good" ? styles.good : "",
                       flaringIds.has(n.id) ? styles.flare : "",
+                      dimmed ? styles.dimmed : "",
                     ].filter(Boolean).join(" ")}
                     style={{ left: `${n.x}%`, top: `${n.y}%` }}
                     onClick={(e) => { e.stopPropagation(); inspectNode(n); }}
@@ -527,6 +567,8 @@ export default function OpsClient() {
             ))}
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
