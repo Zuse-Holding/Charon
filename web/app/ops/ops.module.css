@@ -58,8 +58,11 @@
 .pill:hover { color: var(--text); border-color: var(--dim); }
 
 .canvasWrap { flex: 1; position: relative; display: flex; flex-direction: column; overflow:hidden; }
-.canvas { flex: 1; position: relative; overflow: hidden; cursor: grab; }
-.canvas.grabbing { cursor: grabbing; }
+/* cursor: grab/grabbing renders invisibly on some browser/OS/scaling
+   combinations (a known cross-browser quirk) — move is universally
+   reliable and still communicates "draggable". */
+.canvas { flex: 1; position: relative; overflow: hidden; cursor: move; }
+.canvas.grabbing { cursor: move; }
 .bgLayer {
   position: absolute; inset: -20%; width: 140%; height: 140%;
   background:
