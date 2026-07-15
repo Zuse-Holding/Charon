@@ -208,3 +208,72 @@ CREATE TRIGGER on_auth_user_created
 INSERT INTO public.profiles (id)
 SELECT id FROM auth.users
 ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- agent_runs (Zuse Holdings Intel Ops — Live Data Layer)
+-- Log of every automated agent run (Sentry bug-triage loop, daily
+-- briefing, etc.) — diagnosis-only and PR-opened runs both get a row.
+-- Charon-tier / internal-ops table: not user-scoped, no RLS policy for
+-- end users; reads/writes go through the service-role key only (the
+-- scheduled tasks and the /ops API route), same pattern as the agent
+-- server's direct service-role access to other tables.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at         TIMESTAMPTZ DEFAULT NOW(),
+  task               TEXT        NOT NULL, -- e.g. "intel-feed bug triage", "daily briefing"
+  source             TEXT,                 -- e.g. "sentry", "scheduled", "manual"
+  diagnosis          TEXT,
+  confidence         TEXT,                 -- e.g. "high", "low"
+  action_taken       TEXT,                 -- e.g. "pr_opened", "diagnosis_only", "no_action"
+  pr_url             TEXT,
+  issue_fingerprint  TEXT,                 -- for dedup tracking
+  metadata           JSONB                 -- flexible extra context
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at
+  ON agent_runs (created_at DESC);
+
+-- ============================================================
+-- agent_runs.node_id (Zuse Intel Ops UI — Wire Live Data)
+-- Maps each agent run to a UI node on the /ops page so it can flare
+-- the right node and route feed/sidebar items. One of: bug, deploy,
+-- supabase, oaktree, briefing, formation, political.
+-- Added after agent_runs already had rows from the bug-triage loop,
+-- so this backfills before enforcing NOT NULL rather than being part
+-- of the original CREATE TABLE above.
+-- ============================================================
+
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS node_id TEXT;
+
+UPDATE agent_runs SET node_id = 'bug' WHERE node_id IS NULL;
+
+ALTER TABLE agent_runs ALTER COLUMN node_id SET NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_node_id
+  ON agent_runs (node_id);
+
+-- ============================================================
+-- agent_runs RLS (security fix)
+-- agent_runs was created without RLS, which means it was readable by
+-- ANYONE via the public anon key (no login required) — Postgres/Supabase
+-- default-allows SELECT for anon/authenticated roles on any table
+-- without RLS enabled. This table holds internal bug diagnoses and PR
+-- URLs and must be Charon-tier only. Scheduled tasks and /api/ops/summary
+-- already use the service-role key, which bypasses RLS entirely and is
+-- unaffected by this — this policy only governs browser/anon-key access
+-- (needed for the /ops page's realtime subscription to work for the
+-- internal-tier user specifically, and for no one else).
+-- ============================================================
+
+ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Internal tier can read agent_runs" ON agent_runs;
+CREATE POLICY "Internal tier can read agent_runs" ON agent_runs
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.tier = 'internal'
+    )
+  );

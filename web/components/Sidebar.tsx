@@ -73,6 +73,18 @@ export default function Sidebar() {
             {item.label}
           </div>
         ))}
+        {isInternal && (
+          <>
+            <div className={styles.navLabel}>CHARON</div>
+            <div
+              className={`${styles.navItem} ${pathname === "/ops" ? styles.active : ""}`}
+              onClick={() => router.push("/ops")}
+            >
+              <span className={styles.icon}>⌘</span>
+              Intel Ops
+            </div>
+          </>
+        )}
       </nav>
 
       {pending && (
