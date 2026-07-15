@@ -196,7 +196,7 @@ app.post("/research", async (req, res) => {
   const config = getTierConfig(tier);
 
   if (tier === "expired") {
-    return tierDenied(res, "Your trial has ended. Contact us to continue using Metis.", "Contact hello@metisanalytic.com to discuss plans.");
+    return tierDenied(res, "Your trial has ended. Contact us to continue using Metis.", "Contact support@metisanalytic.com to discuss plans.");
   }
 
   if (type === "political" && !hasPoliticalAccess(userId, config)) {
@@ -442,6 +442,70 @@ app.patch("/profile/:userId", async (req, res) => {
   }
 
   res.json({ ok: true, displayName });
+});
+
+/**
+ * Admin stats snapshot (internal tier only). The Dashboard's Admin tab
+ * has had a full UI for this since an earlier session — it's just been
+ * calling a route that never existed (the 404 in tonight's bug log).
+ * Built to match exactly what that UI already expects.
+ */
+app.get("/admin/stats/:userId", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const tier = await getUserTier(req.params.userId);
+  if (tier !== "internal") {
+    res.status(403).json({ error: "Admin stats require Charon tier" });
+    return;
+  }
+
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDayIso = startOfDay.toISOString();
+
+  try {
+    const [profilesResult, runsTodayResult, deepDivesTodayResult] = await Promise.all([
+      supabase.from("profiles").select("tier"),
+      supabase
+        .from("research_runs")
+        .select("id", { count: "exact", head: true })
+        .gte("generated_at", startOfDayIso),
+      supabase
+        .from("deep_dives")
+        .select("duration_ms")
+        .gte("generated_at", startOfDayIso),
+    ]);
+
+    const tierBreakdownMap = new Map<string, number>();
+    for (const row of profilesResult.data ?? []) {
+      const t = (row.tier as string) ?? "basic";
+      tierBreakdownMap.set(t, (tierBreakdownMap.get(t) ?? 0) + 1);
+    }
+    const tierBreakdown = [...tierBreakdownMap.entries()].map(([tier, count]) => ({ tier, count }));
+
+    const durations = (deepDivesTodayResult.data ?? [])
+      .map((r) => r.duration_ms as number | null)
+      .filter((d): d is number => typeof d === "number");
+    const avgDurationMs = durations.length > 0
+      ? Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length)
+      : 0;
+
+    res.json({
+      totalUsers: profilesResult.data?.length ?? 0,
+      tierBreakdown,
+      runsToday: runsTodayResult.count ?? 0,
+      deepDivesToday: deepDivesTodayResult.data?.length ?? 0,
+      // Not tracked yet — no "in progress" state is persisted anywhere
+      // (deep_dives rows are only written after completion). Returning 0
+      // honestly rather than faking a number; real tracking would need
+      // either an in-memory counter here or a started_at/status column.
+      deepDivesRunning: 0,
+      avgDurationMs,
+    });
+  } catch (err) {
+    console.error("[admin-stats] query failed:", err);
+    res.status(500).json({ error: "Failed to load admin stats" });
+  }
 });
 
 app.get("/health", (_, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));

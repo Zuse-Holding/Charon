@@ -2,6 +2,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
+import { useTier } from "../../lib/tier-context";
 import styles from "./page.module.css";
 
 // Show/hide toggle for password fields — plain SVG eye / eye-off icons,
@@ -65,6 +66,7 @@ function LoginPage() {
   const params   = useSearchParams();
   const next     = params.get("next") ?? "/app";
   const supabase = createClient();
+  const { refresh: refreshTier } = useTier();
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((event) => {
@@ -105,6 +107,14 @@ function LoginPage() {
         // confirmation is disabled," which left people unsure which case
         // they were actually in.
         if (data.session) {
+          // TierProvider lives in the root layout and doesn't remount on
+          // a client-side navigation, so its tier fetch (which ran once
+          // on initial page load, before this session existed) never
+          // reruns on its own — the app kept showing stale/default tier
+          // data until a hard refresh forced a real remount. Explicitly
+          // kicking its refresh() here closes that gap without needing
+          // a full reload.
+          refreshTier();
           router.push(next);
           router.refresh();
         } else {
@@ -113,6 +123,7 @@ function LoginPage() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        refreshTier();
         router.push(next);
         router.refresh();
       }
@@ -151,6 +162,7 @@ function LoginPage() {
     setRecoveryLoading(false);
     if (error) { setRecoveryError(error.message); return; }
     setRecoveryDone(true);
+    refreshTier();
     setTimeout(() => { router.push("/app"); router.refresh(); }, 1500);
   }
 

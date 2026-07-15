@@ -241,7 +241,7 @@ export default function Settings() {
               <div className={styles.upgradeText}>
                 Unlock Deep Dive, Knowledge Graph, and unlimited watchlist tracking with Pro.
               </div>
-              <a href="mailto:hello@metisanalytic.com?subject=Metis Pro Upgrade" className={styles.upgradeBtn}>
+              <a href="mailto:support@metisanalytic.com?subject=Metis Pro Upgrade" className={styles.upgradeBtn}>
                 Contact us to upgrade →
               </a>
             </div>
