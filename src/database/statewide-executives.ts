@@ -99,3 +99,37 @@ export async function lookupStatewideExecutive(name: string): Promise<{
     return { found: false };
   }
 }
+
+/**
+ * Manual quarterly refresh — an admin (Charon tier, gated in
+ * server/agent-server.ts) supplies reviewed data directly rather than
+ * this scraping Ballotpedia live. Same trust model as the initial seed
+ * files: a human verified the source, not an automated scrape writing
+ * unreviewed data into a table whose whole purpose is being
+ * authoritative. Upserts on the (state, office) unique constraint, same
+ * as the seed SQL.
+ */
+export async function upsertStatewideExecutives(
+  updates: StatewideExecutiveRecord[]
+): Promise<{ ok: boolean; upserted: number; error?: string }> {
+  const client = getClient();
+  if (!client) return { ok: false, upserted: 0, error: "Supabase service-role client not configured" };
+
+  const rows = updates.map((u) => ({
+    state: u.state,
+    office: u.office,
+    name: u.name,
+    party: u.party ?? null,
+    term_start: u.termStart ?? null,
+    source_url: u.sourceUrl ?? null,
+    updated_at: new Date().toISOString(),
+  }));
+
+  try {
+    const { error } = await client.from("statewide_executives").upsert(rows, { onConflict: "state,office" });
+    if (error) return { ok: false, upserted: 0, error: error.message };
+    return { ok: true, upserted: rows.length };
+  } catch (err) {
+    return { ok: false, upserted: 0, error: err instanceof Error ? err.message : String(err) };
+  }
+}

@@ -34,6 +34,9 @@ export async function GET() {
         knowledgeGraphAccess: false,
         exportAccess: false,
         charonProtocol: false,
+        personResearchAccess: false,
+        muckrockAccess: false,
+        adminAccess: false,
       },
       displayName: null,
     });

@@ -153,6 +153,17 @@ export interface FoiaRequestEntry {
   dateSubmitted?: string;
 }
 
+// CourtListener RECAP/docket search (Charon Person Research) — federal
+// litigation records, mirrors much of what PACER holds. See
+// src/agents/courtlistener-agent.
+export interface CourtListenerRecord {
+  caseName: string;
+  url: string;
+  court?: string;
+  dateFiled?: string;
+  docketNumber?: string;
+}
+
 export interface PersonAgentResult {
   person: PersonProfile;
   careerHistory: CareerEntry[];

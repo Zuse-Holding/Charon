@@ -1,13 +1,25 @@
 import { CorporateAffiliationEntry, Source } from "../../types/research.js";
+import { SearchProvider } from "../../lib/providers.js";
+import { CorporateAffiliationExtractionSchema, extractStructured } from "../../lib/llm.js";
 
 /**
  * OpenCorporates Agent (Round 3 — Charon Person Research, part 1 of 3)
  *
  * Corporate officer/directorship records: every company OpenCorporates
  * has on file where this person shows up as an officer, director, or
- * secretary. Free public API (api.opencorporates.com), works without a
- * key at low volume — set OPENCORPORATES_API_TOKEN to raise the rate
- * limit if usage grows, but it's optional, not required.
+ * secretary. Free public API (api.opencorporates.com) — this comment
+ * used to say it "works without a key at low volume," which stopped
+ * being true (confirmed in production: unauthenticated requests now
+ * come back HTTP 401 regardless of volume, and getting a token requires
+ * OpenCorporates' manual approval process, not instant signup).
+ *
+ * Falls back to the same search-and-synthesize pattern as form4-agent
+ * whenever the direct API is unavailable (401/429/network error) —
+ * targeted search + LLM extraction with same-snippet grounding, so the
+ * feature still works without OPENCORPORATES_API_TOKEN rather than
+ * going straight to "no results." Once a token is added, the direct API
+ * (structured, more complete) is tried first and this is just a safety
+ * net again.
  *
  * This is intentionally scoped to Charon (internal tier) — it's a
  * "search every jurisdiction OpenCorporates indexes for this exact
@@ -58,10 +70,22 @@ interface OcOfficerSearchResponse {
 export class OpenCorporatesAgent {
   private apiToken = process.env.OPENCORPORATES_API_TOKEN;
 
+  constructor(private searcher: SearchProvider) {}
+
   async run(personName: string): Promise<{
     affiliations: CorporateAffiliationEntry[];
     sources: Source[];
   }> {
+    const direct = await this.runDirectApi(personName);
+    if (direct) return direct;
+    return this.runSearchFallback(personName);
+  }
+
+  /** Returns null (not an empty result) on failure, so run() knows to fall back. */
+  private async runDirectApi(personName: string): Promise<{
+    affiliations: CorporateAffiliationEntry[];
+    sources: Source[];
+  } | null> {
     try {
       const params = new URLSearchParams({ q: personName, format: "json", per_page: "20" });
       if (this.apiToken) params.set("api_token", this.apiToken);
@@ -71,8 +95,8 @@ export class OpenCorporatesAgent {
       });
 
       if (!res.ok) {
-        console.warn(`[opencorporates-agent] "${personName}" — HTTP ${res.status}${res.status === 429 ? " (rate limited — consider setting OPENCORPORATES_API_TOKEN)" : ""}`);
-        return { affiliations: [], sources: [] };
+        console.warn(`[opencorporates-agent] "${personName}" — HTTP ${res.status}${res.status === 429 ? " (rate limited — consider setting OPENCORPORATES_API_TOKEN)" : ""}, falling back to search-and-synthesize`);
+        return null;
       }
 
       const data = (await res.json()) as OcOfficerSearchResponse;
@@ -109,7 +133,65 @@ export class OpenCorporatesAgent {
 
       return { affiliations, sources };
     } catch (err) {
-      console.warn(`[opencorporates-agent] "${personName}" — lookup failed:`, err instanceof Error ? err.message : err);
+      console.warn(`[opencorporates-agent] "${personName}" — direct API lookup failed:`, err instanceof Error ? err.message : err, "— falling back to search-and-synthesize");
+      return null;
+    }
+  }
+
+  /**
+   * Search-and-synthesize fallback, same pattern as form4-agent: targeted
+   * search + LLM extraction with same-snippet grounding, so a common name
+   * can't get a directorship attributed from an unrelated source.
+   */
+  private async runSearchFallback(personName: string): Promise<{
+    affiliations: CorporateAffiliationEntry[];
+    sources: Source[];
+  }> {
+    try {
+      const results = await this.searcher.search(
+        `"${personName}" board of directors officer corporate director OpenCorporates registered agent`,
+        6
+      );
+
+      if (results.length === 0) {
+        console.log(`[opencorporates-agent] "${personName}" — 0 search results, nothing to extract from`);
+        return { affiliations: [], sources: [] };
+      }
+
+      const sources: Source[] = results.map((r) => ({
+        url: r.url,
+        title: r.title,
+        retrievedAt: new Date().toISOString(),
+        usedFor: ["corporate-affiliations"],
+      }));
+
+      const combinedText = results
+        .map((r, i) => `SOURCE ${i + 1} (${r.url}):\nTitle: ${r.title}\nSnippet: ${r.snippet ?? ""}`)
+        .join("\n\n");
+
+      const llmResult = await extractStructured(
+        `You are a corporate-records research assistant extracting officer/director affiliations specifically for "${personName}" from search results.
+
+RULES:
+- Only include a company if the SAME numbered source explicitly names "${personName}" AND ties them to that company as an officer, director, or secretary. Never combine a name from one source with a company mentioned in a different source.
+- companyName: the company's full legal or commonly-used name exactly as it appears in that source.
+- position: their role (e.g. "Director", "Officer", "Secretary"), if stated.
+- jurisdiction: the state/country of incorporation, if stated.
+- startDate/endDate: only if a specific date is given in the source text.
+- If you are not confident "${personName}" is actually an officer/director of a given company (as opposed to some other person with a similar or common name), omit that entry.
+- Return an empty affiliations array if no source contains a specific, clearly-attributed directorship — do not pad with generic or uncertain entries.`,
+        combinedText,
+        CorporateAffiliationExtractionSchema
+      );
+
+      const rawCount = llmResult?.affiliations?.length ?? 0;
+      const affiliations: CorporateAffiliationEntry[] = llmResult?.affiliations ?? [];
+
+      console.log(`[opencorporates-agent] "${personName}" — search fallback: ${results.length} search result(s), LLM returned ${rawCount}`);
+
+      return { affiliations, sources };
+    } catch (err) {
+      console.warn(`[opencorporates-agent] "${personName}" — search fallback failed:`, err instanceof Error ? err.message : err);
       return { affiliations: [], sources: [] };
     }
   }

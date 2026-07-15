@@ -11,8 +11,13 @@ import { join } from "node:path";
 import { ResearchOrchestrator } from "../src/agents/orchestrator/index.js";
 import { DeepDiveAgent } from "../src/agents/deep-dive/index.js";
 import { EntityExtractionAgent } from "../src/agents/entity-extraction/index.js";
+import { OpenCorporatesAgent } from "../src/agents/opencorporates-agent/index.js";
+import { OpenFecAgent } from "../src/agents/openfec-agent/index.js";
+import { CourtListenerAgent } from "../src/agents/courtlistener-agent/index.js";
+import { MuckRockAgent } from "../src/agents/muckrock-agent/index.js";
 import { findEasterEgg } from "../src/easter-eggs/index.js";
 import { saveEntityExtraction } from "../src/database/knowledge-graph.js";
+import { upsertStatewideExecutives } from "../src/database/statewide-executives.js";
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { createClient } from "@supabase/supabase-js";
 
@@ -70,21 +75,28 @@ interface TierConfig {
   exportAccess: boolean;
   charonProtocol: boolean;
   chatWidgetAccess: boolean;
+  // Charon-only UI buttons (dashboard "Charon Tools" row + Admin tab) —
+  // separate flags rather than reusing charonProtocol so each can be
+  // tuned independently later, even though all three are internal-only
+  // today.
+  personResearchAccess: boolean;
+  muckrockAccess: boolean;
+  adminAccess: boolean;
 }
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true },
-  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true },
-  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true },
-  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false },
-  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false },
+  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true },
+  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false },
+  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false },
+  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false },
+  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false },
   // Time-boxed tier for external demo/partner accounts (limited partners,
   // investor trials, etc). Deliberately mirrors "team" limits and features
   // so the demo shows the platform at full strength — the ONLY things it
   // withholds are politicalAccess and charonProtocol, which stay off
   // regardless of what tier gets requested for these accounts. Expiry
   // enforced via profiles.trial_expires_at, checked in getUserTier below.
-  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true },
+  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false },
 };
 
 /**
@@ -116,6 +128,7 @@ const EXPIRED_CONFIG: TierConfig = {
   dailyResearchLimit: 0, dailyDeepDiveLimit: 0, deepDiveAccess: false,
   politicalAccess: false, watchlistLimit: 0, knowledgeGraphAccess: false,
   exportAccess: false, charonProtocol: false, chatWidgetAccess: false,
+  personResearchAccess: false, muckrockAccess: false, adminAccess: false,
 };
 
 function getTierConfig(tier: Tier | "expired"): TierConfig {
@@ -303,6 +316,99 @@ app.post("/research", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err);
     console.error("[research] Error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * Person Research (Charon) — the standalone cross-reference tool behind
+ * the dashboard's "Person Research" button, distinct from the general
+ * /research?type=person report-generation flow above (that one still
+ * runs OpenCorporates + MuckRock automatically for internal tier; this
+ * endpoint is a separate, structured, on-demand lookup, not a report).
+ *
+ * Charon-only: the whole endpoint 403s below internal tier, not just a
+ * `deep` flag on top of it — there's no reduced version of this for
+ * other tiers.
+ *
+ * Four sources per the spec: OpenCorporates and FEC cross-reference are
+ * real (existing agents, this just wires FEC into a person lookup for
+ * the first time). CourtListener is a real new integration (free RECAP
+ * search — the closest no-cost mirror of PACER). PACER itself has no
+ * free API, and Form 4 lookup is currently keyed by company name, not
+ * person, so both come back as explicit "not available" placeholders
+ * rather than a mismatched or fabricated result.
+ */
+app.post("/person-research/deep", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const { userId, name } = req.body;
+  if (!userId || !name) {
+    res.status(400).json({ error: "userId and name required" });
+    return;
+  }
+
+  const tier = await getUserTier(userId);
+  if (tier !== "internal") {
+    return tierDenied(res, "Person Research is a Charon-tier feature.");
+  }
+
+  try {
+    const [openCorporates, fec, courtListener] = await Promise.all([
+      new OpenCorporatesAgent(new SerperSearchProvider()).run(name),
+      new OpenFecAgent().run(name),
+      new CourtListenerAgent().run(name),
+    ]);
+
+    res.json({
+      name,
+      generatedAt: new Date().toISOString(),
+      openCorporates: { affiliations: openCorporates.affiliations, sources: openCorporates.sources },
+      fec: { summary: fec.summary, donorBreakdown: fec.donorBreakdown, sources: fec.sources },
+      courtListener: { records: courtListener.records, sources: courtListener.sources },
+      form4: {
+        available: false,
+        reason: "Form 4 lookup is currently company-keyed only — person-level cross-reference isn't built yet.",
+      },
+      pacer: {
+        available: false,
+        reason: "PACER has no free public API. CourtListener's RECAP archive above mirrors much of its federal docket data.",
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : JSON.stringify(err);
+    console.error("[person-research/deep] Error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * MuckRock FOIA Search (Charon) — direct, user-driven search of
+ * MuckRock's public FOIA-request archive. Distinct from the automatic
+ * MuckRock pull inside deep person/political research: this lets a
+ * Charon user search any query (agency name, topic, org — not just a
+ * person) on demand.
+ */
+app.post("/muckrock/search", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const { userId, query } = req.body;
+  if (!userId || !query) {
+    res.status(400).json({ error: "userId and query required" });
+    return;
+  }
+
+  const tier = await getUserTier(userId);
+  if (tier !== "internal") {
+    return tierDenied(res, "MuckRock FOIA Search is a Charon-tier feature.");
+  }
+
+  try {
+    const result = await new MuckRockAgent().run(query);
+    res.json({ query, generatedAt: new Date().toISOString(), requests: result.requests, sources: result.sources });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : JSON.stringify(err);
+    console.error("[muckrock/search] Error:", message);
     res.status(500).json({ error: message });
   }
 });
@@ -506,6 +612,36 @@ app.get("/admin/stats/:userId", async (req, res) => {
     console.error("[admin-stats] query failed:", err);
     res.status(500).json({ error: "Failed to load admin stats" });
   }
+});
+
+/**
+ * Manual quarterly refresh for the statewide_executives table (Charon-
+ * only, next to /admin/stats). Deliberately not a live scrape — the
+ * admin supplies reviewed data (state/office/name/party/termStart/
+ * sourceUrl), same trust model as the seed SQL files. See
+ * upsertStatewideExecutives in src/database/statewide-executives.ts.
+ */
+app.post("/admin/statewide-executives/refresh", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const { userId, updates } = req.body;
+  if (!userId || !Array.isArray(updates) || updates.length === 0) {
+    res.status(400).json({ error: "userId and a non-empty updates array required" });
+    return;
+  }
+
+  const tier = await getUserTier(userId);
+  if (tier !== "internal") {
+    res.status(403).json({ error: "Statewide-executives refresh requires Charon tier" });
+    return;
+  }
+
+  const result = await upsertStatewideExecutives(updates);
+  if (!result.ok) {
+    res.status(500).json({ error: result.error ?? "Upsert failed" });
+    return;
+  }
+  res.json({ ok: true, upserted: result.upserted });
 });
 
 app.get("/health", (_, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));

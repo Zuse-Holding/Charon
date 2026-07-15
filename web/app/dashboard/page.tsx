@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import EmptyState from "../../components/EmptyState";
+import PersonResearchModal from "../../components/PersonResearchModal";
+import MuckRockSearchModal from "../../components/MuckRockSearchModal";
 import { useTier } from "../../lib/tier-context";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -161,7 +163,7 @@ function getGreeting(hour: number): string {
 }
 
 export default function DashboardPage() {
-  const { isInternal, tier, displayName } = useTier();
+  const { isInternal, tier, displayName, can } = useTier();
   const router = useRouter();
   const [tab, setTab] = useState<DashTab>("dashboard");
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
@@ -169,6 +171,8 @@ export default function DashboardPage() {
   const [recentRuns, setRecentRuns] = useState<Run[]>([]);
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
   const [time, setTime] = useState(new Date());
+  const [showPersonResearch, setShowPersonResearch] = useState(false);
+  const [showMuckRock, setShowMuckRock] = useState(false);
 
   // Layout is inline styles (see S above), so responsive behavior can't
   // come from @media in a stylesheet — track viewport width directly and
@@ -208,19 +212,20 @@ export default function DashboardPage() {
     if (res.ok) setRecentRuns(await res.json());
   }, []);
 
-  // Load admin stats (internal only)
+  // Load admin stats (Charon tier only)
+  const hasAdminAccess = can("adminAccess");
   const loadAdminStats = useCallback(async () => {
-    if (!isInternal) return;
+    if (!hasAdminAccess) return;
     const res = await fetch("/api/admin/stats");
     if (res.ok) setAdminStats(await res.json());
-  }, [isInternal]);
+  }, [hasAdminAccess]);
 
   useEffect(() => {
     loadWatchlist();
     loadIntel();
     loadRuns();
-    if (isInternal) loadAdminStats();
-  }, [loadWatchlist, loadIntel, loadRuns, loadAdminStats, isInternal]);
+    if (hasAdminAccess) loadAdminStats();
+  }, [loadWatchlist, loadIntel, loadRuns, loadAdminStats, hasAdminAccess]);
 
   // ── Brief items (derived from recent runs + watchlist) ──
   const briefItems = [
@@ -273,7 +278,7 @@ export default function DashboardPage() {
           <button style={S.tab(tab === "dashboard")} onClick={() => setTab("dashboard")}>
             Dashboard
           </button>
-          {isInternal && (
+          {hasAdminAccess && (
             <button style={S.tab(tab === "admin")} onClick={() => setTab("admin")}>
               Admin
             </button>
@@ -414,11 +419,61 @@ export default function DashboardPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Row 3: Charon Tools (Charon tier only) */}
+              {(can("personResearchAccess") || can("muckrockAccess")) && (
+                <div style={{ ...S.row, ...(isMobile ? { flexDirection: "column" as const } : {}) }}>
+                  {can("personResearchAccess") && (
+                    <div style={S.panel("#F87171")}>
+                      <div style={S.panelTitle}>
+                        Person Research
+                        <span style={S.badge("#F87171")}>Charon</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#6B7A99", lineHeight: 1.5, marginBottom: 12 }}>
+                        Cross-reference corporate directorships, FEC campaign finance, and federal court records for a name.
+                      </div>
+                      <button
+                        onClick={() => setShowPersonResearch(true)}
+                        style={{
+                          background: "transparent", border: "1px solid #F8717155",
+                          borderRadius: 6, padding: "6px 14px",
+                          color: "#F87171", fontSize: 11, fontWeight: 700,
+                          letterSpacing: "0.04em", cursor: "pointer",
+                        }}
+                      >
+                        Launch →
+                      </button>
+                    </div>
+                  )}
+                  {can("muckrockAccess") && (
+                    <div style={S.panel("#9F7AEA")}>
+                      <div style={S.panelTitle}>
+                        MuckRock FOIA Search
+                        <span style={S.badge("#9F7AEA")}>Charon</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#6B7A99", lineHeight: 1.5, marginBottom: 12 }}>
+                        Search MuckRock&apos;s public archive of filed FOIA/public-records requests on demand.
+                      </div>
+                      <button
+                        onClick={() => setShowMuckRock(true)}
+                        style={{
+                          background: "transparent", border: "1px solid #9F7AEA55",
+                          borderRadius: 6, padding: "6px 14px",
+                          color: "#9F7AEA", fontSize: 11, fontWeight: 700,
+                          letterSpacing: "0.04em", cursor: "pointer",
+                        }}
+                      >
+                        Launch →
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
 
           {/* ── ADMIN TAB (internal only) ── */}
-          {tab === "admin" && isInternal && (
+          {tab === "admin" && hasAdminAccess && (
             <>
               {/* Stat row */}
               <div style={{ ...S.row, ...(isMobile ? { flexWrap: "wrap" as const } : {}) }}>
@@ -463,7 +518,7 @@ export default function DashboardPage() {
                   ))}
                   {!adminStats && (
                     <div style={{ fontSize: 12, color: "#374151" }}>
-                      Create <code style={{ fontSize: 11 }}>/api/admin/stats</code> route to populate.
+                      Loading…
                     </div>
                   )}
                 </div>
@@ -487,20 +542,12 @@ export default function DashboardPage() {
                   ))}
                 </div>
               </div>
-
-              {/* Note about admin stats route */}
-              <div style={{
-                fontSize: 11, color: "#374151", padding: "8px 12px",
-                background: "#0E1420", border: "1px solid #1C2333",
-                borderRadius: 7,
-              }}>
-                ⚠ Full admin stats (user count, tier breakdown, active sessions) require <code>/api/admin/stats</code> — build next session.
-                Current run counts are pulled from your own session only.
-              </div>
             </>
           )}
         </div>
       </main>
+      {showPersonResearch && <PersonResearchModal onClose={() => setShowPersonResearch(false)} />}
+      {showMuckRock && <MuckRockSearchModal onClose={() => setShowMuckRock(false)} />}
     </div>
   );
 }

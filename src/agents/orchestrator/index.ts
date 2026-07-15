@@ -71,7 +71,7 @@ export class ResearchOrchestrator {
     this.congressAgent = new CongressAgent(searcher);
     this.legiScanAgent = new LegiScanAgent();
     this.openFecAgent = new OpenFecAgent();
-    this.openCorporatesAgent = new OpenCorporatesAgent();
+    this.openCorporatesAgent = new OpenCorporatesAgent(searcher);
     this.muckRockAgent = new MuckRockAgent();
     this.usaSpendingAgent = new USASpendingAgent();
     this.reportAgent = new ReportAgent();
