@@ -334,10 +334,21 @@ app.post("/research", async (req, res) => {
  * Four sources per the spec: OpenCorporates and FEC cross-reference are
  * real (existing agents, this just wires FEC into a person lookup for
  * the first time). CourtListener is a real new integration (free RECAP
- * search — the closest no-cost mirror of PACER). PACER itself has no
- * free API, and Form 4 lookup is currently keyed by company name, not
- * person, so both come back as explicit "not available" placeholders
- * rather than a mismatched or fabricated result.
+ * search — the closest no-cost mirror of PACER). PACER and Form 4 come
+ * back as explicit "not available" placeholders — and PERMANENTLY so,
+ * not a "coming soon":
+ *   - PACER has no free/keyless API at all. The only way in is a paid,
+ *     individually-registered CM/ECF account with per-page billing.
+ *     There is nothing to "finish building" here without that account.
+ *   - Form 4 (SEC insider filings) already exists in this codebase, but
+ *     keyed by COMPANY name (src/agents/form4-agent — "is this person an
+ *     insider of THIS company"). A person-first query is a genuinely
+ *     different lookup (search across every company for this person),
+ *     not a missing wire-up of the existing agent — reusing form4-agent
+ *     as-is here would produce a nonsensical prompt, not a shortcut.
+ * Building either for real is a scoped v2 project (PACER: get
+ * credentials; Form 4: a new person-keyed agent), not a bug fix — don't
+ * spend time on either without a credential to build against.
  */
 app.post("/person-research/deep", async (req, res) => {
   if (!authCheck(req, res)) return;
@@ -368,11 +379,11 @@ app.post("/person-research/deep", async (req, res) => {
       courtListener: { records: courtListener.records, sources: courtListener.sources },
       form4: {
         available: false,
-        reason: "Form 4 lookup is currently company-keyed only — person-level cross-reference isn't built yet.",
+        reason: "Permanently unavailable, not a gap to fill in: Form 4 lookup in this codebase is keyed by company name, not person — a person-first query is a different lookup, not a missing wire-up.",
       },
       pacer: {
         available: false,
-        reason: "PACER has no free public API. CourtListener's RECAP archive above mirrors much of its federal docket data.",
+        reason: "Permanently unavailable, not a gap to fill in: PACER has no free public API — only a paid, individually-registered account. CourtListener's RECAP archive above mirrors much of its federal docket data for free.",
       },
     });
   } catch (err) {
