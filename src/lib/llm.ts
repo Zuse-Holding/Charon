@@ -178,10 +178,22 @@ let openRouterKeyIndex = 0;
 // moderation), so one congested provider doesn't take down the whole
 // request. Ordered: current default first, then two different vendor
 // families so a single provider's outage doesn't take out more than one.
+//
+// nvidia/nemotron-3-super-120b-a12b:free was tried here and removed —
+// confirmed live (2026-07-17) it's a hybrid-reasoning model that
+// ignores response_format:"json_object" and injects mid-generation
+// reasoning into the JSON body itself (e.g. a leadership array breaking
+// mid-string into "...need correct JSON. Let's produce correct JSON..."),
+// producing a 200 OK with unparseable content instead of a clean
+// failure. Only pick models explicitly branded "-instruct"/"-it"
+// (plain instruction-tuned, not reasoning-first) for this list — model
+// families that reason-by-default (Nvidia Nemotron 3, DeepSeek-R1,
+// QwQ, gpt-oss, o1/o3-style) aren't safe for strict-JSON extraction
+// even when asked for "ONLY JSON, no explanation".
 const DEFAULT_OPENROUTER_MODELS = [
   "meta-llama/llama-3.3-70b-instruct:free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
   "qwen/qwen3-next-80b-a3b-instruct:free",
+  "google/gemma-4-31b-it:free",
 ];
 
 async function extractViaOpenRouter<T>(
