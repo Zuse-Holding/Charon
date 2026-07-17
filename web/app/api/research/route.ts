@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
 import { randomUUID } from "node:crypto";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const CLI_COMMANDS: Record<string, string> = {
   company:   "research",
@@ -115,33 +115,41 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Development: spawn CLI
+  // Development: spawn CLI (only reachable when AGENT_SERVER_URL isn't
+  // set — never true in production since this always points at Railway).
+  // Requires the same auth check as the production branch above — this
+  // used to run the shell command first and only check for a user
+  // afterward, purely to label the DB record, meaning an unauthenticated
+  // caller could trigger it. Also switched from a string-interpolated
+  // shell command (exec) to execFile with an argument array — that
+  // passes sanitizedSubject as a single literal argument to the child
+  // process with no shell involved, so shell metacharacters in it
+  // (`$`, backticks, `;`, `|`, `&&`) can't be interpreted, unlike the
+  // previous version which only escaped double quotes.
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
   const PROJECT_ROOT = join(process.cwd(), "..");
-  const safeSubject  = sanitizedSubject.replace(/"/g, '\\"');
-  const cmd = `npx tsx src/cli.ts ${CLI_COMMANDS[type]} "${safeSubject}"`;
 
   try {
-    const { stdout, stderr } = await execAsync(cmd, {
-      cwd: PROJECT_ROOT,
-      timeout: 120_000,
-      env: { ...process.env },
-    });
+    const { stdout, stderr } = await execFileAsync(
+      "npx",
+      ["tsx", "src/cli.ts", CLI_COMMANDS[type], sanitizedSubject],
+      { cwd: PROJECT_ROOT, timeout: 120_000, env: { ...process.env } }
+    );
 
     try {
-      const supabase = await createServerSupabaseClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const reportPath = getReportPath(sanitizedSubject, type);
-        await supabase.from("research_runs").insert({
-          id: randomUUID(),
-          user_id: user.id,
-          type,
-          subject: sanitizedSubject,
-          generated_at: new Date().toISOString(),
-          report_path: reportPath,
-          bundle: {},
-        });
-      }
+      const reportPath = getReportPath(sanitizedSubject, type);
+      await supabase.from("research_runs").insert({
+        id: randomUUID(),
+        user_id: user.id,
+        type,
+        subject: sanitizedSubject,
+        generated_at: new Date().toISOString(),
+        report_path: reportPath,
+        bundle: {},
+      });
     } catch (dbErr) {
       console.error("[research] Supabase write failed:", dbErr);
     }
