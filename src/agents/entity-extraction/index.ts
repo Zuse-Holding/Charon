@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { extractStructured, extractViaOpenRouter } from "../../lib/llm.js";
+import { extractStructured } from "../../lib/llm.js";
 
 /**
  * Entity Extraction Agent (Knowledge Graph — Phase 1)
@@ -69,9 +69,6 @@ export class EntityExtractionAgent {
     // rejects, silently dropping every entity in that batch.
     const graphType = primarySubject.type === "political" ? "person" : primarySubject.type;
 
-    // Use gpt-oss-120b via OpenRouter for better structured extraction
-    // Falls back to Groq llama if OpenRouter key not set
-    const GPT_OSS = "openai/gpt-oss-120b:free";
     const prompt = `You are extracting named entities and relationships from a business research report about "${primarySubject.name}" for a knowledge graph.
 
 The primary subject is: "${primarySubject.name}" (${graphType})
@@ -90,11 +87,7 @@ Relationship types: FOUNDED, CO_FOUNDED, CEO_OF, WORKS_AT, COMPETES_WITH, ACQUIR
 
 Always include "${primarySubject.name}" in entities. If it is a person, add CEO_OF or WORKS_AT relationships to their company. If it is a company, add FOUNDED or CEO_OF relationships to named founders/executives.`;
 
-    // Try OpenRouter first, fall back to Groq
-    let result = await extractViaOpenRouter(prompt, truncated, ExtractionResultSchema, GPT_OSS);
-    if (!result) {
-      result = await extractStructured(prompt, truncated, ExtractionResultSchema);
-    }
+    const result = await extractStructured(prompt, truncated, ExtractionResultSchema);
 
     console.log(`[entity-extraction] ${primarySubject.name}: found ${result?.entities?.length ?? 0} entities, ${result?.relationships?.length ?? 0} relationships`);
 
