@@ -5,7 +5,10 @@ import Groq from "groq-sdk";
  * Unified LLM extraction layer.
  *
  * Provider priority for extractStructured():
- *   1. OpenRouter (if OPENROUTER_API_KEY set) — primary provider
+ *   1. OpenRouter (if OPENROUTER_API_KEY set) — primary provider. Supports
+ *      a second key via OPENROUTER_API_KEY_2 — round-robins between the
+ *      two and retries on the other key on a 429, so two free-tier
+ *      accounts' rate limits stack instead of sharing one bucket.
  *   2. Groq (if GROQ_API_KEY set) — fallback
  *   3. Ollama (local) — final fallback for dev
  *
@@ -129,64 +132,91 @@ async function extractViaGroq<T>(
   }
 }
 
-// --- OpenRouter provider ---
+// --- OpenRouter key pool ---
+// Supports multiple OpenRouter accounts (OPENROUTER_API_KEY,
+// OPENROUTER_API_KEY_2, ...) so free-tier rate limits stack instead of
+// being shared by one key. Round-robins across configured keys on each
+// call, and on a 429 from the chosen key tries the next one in the pool
+// before giving up — each key has its own independent rate-limit bucket.
+function getOpenRouterKeys(): string[] {
+  return [process.env.OPENROUTER_API_KEY, process.env.OPENROUTER_API_KEY_2].filter(
+    (k): k is string => !!k
+  );
+}
+
+let openRouterKeyIndex = 0;
+
 async function extractViaOpenRouter<T>(
   systemPrompt: string,
   userContent: string,
   schema: z.ZodType<T>,
   model = "openai/gpt-oss-120b:free"
 ): Promise<T | null> {
-  if (!process.env.OPENROUTER_API_KEY) return null;
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://metisanalytic.com",
-        "X-Title": "Metis Intelligence",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "system",
-            content: `${systemPrompt}\n\nIMPORTANT: Respond with ONLY valid JSON matching the requested schema. No markdown, no backticks, no explanation.`,
-          },
-          { role: "user", content: userContent },
-        ],
-        temperature: 0.1,
-        max_tokens: 1024,
-        response_format: { type: "json_object" },
-      }),
-    });
+  const keys = getOpenRouterKeys();
+  if (keys.length === 0) return null;
 
-    if (!res.ok) {
-      console.error(`[llm:openrouter] HTTP ${res.status}`);
-      return null;
-    }
+  for (let attempt = 0; attempt < keys.length; attempt++) {
+    const key = keys[openRouterKeyIndex % keys.length];
+    openRouterKeyIndex++;
 
-    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = data.choices?.[0]?.message?.content;
-    if (!raw) { console.error("[llm:openrouter] No content"); return null; }
-
-    let parsed: unknown;
     try {
-      const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-      parsed = JSON.parse(cleaned);
-    }
-    catch { console.error(`[llm:openrouter] Invalid JSON: ${raw.slice(0, 200)}`); return null; }
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://metisanalytic.com",
+          "X-Title": "Metis Intelligence",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "system",
+              content: `${systemPrompt}\n\nIMPORTANT: Respond with ONLY valid JSON matching the requested schema. No markdown, no backticks, no explanation.`,
+            },
+            { role: "user", content: userContent },
+          ],
+          temperature: 0.1,
+          max_tokens: 1024,
+          response_format: { type: "json_object" },
+        }),
+      });
 
-    const result = schema.safeParse(parsed);
-    if (!result.success) {
-      console.error(`[llm:openrouter] Schema mismatch: ${result.error.message.slice(0, 200)}`);
+      if (res.status === 429) {
+        console.error(`[llm:openrouter] Key ${attempt + 1}/${keys.length} rate limited${attempt < keys.length - 1 ? " — trying next key" : ""}`);
+        continue;
+      }
+
+      if (!res.ok) {
+        console.error(`[llm:openrouter] HTTP ${res.status}`);
+        return null;
+      }
+
+      const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const raw = data.choices?.[0]?.message?.content;
+      if (!raw) { console.error("[llm:openrouter] No content"); return null; }
+
+      let parsed: unknown;
+      try {
+        const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+        parsed = JSON.parse(cleaned);
+      }
+      catch { console.error(`[llm:openrouter] Invalid JSON: ${raw.slice(0, 200)}`); return null; }
+
+      const result = schema.safeParse(parsed);
+      if (!result.success) {
+        console.error(`[llm:openrouter] Schema mismatch: ${result.error.message.slice(0, 200)}`);
+        return null;
+      }
+      return result.data;
+    } catch (err) {
+      console.error(`[llm:openrouter] Error: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }
-    return result.data;
-  } catch (err) {
-    console.error(`[llm:openrouter] Error: ${err instanceof Error ? err.message : String(err)}`);
-    return null;
   }
+
+  return null;
 }
 
 // --- Ollama provider ---
@@ -263,12 +293,12 @@ export async function extractStructured<T>(
   let result: T | null = null;
 
   // Try OpenRouter first
-  if (process.env.OPENROUTER_API_KEY) {
+  if (getOpenRouterKeys().length > 0) {
     result = await extractViaOpenRouter(
       systemPrompt,
       userContent,
       schema,
-      modelOverride ?? "meta-llama/llama-3.3-70b-instruct"
+      modelOverride ?? "meta-llama/llama-3.3-70b-instruct:free"
     );
   }
 

@@ -1,5 +1,5 @@
 import { CorporateAffiliationEntry, Source } from "../../types/research.js";
-import { SearchProvider } from "../../lib/providers.js";
+import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { CorporateAffiliationExtractionSchema, extractStructured } from "../../lib/llm.js";
 
 /**
@@ -15,11 +15,12 @@ import { CorporateAffiliationExtractionSchema, extractStructured } from "../../l
  *
  * Falls back to the same search-and-synthesize pattern as form4-agent
  * whenever the direct API is unavailable (401/429/network error) —
- * targeted search + LLM extraction with same-snippet grounding, so the
- * feature still works without OPENCORPORATES_API_TOKEN rather than
- * going straight to "no results." Once a token is added, the direct API
- * (structured, more complete) is tried first and this is just a safety
- * net again.
+ * targeted search + LLM extraction with same-source grounding (full page
+ * text where fetchable, snippet otherwise — same pattern as
+ * people-agent/news-agent), so the feature still works without
+ * OPENCORPORATES_API_TOKEN rather than going straight to "no results."
+ * Once a token is added, the direct API (structured, more complete) is
+ * tried first and this is just a safety net again.
  *
  * This is intentionally scoped to Charon (internal tier) — it's a
  * "search every jurisdiction OpenCorporates indexes for this exact
@@ -70,7 +71,10 @@ interface OcOfficerSearchResponse {
 export class OpenCorporatesAgent {
   private apiToken = process.env.OPENCORPORATES_API_TOKEN;
 
-  constructor(private searcher: SearchProvider) {}
+  constructor(
+    private searcher: SearchProvider,
+    private fetcher: FetchProvider
+  ) {}
 
   async run(personName: string): Promise<{
     affiliations: CorporateAffiliationEntry[];
@@ -165,8 +169,19 @@ export class OpenCorporatesAgent {
         usedFor: ["corporate-affiliations"],
       }));
 
+      // Full page text for the top few results — richer context than a
+      // snippet for pulling out an actual directorship. Stays scoped to
+      // its own numbered source below, same as snippets, so this doesn't
+      // weaken the same-source grounding rule.
+      const fetchedPages = await Promise.all(
+        results.slice(0, 3).map((r) => fetchPageText(r.url, this.fetcher, 2500))
+      );
+
       const combinedText = results
-        .map((r, i) => `SOURCE ${i + 1} (${r.url}):\nTitle: ${r.title}\nSnippet: ${r.snippet ?? ""}`)
+        .map((r, i) => {
+          const fullText = fetchedPages[i];
+          return `SOURCE ${i + 1} (${r.url}):\nTitle: ${r.title}\n${fullText ? `Full text: ${fullText}` : `Snippet: ${r.snippet ?? ""}`}`;
+        })
         .join("\n\n");
 
       const llmResult = await extractStructured(

@@ -9,7 +9,7 @@ import {
   Source,
   VotingRecordEntry,
 } from "../../types/research.js";
-import { FetchProvider, SearchProvider } from "../../lib/providers.js";
+import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { PoliticalExtractionSchema, extractStructured } from "../../lib/llm.js";
 
 /**
@@ -28,10 +28,12 @@ import { PoliticalExtractionSchema, extractStructured } from "../../lib/llm.js";
  * yet — see the note at the bottom of this file for what a v2 would
  * swap in. This gets real, useful output today with zero new credentials.
  *
- * deep=true (Charon Protocol, internal tier only — see orchestrator)
- * pulls more search results per query and fetches full page text for
- * the top opposition-research sources instead of relying on snippets
- * alone, for a materially more thorough pass.
+ * Fetches full page text for the top results in every section (not just
+ * snippets) — same pattern as people-agent/news-agent, and the fix for
+ * the same class of "thin/stale snippet" accuracy problem. deep=true
+ * (Charon Protocol, internal tier only — see orchestrator) pulls more
+ * search results per query and fetches more pages per section, for a
+ * materially more thorough pass.
  */
 /**
  * Crude "Firstname Lastname" phrase matcher — good enough to spot which
@@ -79,6 +81,8 @@ export class PoliticalAgent {
 
   async run(name: string, deep = false): Promise<PoliticalAgentResult> {
     const resultCount = deep ? 10 : 5;
+    const fullTextSourceCount = deep ? 3 : 2;
+    const fullTextChars = deep ? 3000 : 2000;
 
     const queries = [
       `${name} congressional district party affiliation office incumbent`,
@@ -124,30 +128,43 @@ export class PoliticalAgent {
     tag(oppoResults, "opposition-research");
     tag(educationResults, "profile");
 
-    // Deep mode: fetch full page text for the top opposition-research
-    // sources rather than relying on two-line snippets — this is the
-    // section where source depth matters most for accuracy.
-    let oppoFullText = "";
-    if (deep && oppoResults.length > 0) {
-      const pages = await Promise.all(
-        oppoResults.slice(0, 3).map((r) => this.fetcher.fetchText(r.url).catch(() => null))
-      );
-      oppoFullText = pages
-        .map((text, i) => (text ? `FULL PAGE (${oppoResults[i].url}):\n${text.slice(0, 3000)}` : ""))
-        .filter(Boolean)
-        .join("\n\n");
-    }
+    // Fetch full page text for the top results in every section — richer
+    // context than two-line snippets alone, same pattern as
+    // people-agent/news-agent. Snippets stay in as backfill for the
+    // sources that don't get fetched or fail to fetch.
+    const sections: { label: string; results: typeof profileResults }[] = [
+      { label: "PROFILE / OFFICE SEARCH", results: profileResults },
+      { label: "DISTRICT SEARCH", results: districtResults },
+      { label: "APPROVAL RATING SEARCH", results: approvalResults },
+      { label: "VOTING RECORD SEARCH", results: votingResults },
+      { label: "CAMPAIGN FINANCE SEARCH", results: financeResults },
+      { label: "OPPOSITION RESEARCH SEARCH", results: oppoResults },
+      { label: "EDUCATION SEARCH", results: educationResults },
+    ];
 
-    const combinedText = [
-      profileResults.length ? `PROFILE / OFFICE SEARCH:\n${profileResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
-      districtResults.length ? `DISTRICT SEARCH:\n${districtResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
-      approvalResults.length ? `APPROVAL RATING SEARCH:\n${approvalResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
-      votingResults.length ? `VOTING RECORD SEARCH:\n${votingResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
-      financeResults.length ? `CAMPAIGN FINANCE SEARCH:\n${financeResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
-      oppoResults.length ? `OPPOSITION RESEARCH SEARCH:\n${oppoResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
-      educationResults.length ? `EDUCATION SEARCH:\n${educationResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}` : "",
-      oppoFullText,
-    ].filter(Boolean).join("\n\n");
+    const sectionTexts = await Promise.all(
+      sections.map(async ({ label, results }) => {
+        if (results.length === 0) return "";
+        const fetched = await Promise.all(
+          results.slice(0, fullTextSourceCount).map((r) => fetchPageText(r.url, this.fetcher, fullTextChars))
+        );
+        const fullTextBlock = fetched
+          .map((text, i) => (text ? `FULL PAGE (${results[i].url}):\n${text}` : ""))
+          .filter(Boolean)
+          .join("\n\n");
+        // Snippets only for results that didn't get full text (past
+        // fullTextSourceCount, or the fetch failed) — a source that's
+        // already included as a full page doesn't need its own snippet
+        // repeated right below it.
+        const snippetBlock = results
+          .filter((_r, i) => i >= fullTextSourceCount || !fetched[i])
+          .map((r) => `${r.title}: ${r.snippet ?? ""}`)
+          .join("\n");
+        return [`${label}:`, fullTextBlock, snippetBlock].filter(Boolean).join("\n");
+      })
+    );
+
+    const combinedText = sectionTexts.filter(Boolean).join("\n\n");
 
     const profile: PoliticalProfile = { name };
     let districtMakeup: DistrictMakeup | undefined;

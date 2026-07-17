@@ -1,5 +1,5 @@
 import { DeepDiveBundle, DeepDiveSection, RiskLevel } from "../../types/research.js";
-import { FetchProvider, SearchProvider, resolveAndFetch, htmlToText } from "../../lib/providers.js";
+import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractStructured } from "../../lib/llm.js";
 import { SECTION_ORDER, SECTION_ESTIMATES, TOTAL_ESTIMATED_SECONDS } from "../../lib/deep-dive-constants.js";
 import { z } from "zod";
@@ -30,8 +30,8 @@ export class DeepDiveAgent {
     private searcher: SearchProvider
   ) {}
 
-  /** Fetches multiple search results and optionally the first full page. */
-  private async gather(queries: string[], fetchFirst = false): Promise<string> {
+  /** Fetches multiple search results and full page text for the top few. */
+  private async gather(queries: string[], fetchCount = 0): Promise<string> {
     const allResults = await Promise.all(
       queries.map(q => this.searcher.search(q, 4))
     );
@@ -45,16 +45,19 @@ export class DeepDiveAgent {
       return true;
     });
 
-    let pageText = "";
-    if (fetchFirst && unique.length > 0) {
-      try {
-        const res = await this.fetcher.fetchText(unique[0].url);
-        if (res) pageText = `\nFULL PAGE (${unique[0].url}):\n${htmlToText(res).slice(0, 3000)}`;
-      } catch { /* ignore fetch failures */ }
-    }
+    const pages: (string | null)[] = fetchCount > 0 && unique.length > 0
+      ? await Promise.all(unique.slice(0, fetchCount).map(r => fetchPageText(r.url, this.fetcher, 3000)))
+      : [];
+    const pageText = pages
+      .map((text, i) => (text ? `\nFULL PAGE (${unique[i].url}):\n${text}` : ""))
+      .filter(Boolean)
+      .join("");
 
+    // Snippets only for results that didn't get full text — a source
+    // already included as a full page doesn't need its snippet repeated.
     const snippets = unique
       .slice(0, 8)
+      .filter((_r, i) => i >= pages.length || !pages[i])
       .map(r => `SOURCE: ${r.title}\nURL: ${r.url}\n${r.snippet ?? ""}`)
       .join("\n\n");
 
@@ -110,7 +113,7 @@ WRITING STANDARDS — mandatory:
       index: number,
       searchQueries: string[],
       synthesisPrompt: string,
-      useFetch = false,
+      fetchCount = 2,
       useAccumulated = false
     ) => {
       onProgress({
@@ -121,7 +124,7 @@ WRITING STANDARDS — mandatory:
       });
 
       const rawContext = searchQueries.length > 0
-        ? await this.gather(searchQueries, useFetch)
+        ? await this.gather(searchQueries, fetchCount)
         : "";
 
       const context = useAccumulated
@@ -181,7 +184,7 @@ WRITING STANDARDS — mandatory:
           `${companyName} management team experience`,
         ],
         `Profile the key executives at ${companyName}. For each person: their name and role, relevant prior experience, notable achievements, and any red flags (frequent job changes, failed ventures, legal issues). Assess overall leadership quality and team completeness.`,
-        true
+        3
       );
 
       // 4. Funding & Financials
@@ -208,7 +211,7 @@ WRITING STANDARDS — mandatory:
           `${companyName} Trustpilot G2 reviews rating`,
         ],
         `Analyze ${companyName}'s product portfolio: what they offer, how it's priced, who the target customer is, and evidence of traction (user counts, revenue signals, review scores, growth indicators). Note any product gaps or quality concerns.`,
-        true
+        3
       );
 
       // 6. Risk Flags (synthesis — no new searches)
@@ -217,7 +220,7 @@ WRITING STANDARDS — mandatory:
         5,
         [],
         `Based on everything gathered about ${companyName}, identify 3-5 specific risk flags. For each flag: name it clearly, explain the specific evidence, and rate its severity. Be concrete — reference actual facts from the research, not generic business risks. Return with a riskLevel of "high", "medium", or "low" for the overall risk profile.`,
-        false,
+        0,
         true
       );
 
@@ -251,7 +254,7 @@ WRITING STANDARDS — mandatory:
         8,
         [],
         `Based on everything gathered, analyze four strategic options for someone evaluating ${companyName}: (1) Acquire — full or asset acquisition, (2) Partner — integration or distribution partnership, (3) Compete — build a competing offering, (4) Invest — minority stake. For each option: key pros, key cons, and what would need to be true for it to make sense. Be specific to ${companyName}'s actual situation.`,
-        false,
+        0,
         true
       );
 
@@ -261,7 +264,7 @@ WRITING STANDARDS — mandatory:
         9,
         [],
         `Write a clear strategic verdict on ${companyName} in 2-3 paragraphs. Lead with a direct recommendation (which strategic option makes most sense and why). Support it with the 2-3 strongest pieces of evidence from the research. Close with the 1-2 things that would most change this assessment if they turned out to be different than assumed. This should read like the final page of a McKinsey deck — direct, confident, evidence-based.`,
-        false,
+        0,
         true
       );
 

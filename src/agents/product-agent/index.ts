@@ -5,7 +5,7 @@ import {
   ProductCompetitorEntry,
   Source,
 } from "../../types/research.js";
-import { FetchProvider, SearchProvider } from "../../lib/providers.js";
+import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractStructured, ProductEntityExtractionSchema, ProConsVerdictSchema } from "../../lib/llm.js";
 
 /**
@@ -44,8 +44,24 @@ export class ProductAgent {
       usedFor: ["product"],
     }));
 
-    const overviewText  = overviewResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n");
-    const specsText     = specsResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n");
+    // Fetch full page text for the top overview/specs results — richer
+    // context than snippets for pulling out an accurate brand/spec list,
+    // same pattern as people-agent/news-agent.
+    const [overviewPages, specsPages] = await Promise.all([
+      Promise.all(overviewResults.slice(0, 2).map((r) => fetchPageText(r.url, this.fetcher, 2000))),
+      Promise.all(specsResults.slice(0, 2).map((r) => fetchPageText(r.url, this.fetcher, 2500))),
+    ]);
+
+    // Snippets only for results that didn't get full text — a source
+    // already included as a full page doesn't need its snippet repeated.
+    const overviewText = [
+      overviewPages.map((t, i) => (t ? `FULL PAGE (${overviewResults[i].url}):\n${t}` : "")).filter(Boolean).join("\n\n"),
+      overviewResults.filter((_r, i) => i >= 2 || !overviewPages[i]).map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n"),
+    ].filter(Boolean).join("\n\n");
+    const specsText = [
+      specsPages.map((t, i) => (t ? `FULL PAGE (${specsResults[i].url}):\n${t}` : "")).filter(Boolean).join("\n\n"),
+      specsResults.filter((_r, i) => i >= 2 || !specsPages[i]).map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n"),
+    ].filter(Boolean).join("\n\n");
     const competitorText = competitorResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n");
     const combinedText  = `OVERVIEW & BRAND:\n${overviewText}\n\nSPECS & PRICING:\n${specsText}`;
 

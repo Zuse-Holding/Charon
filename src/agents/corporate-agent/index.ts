@@ -3,7 +3,7 @@ import {
   FundingEntry,
   Source,
 } from "../../types/research.js";
-import { FetchProvider, SearchProvider } from "../../lib/providers.js";
+import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { splitSentences } from "../../lib/nlp.js";
 import { FundingExtractionSchema, extractStructured } from "../../lib/llm.js";
 import { Form4Agent } from "../form4-agent/index.js";
@@ -16,10 +16,14 @@ const FUNDING_CONTEXT_RE = /\b(raised|raises|funding round|secured|closed a|inve
  * Corporate Agent
  * Collects: funding history, ownership signals.
  *
+ * Fetches full page text for the top funding search results (not just
+ * snippets) for richer context — same pattern as people-agent/news-agent.
+ *
  * Tries a local LLM (Ollama) first — it can correctly pair an amount
  * with its actual round even across messy, table-flattened source text
  * (the "Seed: $9.81B" mismatch bug heuristics couldn't fully solve).
- * Falls back to sentence-scoped regex extraction if Ollama isn't
+ * Falls back to sentence-scoped regex extraction (over snippets — cheap
+ * and reliable, doesn't need the fetched full text) if Ollama isn't
  * available or the call fails. See lib/llm.ts for the fallback policy.
  */
 export class CorporateAgent {
@@ -29,7 +33,7 @@ export class CorporateAgent {
     private fetcher: FetchProvider,
     private searcher: SearchProvider
   ) {
-    this.form4Agent = new Form4Agent(searcher);
+    this.form4Agent = new Form4Agent(searcher, fetcher);
   }
 
   async run(companyName: string): Promise<CorporateAgentResult> {
@@ -47,9 +51,23 @@ export class CorporateAgent {
       usedFor: ["funding"],
     }));
 
-    const combinedText = results
+    // Fetch full page text for the top results — funding articles often
+    // bury the actual round/amount pairing below what a snippet captures,
+    // same pattern as people-agent/news-agent.
+    const fetchedPages = await Promise.all(
+      results.slice(0, 3).map((r) => fetchPageText(r.url, this.fetcher, 2500))
+    );
+    const fullTextBlock = fetchedPages
+      .map((text, i) => (text ? `FULL PAGE (${results[i].url}):\n${text}` : ""))
+      .filter(Boolean)
+      .join("\n\n");
+    // Snippets only for results that didn't get full text — a source
+    // already included as a full page doesn't need its snippet repeated.
+    const snippetBlock = results
+      .filter((_r, i) => i >= 3 || !fetchedPages[i])
       .map((r) => `${r.title}: ${r.snippet ?? ""}`)
       .join("\n");
+    const combinedText = [fullTextBlock, snippetBlock].filter(Boolean).join("\n\n");
 
     let funding: FundingEntry[] = [];
     let ownership: string | undefined;
