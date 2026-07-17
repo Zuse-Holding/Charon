@@ -10,6 +10,7 @@ import {
   SearchProvider,
   resolveAndFetch,
   extractBestChunk,
+  fetchPageText,
 } from "../../lib/providers.js";
 import {
   extractPeopleWithTitles,
@@ -203,6 +204,15 @@ export class WebsiteAgent {
       sources.push({ url: r.url, title: r.title, retrievedAt: new Date().toISOString(), usedFor: ["overview"] });
     }
 
+    // Fetch full page text for the top leadership/product results — "meet
+    // the team" and product pages are usually much richer than a snippet
+    // (which often just truncates a list of names), same pattern as
+    // people-agent/news-agent.
+    const [leadershipPages, productPages] = await Promise.all([
+      Promise.all(leadershipResults.slice(0, 2).map((r) => fetchPageText(r.url, this.fetcher, 2000))),
+      Promise.all(productResults.slice(0, 2).map((r) => fetchPageText(r.url, this.fetcher, 2000))),
+    ]);
+
     // Combine everything gathered into one block for a single LLM call
     const combinedText = [
       page ? `OFFICIAL SITE TEXT:\n${extractBestChunk(cleanPageText(page.text), 2000)}` : "",
@@ -210,14 +220,16 @@ export class WebsiteAgent {
         ? `OVERVIEW SEARCH:\n${overviewResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}`
         : "",
       leadershipResults.length
-        ? `LEADERSHIP SEARCH RESULTS:\n${leadershipResults
-            .map((r) => `${r.title}: ${r.snippet ?? ""}`)
-            .join("\n")}`
+        ? `LEADERSHIP SEARCH RESULTS:\n${[
+            leadershipPages.map((t, i) => (t ? `FULL PAGE (${leadershipResults[i].url}):\n${t}` : "")).filter(Boolean).join("\n\n"),
+            leadershipResults.filter((_r, i) => i >= 2 || !leadershipPages[i]).map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n"),
+          ].filter(Boolean).join("\n\n")}`
         : "",
       productResults.length
-        ? `PRODUCTS SEARCH RESULTS:\n${productResults
-            .map((r) => `${r.title}: ${r.snippet ?? ""}`)
-            .join("\n")}`
+        ? `PRODUCTS SEARCH RESULTS:\n${[
+            productPages.map((t, i) => (t ? `FULL PAGE (${productResults[i].url}):\n${t}` : "")).filter(Boolean).join("\n\n"),
+            productResults.filter((_r, i) => i >= 2 || !productPages[i]).map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n"),
+          ].filter(Boolean).join("\n\n")}`
         : "",
     ]
       .filter(Boolean)

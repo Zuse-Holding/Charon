@@ -71,7 +71,7 @@ export class EntityExtractionAgent {
 
     // Use gpt-oss-120b via OpenRouter for better structured extraction
     // Falls back to Groq llama if OpenRouter key not set
-    const GPT_OSS = "openai/gpt-oss-120b";
+    const GPT_OSS = "openai/gpt-oss-120b:free";
     const prompt = `You are extracting named entities and relationships from a business research report about "${primarySubject.name}" for a knowledge graph.
 
 The primary subject is: "${primarySubject.name}" (${graphType})

@@ -366,7 +366,7 @@ app.post("/person-research/deep", async (req, res) => {
 
   try {
     const [openCorporates, fec, courtListener] = await Promise.all([
-      new OpenCorporatesAgent(new SerperSearchProvider()).run(name),
+      new OpenCorporatesAgent(new SerperSearchProvider(), new DirectFetchProvider()).run(name),
       new OpenFecAgent().run(name),
       new CourtListenerAgent().run(name),
     ]);

@@ -1,5 +1,5 @@
 import { Form4Entry, Source } from "../../types/research.js";
-import { SearchProvider } from "../../lib/providers.js";
+import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { Form4ExtractionSchema, extractStructured } from "../../lib/llm.js";
 import { findOverride } from "../../entity-validation.js";
 
@@ -18,6 +18,9 @@ import { findOverride } from "../../entity-validation.js";
  * successfully (see political-agent, corporate-agent) — real recent
  * insider-activity data, sourced from SEC filing news/coverage and
  * EDGAR's own indexed pages, without new API keys or fragile XML parsing.
+ * Fetches full page text for the top results (not just snippets) for
+ * richer context, same pattern as people-agent/news-agent — still scoped
+ * per numbered source so it can't blend facts across sources.
  * Swapping in raw EDGAR XML parsing later is a valid v2 (see note below).
  */
 /**
@@ -38,7 +41,10 @@ function looksLikeFullPersonName(name: string): boolean {
 }
 
 export class Form4Agent {
-  constructor(private searcher: SearchProvider) {}
+  constructor(
+    private searcher: SearchProvider,
+    private fetcher: FetchProvider
+  ) {}
 
   async run(companyName: string): Promise<{ filings: Form4Entry[]; sources: Source[] }> {
     // Resolve a rename/aka override (e.g. "Raytheon" -> "RTX
@@ -71,13 +77,24 @@ export class Form4Agent {
       usedFor: ["insider-activity"],
     }));
 
+    // Full page text for the top few results — richer context than a
+    // snippet for pulling out actual filer names/roles/share counts.
+    // Fetched pages stay scoped to their own numbered source below, same
+    // as snippets, so this doesn't weaken the same-source grounding rule.
+    const fetchedPages = await Promise.all(
+      results.slice(0, 3).map((r) => fetchPageText(r.url, this.fetcher, 2500))
+    );
+
     // Numbered + clearly bounded per source, so the LLM can't blend a
     // name from one snippet with a company/role mentioned in another —
     // a real failure mode seen in production (a US Steel executive's
     // name got attributed to a Lockheed Martin insider transaction from
     // an unrelated snippet in the same batch).
     const combinedText = results
-      .map((r, i) => `SOURCE ${i + 1} (${r.url}):\nTitle: ${r.title}\nSnippet: ${r.snippet ?? ""}`)
+      .map((r, i) => {
+        const fullText = fetchedPages[i];
+        return `SOURCE ${i + 1} (${r.url}):\nTitle: ${r.title}\n${fullText ? `Full text: ${fullText}` : `Snippet: ${r.snippet ?? ""}`}`;
+      })
       .join("\n\n");
 
     const llmResult = await extractStructured(
