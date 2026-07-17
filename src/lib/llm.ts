@@ -5,11 +5,18 @@ import Groq from "groq-sdk";
  * Unified LLM extraction layer.
  *
  * Provider priority for extractStructured():
- *   1. OpenRouter (if OPENROUTER_API_KEY set) — primary provider. Supports
- *      a second key via OPENROUTER_API_KEY_2 — round-robins between the
- *      two and retries on the other key on a 429, so two free-tier
- *      accounts' rate limits stack instead of sharing one bucket.
- *   2. Groq (if GROQ_API_KEY set) — fallback
+ *   1. OpenRouter (if OPENROUTER_API_KEY set) — primary provider.
+ *      - Tries up to 3 free models per call (DEFAULT_OPENROUTER_MODELS)
+ *        via OpenRouter's `models` fallback array, so one congested
+ *        upstream provider doesn't take down the whole request —
+ *        confirmed live 2026-07-17 that 3 of 4 candidate free models
+ *        were simultaneously rate-limited while one wasn't.
+ *      - Supports a second key via OPENROUTER_API_KEY_2 — round-robins
+ *        between the two and retries on the other key on a 429, so two
+ *        free-tier accounts' rate limits stack instead of one bucket.
+ *   2. Groq (if GROQ_API_KEY set) — fallback. Fails fast (no retry) on a
+ *      daily-token-limit 429 instead of burning ~48s on retries that
+ *      can't succeed within a multi-minute wait.
  *   3. Ollama (local) — final fallback for dev
  *
  * Every agent treats LLM extraction as OPTIONAL — if extractStructured()
@@ -118,12 +125,29 @@ async function extractViaGroq<T>(
     const message = err instanceof Error ? err.message : String(err);
 
     if (message.includes("429") && retryCount < 3) {
-      const secondsMatch = message.match(/try again in ([\d.]+)s/);
-      const waitMs = secondsMatch
-        ? Math.ceil(parseFloat(secondsMatch[1]) * 1000) + 500
-        : (retryCount + 1) * 8000;
-      console.error(`[llm:groq] Rate limited — waiting ${Math.round(waitMs / 1000)}s before retry ${retryCount + 1}/3`);
-      await new Promise(r => setTimeout(r, waitMs));
+      // Groq formats a short per-minute wait as bare seconds ("try again
+      // in 2.5s") but a daily-token-limit wait as "33m55.584s" — the old
+      // regex only matched the bare-seconds form, so a multi-minute
+      // daily-limit wait silently fell through to the same fixed
+      // 8/16/24s backoff as a real transient limit, burning up to 48s on
+      // retries that were guaranteed to fail too (confirmed in
+      // production logs 2026-07-17). A wait that long won't resolve
+      // within this request's lifetime, so fail fast instead and let the
+      // caller fall through to the next provider.
+      const waitMatch = message.match(/try again in (?:(\d+)m)?([\d.]+)s/);
+      const waitMs = waitMatch
+        ? (parseInt(waitMatch[1] ?? "0", 10) * 60 + parseFloat(waitMatch[2])) * 1000
+        : null;
+      const isDailyLimit = message.includes("tokens per day") || message.includes("(TPD)");
+
+      if (isDailyLimit || (waitMs !== null && waitMs > 60_000)) {
+        console.error(`[llm:groq] Daily token limit reached — skipping retries, falling through to next provider`);
+        return null;
+      }
+
+      const effectiveWaitMs = waitMs !== null ? Math.ceil(waitMs) + 500 : (retryCount + 1) * 8000;
+      console.error(`[llm:groq] Rate limited — waiting ${Math.round(effectiveWaitMs / 1000)}s before retry ${retryCount + 1}/3`);
+      await new Promise(r => setTimeout(r, effectiveWaitMs));
       return extractViaGroq(systemPrompt, userContent, schema, retryCount + 1, modelOverride);
     }
 
@@ -146,11 +170,25 @@ function getOpenRouterKeys(): string[] {
 
 let openRouterKeyIndex = 0;
 
+// Free-tier models fluctuate in availability — confirmed live on
+// 2026-07-17 that 3 of 4 candidate free models were simultaneously
+// "temporarily rate-limited upstream" while a less-popular one had
+// headroom. OpenRouter's `models` array (max 3 entries) lets it try
+// each in order automatically on any error (downtime, rate-limit,
+// moderation), so one congested provider doesn't take down the whole
+// request. Ordered: current default first, then two different vendor
+// families so a single provider's outage doesn't take out more than one.
+const DEFAULT_OPENROUTER_MODELS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "qwen/qwen3-next-80b-a3b-instruct:free",
+];
+
 async function extractViaOpenRouter<T>(
   systemPrompt: string,
   userContent: string,
   schema: z.ZodType<T>,
-  model = "openai/gpt-oss-120b:free"
+  models: string[] = DEFAULT_OPENROUTER_MODELS
 ): Promise<T | null> {
   const keys = getOpenRouterKeys();
   if (keys.length === 0) return null;
@@ -169,7 +207,7 @@ async function extractViaOpenRouter<T>(
           "X-Title": "Metis Intelligence",
         },
         body: JSON.stringify({
-          model,
+          models,
           messages: [
             {
               role: "system",
@@ -292,13 +330,14 @@ export async function extractStructured<T>(
 
   let result: T | null = null;
 
-  // Try OpenRouter first
+  // Try OpenRouter first — modelOverride, if given, takes the place of
+  // the whole default fallback chain rather than being merged into it.
   if (getOpenRouterKeys().length > 0) {
     result = await extractViaOpenRouter(
       systemPrompt,
       userContent,
       schema,
-      modelOverride ?? "meta-llama/llama-3.3-70b-instruct:free"
+      modelOverride ? [modelOverride] : undefined
     );
   }
 
