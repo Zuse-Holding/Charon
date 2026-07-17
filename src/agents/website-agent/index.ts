@@ -301,11 +301,17 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
       for (const r of leadershipResults) {
         const text = `${r.title}. ${r.snippet ?? ""}`;
         for (const p of extractPeopleWithTitles(text)) {
-          const key = p.name.toLowerCase();
+          // Dedupe on the cleaned name, not the raw extraction — two
+          // extractions of the same person can differ by a trailing
+          // artifact ("Brian Schimpf" vs "Brian Schimpf -") that
+          // cleanLeadershipField would normalize away, but a dedup key
+          // built before cleaning treats them as different people.
+          const cleanedName = cleanLeadershipField(p.name);
+          const key = cleanedName.toLowerCase();
           if (seenLeaders.has(key)) continue;
           seenLeaders.add(key);
           leadership.push({
-            name: cleanLeadershipField(p.name),
+            name: cleanedName,
             title: cleanLeadershipField(p.title),
           });
         }

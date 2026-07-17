@@ -29,7 +29,12 @@ export function extractOrganizations(
   const out: string[] = [];
 
   for (const raw of orgs) {
-    const name = raw.trim();
+    // Strip leading/trailing punctuation left over from sentence
+    // boundaries ("Quantum Systems," / "Anduril Industries _") — plain
+    // .trim() only removes whitespace, so two extractions of the same
+    // org that differ only by trailing punctuation were previously
+    // treated as different entities instead of being merged.
+    const name = raw.trim().replace(/^[-–—_,:;.\s]+|[-–—_,:;.\s]+$/g, "");
     if (name.length < 2) continue;
 
     const lower = name.toLowerCase();
