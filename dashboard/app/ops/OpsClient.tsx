@@ -161,6 +161,21 @@ export default function OpsClient() {
   // ── Layout / nav state ────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState("business");
   const [activeVenture, setActiveVenture] = useState("zuse");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [feedOpen, setFeedOpen] = useState(true);
+
+  // On phones/tablets the sidebar + feed panel stack above/below the node
+  // canvas and, expanded, push it out of view entirely. Start collapsed
+  // there so the canvas (the actual point of the "business" tab) is visible
+  // without scrolling; desktop keeps both panels open as before. Checked
+  // post-mount only (not in the useState initializer) to avoid an SSR/client
+  // hydration mismatch — `window` doesn't exist during server render.
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      setSidebarOpen(false);
+      setFeedOpen(false);
+    }
+  }, []);
 
   // ── Metrics (real data — Supabase; MRR dropped, no Stripe integration yet) ──
   const [leadsToday, setLeadsToday] = useState(0);   // leads created today
@@ -614,6 +629,11 @@ export default function OpsClient() {
         ) : (
         <>
         <div className={styles.sidebar}>
+          <div className={styles.panelHeader} onClick={() => setSidebarOpen(o => !o)}>
+            <span>Ventures &amp; strands</span>
+            <span className={styles.chevron}>{sidebarOpen ? "▾" : "▸"}</span>
+          </div>
+          <div className={`${styles.sidebarBody} ${sidebarOpen ? "" : styles.collapsed}`}>
           <div className={styles.sidebarSection}>
             <div className={styles.groupLabel}>Ventures <span>3</span></div>
             <div
@@ -701,6 +721,7 @@ export default function OpsClient() {
             <div className={styles.pill} onClick={requestNewStrand}>+ New Strand</div>
             <div className={styles.pill} onClick={showRunnerInfo}>Runners: 1</div>
           </div>
+          </div>
         </div>
 
         <div className={styles.canvasWrap}>
@@ -782,7 +803,11 @@ export default function OpsClient() {
         </div>
 
         <div className={styles.feedPanel}>
-          <h3>Live Feed <span>●</span></h3>
+          <h3 className={styles.panelHeader} onClick={() => setFeedOpen(o => !o)}>
+            Live Feed <span className={styles.liveDot}>●</span>
+            <span className={styles.chevron}>{feedOpen ? "▾" : "▸"}</span>
+          </h3>
+          <div className={`${styles.feedBody} ${feedOpen ? "" : styles.collapsed}`}>
           <div>
             {feed.map(item => (
               <div
@@ -804,6 +829,7 @@ export default function OpsClient() {
                 {line.text} {line.cursor && <span className={styles.cursorBlink}>&nbsp;</span>}
               </div>
             ))}
+          </div>
           </div>
         </div>
         </>
