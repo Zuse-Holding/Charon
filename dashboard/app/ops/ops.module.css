@@ -173,10 +173,35 @@
 .sidebar {
   width: 220px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-right: 1px solid var(--line);
   background: var(--surface);
   padding: 16px 10px;
+}
+
+.sidebarBody {
   overflow-y: auto;
+  min-height: 0;
+}
+
+/* Collapse toggle for sidebar/feed panel headers — a no-op on desktop
+   (hidden, panels always open) and switched on for the stacked mobile
+   layout below, where an expanded panel can push the node canvas
+   off-screen. */
+.panelHeader {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.chevron {
+  display: none;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
 }
 
 .sidebarSection {
@@ -650,9 +675,16 @@
   text-transform: uppercase;
 }
 
-.feedPanel h3 span {
+.feedPanel h3 .liveDot {
   color: var(--ok);
   font-size: 8px;
+}
+
+.feedBody {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
 }
 
 .feedItem {
@@ -740,23 +772,64 @@
     overflow-y: auto;
   }
 
-  .sidebar {
-    width: 100%;
-    max-height: 240px;
-    border-right: none;
-    border-bottom: 1px solid var(--line);
+  .panelHeader {
+    display: flex;
+    padding: 2px 4px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    text-transform: uppercase;
   }
 
+  .chevron {
+    display: inline-block;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex-shrink: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 14px;
+  }
+
+  .sidebarBody {
+    max-height: 42vh;
+  }
+
+  .sidebarBody.collapsed {
+    display: none;
+  }
+
+  /* Fills whatever's left after the (usually collapsed) sidebar and feed
+     panel take their space, instead of a fixed height that assumed both
+     were always expanded. */
   .canvasWrap {
-    min-height: 340px;
-    flex: none;
+    flex: 1 1 auto;
+    min-height: 320px;
   }
 
   .feedPanel {
     width: 100%;
-    max-height: 280px;
+    flex-shrink: 0;
     border-left: none;
     border-top: 1px solid var(--line);
+    padding: 10px 14px;
+  }
+
+  .feedPanel h3 {
+    margin: 0;
+  }
+
+  .feedBody {
+    margin-top: 10px;
+    max-height: 38vh;
+    overflow-y: auto;
+  }
+
+  .feedBody.collapsed {
+    display: none;
   }
 }
 
@@ -791,12 +864,12 @@
     font-size: 13px;
   }
 
-  .sidebar {
-    max-height: 200px;
+  .sidebarBody {
+    max-height: 34vh;
   }
 
   .canvasWrap {
-    min-height: 280px;
+    min-height: 260px;
   }
 
   .statCorner {
@@ -805,6 +878,12 @@
 
   .chatlog {
     max-width: calc(100% - 32px);
+  }
+
+  /* Stacked bubbles can run tall enough to bury the node graph behind them
+     on a short canvas — keep only the most recent exchange visible. */
+  .chatlog .bubble:nth-last-child(n + 3) {
+    display: none;
   }
 }
 
