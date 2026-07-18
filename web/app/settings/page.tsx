@@ -45,7 +45,7 @@ function PasswordToggle({ show, onToggle }: { show: boolean; onToggle: () => voi
 }
 
 export default function Settings() {
-  const { displayName, updateDisplayName, tier } = useTier();
+  const { displayName, updateDisplayName, tier, monthlyUsage } = useTier();
   const [email, setEmail]           = useState<string>("");
   const [resetSent, setResetSent]   = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
@@ -135,6 +135,15 @@ export default function Settings() {
     ]},
   ];
 
+  // Only Basic (or any tier with a monthlyResearchLimit set server-side)
+  // gets a usage row — Pro/Team/internal come back with monthlyUsage: null
+  // since they're unlimited, so this section just doesn't render for them.
+  const usagePct = monthlyUsage ? Math.min(100, Math.round((monthlyUsage.used / monthlyUsage.limit) * 100)) : 0;
+  const usageStatus = usagePct >= 100 ? "danger" : usagePct >= 80 ? "warn" : "active";
+  const resetsLabel = monthlyUsage
+    ? new Date(monthlyUsage.resetsAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : "";
+
   return (
     <div className={styles.shell}>
       <Sidebar />
@@ -184,6 +193,25 @@ export default function Settings() {
                   )}
                 </div>
               ))}
+              {group.section === "ACCOUNT" && monthlyUsage && (
+                <div className={styles.row}>
+                  <span className={styles.rowLabel}>Quick Profiles</span>
+                  <div className={styles.usageRow}>
+                    <div className={styles.usageBarTrack}>
+                      <div
+                        className={`${styles.usageBarFill} ${usageStatus !== "active" ? styles[usageStatus] : ""}`}
+                        style={{ width: `${usagePct}%` }}
+                      />
+                    </div>
+                    <span className={styles.usageCount}>
+                      {monthlyUsage.used}/{monthlyUsage.limit} · resets {resetsLabel}
+                    </span>
+                  </div>
+                  <span className={`${styles.badge} ${styles[usageStatus]}`}>
+                    {usageStatus === "danger" ? "LIMIT REACHED" : usageStatus === "warn" ? "NEAR LIMIT" : "OK"}
+                  </span>
+                </div>
+              )}
             </div>
           ))}
 

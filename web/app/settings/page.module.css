@@ -66,6 +66,24 @@
 }
 .active { background: rgba(0,255,148,0.1); color: var(--green); border: 1px solid rgba(0,255,148,0.2); }
 .standby { background: rgba(255,255,255,0.05); color: var(--muted); border: 1px solid var(--border); }
+.warn { background: rgba(255,180,0,0.1); color: #ffb400; border: 1px solid rgba(255,180,0,0.25); }
+.danger { background: rgba(255,80,80,0.1); color: #ff5050; border: 1px solid rgba(255,80,80,0.25); }
+
+.usageBarTrack {
+  flex: 1; height: 6px; border-radius: 3px;
+  background: rgba(255,255,255,0.06); overflow: hidden;
+}
+.usageBarFill {
+  height: 100%; border-radius: 3px; background: var(--green);
+  transition: width 0.25s ease;
+}
+.usageBarFill.warn { background: #ffb400; }
+.usageBarFill.danger { background: #ff5050; }
+.usageRow { display: flex; align-items: center; gap: 10px; flex: 1; }
+.usageCount {
+  font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+  flex-shrink: 0; white-space: nowrap;
+}
 
 .resetBtn {
   font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em;

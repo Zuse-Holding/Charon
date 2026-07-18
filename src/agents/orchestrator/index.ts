@@ -136,13 +136,18 @@ export class ResearchOrchestrator {
    *   Skipped entirely on non-Charon runs — this is a broad "search
    *   everywhere for this exact name" lookup that fits Charon's
    *   no-limits role, not a default-tier feature.
+   * @param affiliation Optional school/employer/org, already split out of
+   *   the raw query by the caller (parsePersonQuery in src/lib/nlp.ts) —
+   *   e.g. "csun" from "Daniel Olmos csun". `personName` here is always
+   *   the clean name; OpenCorporates/MuckRock search by legal name only,
+   *   so affiliation is passed to the people agent alone.
    */
-  async researchPerson(personName: string, deep = false): Promise<{
+  async researchPerson(personName: string, deep = false, affiliation?: string): Promise<{
     bundle: PersonResearchBundle;
     report: string;
   }> {
     const [result, corporateResult, foiaResult] = await Promise.all([
-      this.peopleAgent.run(personName, deep),
+      this.peopleAgent.run(personName, deep, affiliation),
       deep ? this.openCorporatesAgent.run(personName) : Promise.resolve({ affiliations: [], sources: [] }),
       deep ? this.muckRockAgent.run(personName) : Promise.resolve({ requests: [], sources: [] }),
     ]);

@@ -57,6 +57,42 @@ export class ReportAgent {
     }
     lines.push(``);
 
+    // Competitors and Risks/Opportunities moved here (right after Products,
+    // before Funding/News) per the 7/17 weekend list — previously these
+    // sat after Recent News, well below where a reader would expect the
+    // competitive/strategic picture relative to the product overview.
+    lines.push(`## Competitors`);
+    if (bundle.competitors.length === 0) {
+      lines.push(`_No competitors identified in this pass._`);
+    } else {
+      for (const c of bundle.competitors) {
+        lines.push(
+          `- **${c.name}**${c.note ? ` _(${c.note})_` : ""}`
+        );
+      }
+    }
+    lines.push(``);
+
+    lines.push(`## Risks`);
+    if (bundle.risks && bundle.risks.length > 0) {
+      for (const risk of bundle.risks) {
+        lines.push(`- ${risk}`);
+      }
+    } else {
+      lines.push(`_Insufficient data for risk analysis on this run._`);
+    }
+    lines.push(``);
+
+    lines.push(`## Opportunities`);
+    if (bundle.opportunities && bundle.opportunities.length > 0) {
+      for (const opp of bundle.opportunities) {
+        lines.push(`- ${opp}`);
+      }
+    } else {
+      lines.push(`_Insufficient data for opportunity analysis on this run._`);
+    }
+    lines.push(``);
+
     lines.push(`## Funding`);
     if (bundle.ownership) {
       lines.push(`**Ownership:** ${bundle.ownership}`);
@@ -115,38 +151,6 @@ export class ReportAgent {
     }
     lines.push(``);
 
-    lines.push(`## Competitors`);
-    if (bundle.competitors.length === 0) {
-      lines.push(`_No competitors identified in this pass._`);
-    } else {
-      for (const c of bundle.competitors) {
-        lines.push(
-          `- **${c.name}**${c.note ? ` _(${c.note})_` : ""}`
-        );
-      }
-    }
-    lines.push(``);
-
-    lines.push(`## Risks`);
-    if (bundle.risks && bundle.risks.length > 0) {
-      for (const risk of bundle.risks) {
-        lines.push(`- ${risk}`);
-      }
-    } else {
-      lines.push(`_Insufficient data for risk analysis on this run._`);
-    }
-    lines.push(``);
-
-    lines.push(`## Opportunities`);
-    if (bundle.opportunities && bundle.opportunities.length > 0) {
-      for (const opp of bundle.opportunities) {
-        lines.push(`- ${opp}`);
-      }
-    } else {
-      lines.push(`_Insufficient data for opportunity analysis on this run._`);
-    }
-    lines.push(``);
-
     lines.push(`## Sources`);
     if (bundle.sources.length === 0) {
       lines.push(`_No sources recorded._`);
@@ -171,6 +175,13 @@ export class ReportAgent {
     lines.push(`# ${bundle.person.name} — Person Research Report`);
     lines.push(``);
     lines.push(`*Generated ${bundle.generatedAt}*`);
+    // Affiliation typed alongside the name at search time (e.g. "csun"
+    // in "Daniel Olmos csun") — shown here so it's clear why this
+    // particular "Daniel Olmos" was researched among however many share
+    // the name, without polluting the title/H1 itself.
+    if (bundle.person.affiliation) {
+      lines.push(`*Searched with affiliation: ${bundle.person.affiliation}*`);
+    }
     lines.push(``);
 
     lines.push(`## About`);

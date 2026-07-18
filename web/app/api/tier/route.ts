@@ -37,8 +37,10 @@ export async function GET() {
         personResearchAccess: false,
         muckrockAccess: false,
         adminAccess: false,
+        monthlyResearchLimit: 25,
       },
       displayName: null,
+      monthlyUsage: null,
     });
   }
 }
