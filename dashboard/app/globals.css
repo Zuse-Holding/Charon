@@ -1,0 +1,49 @@
+/* Selene OS — design tokens (spec §5).
+   Layout is NOT spec §5's four-zone grid — that's superseded by the existing
+   ops console UI. These are the accessibility-mandated tokens only:
+   no purple/violet, no pastels, no low-saturation accents (partial color
+   blindness — purple reads as blue, pastels wash out). */
+
+:root {
+  --bg: #0a0a0b;
+  --surface: #121215;
+  --line: #26262b;
+  --text: #ededef;
+  --text-dim: #8a8a93;
+  --selene: #22d3ee; /* cyan — Selene's color: nav, brief, her voice, focus rings */
+  --ember: #f97316; /* orange — primary actions, approval queue, alerts pending */
+  --ok: #22c55e; /* green — approved, paid, on-track */
+  --danger: #ef4444; /* red — overdue, rejected, failed runs */
+  --charon: #f59e0b; /* amber — reserved for Charon enrichment blocks only */
+
+  --font-ui: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+}
+
+/* Numbers, money, dates, ids — always mono. Data reads as data. */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,68 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ringWrap {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ringTrack {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 3;
+}
+
+.ringArc {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.4s ease, stroke 0.3s ease;
+}
+
+.readout {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.readoutTop {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+
+.readoutBottom {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.tone-ok .readoutTop {
+  color: var(--ok);
+}
+
+.tone-warn .readoutTop {
+  color: var(--ember);
+}
+
+.tone-bad .readoutTop {
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .readoutBottom {
+    display: none;
+  }
+}
