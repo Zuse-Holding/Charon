@@ -117,6 +117,10 @@ export interface ProductResearchBundle {
 
 export interface PersonProfile {
   name: string;
+  /** School/employer/org typed alongside the name to disambiguate a
+   *  common name (e.g. "CSUN"), parsed out of the raw search query by
+   *  parsePersonQuery — see src/lib/nlp.ts. Not guessed if absent. */
+  affiliation?: string;
   currentRole?: string;
   currentCompany?: string;
   summary?: string;

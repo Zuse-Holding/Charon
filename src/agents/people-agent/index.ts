@@ -27,19 +27,43 @@ export class PeopleAgent {
    *   see server/agent-server.ts). Pulls more results per query and reads
    *   full page text from more bio sources instead of snippets alone.
    *   Same extraction pipeline either way, just more raw material for it.
+   * @param affiliation Optional school/employer/org parsed out of the raw
+   *   query (see parsePersonQuery in src/lib/nlp.ts) — e.g. "csun" from
+   *   "Daniel Olmos csun". `personName` itself is already the clean name
+   *   by the time it reaches here; affiliation is folded back into the
+   *   search queries (still useful context for disambiguating a common
+   *   name) and the extraction prompt, and used to prioritize which
+   *   sources get treated as authoritative when several show up.
    */
-  async run(personName: string, deep = false): Promise<PersonAgentResult> {
+  async run(personName: string, deep = false, affiliation?: string): Promise<PersonAgentResult> {
     const currentYear = new Date().getFullYear();
     const resultCount = deep ? 10 : 5;
     const bgResultCount = deep ? 8 : 4;
     const fullTextSourceCount = deep ? 4 : 2;
     const fullTextChars = deep ? 4000 : 2500;
 
+    // Search with affiliation appended when present — same disambiguation
+    // value a human researcher gets from typing "Daniel Olmos csun" into
+    // Google, even though the stored/displayed name stays just "Daniel Olmos".
+    const searchSubject = affiliation ? `${personName} ${affiliation}` : personName;
+
     const [bioResults, newsResults, backgroundResults] = await Promise.all([
-      this.searcher.search(`${personName} current role position ${currentYear}`, resultCount),
-      this.searcher.search(`${personName} news ${currentYear}`, resultCount),
-      this.searcher.search(`${personName} education net worth background biography`, bgResultCount),
+      this.searcher.search(`${searchSubject} current role position ${currentYear}`, resultCount),
+      this.searcher.search(`${searchSubject} news ${currentYear}`, resultCount),
+      this.searcher.search(`${searchSubject} education net worth background biography`, bgResultCount),
     ]);
+
+    // Filtering: when an affiliation was given, sources that actually
+    // mention it are much more likely to be about the right person (vs.
+    // a same-named stranger) — bias full-text fetch and fallback
+    // extraction toward those first rather than treating all results as
+    // equally trustworthy.
+    if (affiliation) {
+      const affLower = affiliation.toLowerCase();
+      const matchesAffiliation = (r: { title: string; snippet?: string }) =>
+        `${r.title} ${r.snippet ?? ""}`.toLowerCase().includes(affLower);
+      bioResults.sort((a, b) => Number(matchesAffiliation(b)) - Number(matchesAffiliation(a)));
+    }
     const sources: Source[] = [
       ...bioResults.map((r) => ({
         url: r.url,
@@ -61,7 +85,7 @@ export class PeopleAgent {
       })),
     ];
 
-    const person: PersonProfile = { name: personName };
+    const person: PersonProfile = { name: personName, ...(affiliation ? { affiliation } : {}) };
     let careerHistory: CareerEntry[] = [];
 
     // Fetch full text from the top bio results for richer career context
@@ -89,7 +113,7 @@ export class PeopleAgent {
     let usedLLM = false;
     if (combinedText.length > 0) {
       const llmResult = await extractStructured(
-        `You are a research assistant extracting biographical facts about "${personName}" from search results. Today's year is ${currentYear}.
+        `You are a research assistant extracting biographical facts about "${personName}"${affiliation ? ` (affiliated with ${affiliation} — use this to make sure you're extracting facts about the right person, not a same-named stranger)` : ""} from search results. Today's year is ${currentYear}.
 
 Extract these fields:
 - summary: 2-3 sentences describing who this person is, what they're known for, and why they matter. Write it like the opening of a Wikipedia article — specific, confident, factual. No filler.

@@ -45,6 +45,22 @@ export async function recordRunForUser(run: {
 
 export async function deleteRunForUser(id: string) {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  // Cascade into the Knowledge Graph — previously the DB's
+  // ON DELETE SET NULL on kg_entities/kg_relationships.source_run_id just
+  // orphaned those rows (nulled the reference, left the entity dangling
+  // forever with no run attribution) rather than actually removing them.
+  // Entities upsert on (user_id, name, type), overwriting source_run_id
+  // to whichever run most recently mentioned them — so deleting only
+  // rows whose source_run_id still points at *this* run correctly leaves
+  // alone any entity that's been re-mentioned in a later run since.
+  // Relationships aren't upserted (a fresh row per run), so this is a
+  // direct match on this run specifically, no cross-run risk there.
+  await supabase.from("kg_relationships").delete().eq("user_id", user.id).eq("source_run_id", id);
+  await supabase.from("kg_entities").delete().eq("user_id", user.id).eq("source_run_id", id);
+
   const { error } = await supabase
     .from("research_runs")
     .delete()

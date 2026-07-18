@@ -19,6 +19,7 @@ import { findEasterEgg } from "../src/easter-eggs/index.js";
 import { saveEntityExtraction } from "../src/database/knowledge-graph.js";
 import { upsertStatewideExecutives } from "../src/database/statewide-executives.js";
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
+import { parsePersonQuery } from "../src/lib/nlp.js";
 import { createClient } from "@supabase/supabase-js";
 
 const app  = express();
@@ -82,21 +83,27 @@ interface TierConfig {
   personResearchAccess: boolean;
   muckrockAccess: boolean;
   adminAccess: boolean;
+  // 7/17 weekend list #1: hard monthly cap on quick profiles (company/
+  // person/product/political — anything in research_runs, separate from
+  // the existing person-specific 25/month limit below), scoped to Basic
+  // only. -1 = unlimited. Resets on the account's billing anniversary,
+  // not the calendar month — see getBillingPeriodStart.
+  monthlyResearchLimit: number;
 }
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true },
-  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false },
-  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false },
-  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false },
-  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false },
+  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1 },
+  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1 },
+  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1 },
+  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25 },
+  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1 },
   // Time-boxed tier for external demo/partner accounts (limited partners,
   // investor trials, etc). Deliberately mirrors "team" limits and features
   // so the demo shows the platform at full strength — the ONLY things it
   // withholds are politicalAccess and charonProtocol, which stay off
   // regardless of what tier gets requested for these accounts. Expiry
   // enforced via profiles.trial_expires_at, checked in getUserTier below.
-  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false },
+  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1 },
 };
 
 /**
@@ -129,6 +136,7 @@ const EXPIRED_CONFIG: TierConfig = {
   politicalAccess: false, watchlistLimit: 0, knowledgeGraphAccess: false,
   exportAccess: false, charonProtocol: false, chatWidgetAccess: false,
   personResearchAccess: false, muckrockAccess: false, adminAccess: false,
+  monthlyResearchLimit: 0,
 };
 
 function getTierConfig(tier: Tier | "expired"): TierConfig {
@@ -182,6 +190,69 @@ async function logPersonSearch(userId: string, subject: string, ipAddress?: stri
   }
 }
 
+/**
+ * 7/17 weekend list #1 — Basic-tier hard cap of 25 "quick profiles" per
+ * month, across ALL research types (company/person/product/political),
+ * distinct from PERSON_SEARCH_MONTHLY_LIMIT above (which only covers
+ * type === "person" and applies to every non-internal tier on a calendar-
+ * month reset). This one resets on the account's *billing anniversary*
+ * instead — there's no real subscription/billing system in this codebase
+ * (no Stripe, no subscription-start column anywhere), so account creation
+ * date (auth.users.created_at) is used as the anniversary-date proxy: the
+ * period always starts on the same day-of-month the account was created,
+ * most recently in the past relative to now.
+ */
+async function getBillingPeriodStart(userId: string): Promise<Date> {
+  const { data, error } = await supabase.auth.admin.getUserById(userId);
+  const createdAt = data?.user?.created_at ? new Date(data.user.created_at) : null;
+
+  if (error || !createdAt || isNaN(createdAt.getTime())) {
+    // Fallback: if we can't resolve account creation date for any reason,
+    // fall back to calendar-month reset rather than failing the request.
+    const fallback = new Date();
+    fallback.setDate(1);
+    fallback.setHours(0, 0, 0, 0);
+    return fallback;
+  }
+
+  const anniversaryDay = createdAt.getDate();
+  const now = new Date();
+
+  // Start with this calendar month's anniversary date, clamped to the
+  // month's actual last day (handles e.g. created on the 31st in a
+  // 30-day month) via the Date rollover -> re-clamp pattern below.
+  let periodStart = new Date(now.getFullYear(), now.getMonth(), anniversaryDay, 0, 0, 0, 0);
+  if (periodStart.getMonth() !== now.getMonth()) {
+    // Rolled into the next month (e.g. asked for Feb 31) — clamp to the
+    // last day of the intended month instead.
+    periodStart = new Date(now.getFullYear(), now.getMonth() + 1, 0, 0, 0, 0, 0);
+  }
+
+  if (periodStart > now) {
+    // This month's anniversary hasn't happened yet — use last month's.
+    const prevMonth = now.getMonth() - 1;
+    periodStart = new Date(now.getFullYear(), prevMonth, anniversaryDay, 0, 0, 0, 0);
+    if (periodStart.getMonth() !== ((prevMonth + 12) % 12)) {
+      periodStart = new Date(now.getFullYear(), prevMonth + 1, 0, 0, 0, 0, 0);
+    }
+  }
+
+  return periodStart;
+}
+
+async function getMonthlyResearchUsage(userId: string, periodStart: Date): Promise<number> {
+  const { count, error } = await supabase
+    .from("research_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("generated_at", periodStart.toISOString());
+  if (error) {
+    console.error("[monthly-research-usage] count error:", JSON.stringify(error));
+    return 0;
+  }
+  return count ?? 0;
+}
+
 function tierDenied(res: express.Response, message: string, upgradeHint?: string) {
   res.status(403).json({ error: "tier_limit", message, upgradeHint: upgradeHint ?? "Upgrade your plan at metisanalytic.com/pricing" });
 }
@@ -199,10 +270,25 @@ function slugify(name: string) {
 app.post("/research", async (req, res) => {
   if (!authCheck(req, res)) return;
 
-  const { subject, type, userId } = req.body;
-  if (!subject || !type || !userId) {
+  const { subject: rawSubject, type, userId } = req.body;
+  if (!rawSubject || !type || !userId) {
     res.status(400).json({ error: "subject, type, and userId required" });
     return;
+  }
+
+  // 7/17 weekend list #5 — split "Daniel Olmos csun" into a clean name
+  // ("Daniel Olmos") plus an affiliation ("csun") for person searches.
+  // `subject` is reassigned to the clean name here, at the top of the
+  // route, so every downstream use of it (report path/slug, research_runs
+  // row, person-search audit log, KG entity seed name) is already clean
+  // with no further changes needed below. Affiliation is threaded
+  // separately into orchestrator.researchPerson for search context.
+  let subject: string = rawSubject;
+  let personAffiliation: string | undefined;
+  if (type === "person") {
+    const parsed = parsePersonQuery(rawSubject);
+    subject = parsed.name;
+    personAffiliation = parsed.affiliation;
   }
 
   const tier = await getUserTier(userId);
@@ -235,6 +321,23 @@ app.post("/research", async (req, res) => {
     }
   }
 
+  // 7/17 weekend list #1 — Basic-tier hard cap of 25 quick profiles/month
+  // across all research types, resetting on the account's billing
+  // anniversary (see getBillingPeriodStart). Separate from, and stacks
+  // with, the person-only cap above — a Basic user doing person research
+  // can still be blocked by whichever limit they hit first.
+  if (config.monthlyResearchLimit !== -1) {
+    const periodStart = await getBillingPeriodStart(userId);
+    const monthlyUsage = await getMonthlyResearchUsage(userId, periodStart);
+    if (monthlyUsage >= config.monthlyResearchLimit) {
+      return tierDenied(
+        res,
+        `Monthly limit of ${config.monthlyResearchLimit} quick profiles reached. Resets ${new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toLocaleDateString()}.`,
+        "Upgrade to Pro for unlimited quick profiles."
+      );
+    }
+  }
+
   try {
     let bundle: unknown;
     let report: string;
@@ -257,7 +360,7 @@ app.post("/research", async (req, res) => {
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, `${slugify(subject)}.md`);
       } else if (type === "person") {
-        const result = await orchestrator.researchPerson(subject, deep);
+        const result = await orchestrator.researchPerson(subject, deep, personAffiliation);
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, "people", `${slugify(subject)}.md`);
       } else if (type === "political") {
@@ -499,7 +602,20 @@ app.get("/tier/:userId", async (req, res) => {
   // this is just so the UI doesn't advertise something it'll refuse.
   const effectiveConfig = { ...config, politicalAccess: hasPoliticalAccess(req.params.userId, config) };
 
-  res.json({ tier, config: effectiveConfig, displayName: profile?.display_name ?? null });
+  // 7/17 weekend list #2 — expose the Basic-tier monthly quick-profile
+  // usage so Settings can show "X/25 used this month" ahead of the user
+  // hitting the hard block. Only computed when the tier actually has a
+  // cap (-1 means unlimited, e.g. Pro/Team/internal) to avoid an extra
+  // auth.admin lookup + count query on every /tier call for most users.
+  let monthlyUsage: { used: number; limit: number; resetsAt: string } | null = null;
+  if (config.monthlyResearchLimit !== -1) {
+    const periodStart = await getBillingPeriodStart(req.params.userId);
+    const used = await getMonthlyResearchUsage(req.params.userId, periodStart);
+    const resetsAt = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate());
+    monthlyUsage = { used, limit: config.monthlyResearchLimit, resetsAt: resetsAt.toISOString() };
+  }
+
+  res.json({ tier, config: effectiveConfig, displayName: profile?.display_name ?? null, monthlyUsage });
 });
 
 const MAX_DISPLAY_NAME_LENGTH = 60;

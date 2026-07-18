@@ -56,6 +56,73 @@ export function splitSentences(text: string): string[] {
   return nlp(text).sentences().out("array") as string[];
 }
 
+export interface ParsedPersonQuery {
+  /** Clean person name only — what should be stored/displayed/deduped. */
+  name: string;
+  /** School, employer, or org typed alongside the name to disambiguate a
+   *  common name (e.g. "csun", "at Google"). Undefined when none detected. */
+  affiliation?: string;
+}
+
+// Explicit separators a user might type between name and affiliation —
+// checked first since they're unambiguous wherever they appear.
+const AFFILIATION_SEPARATORS = [" at ", " from ", " with ", " @ ", " - ", " — "];
+
+/**
+ * Splits a person-search query like "Daniel Olmos csun" or
+ * "Jane Smith at Google" into a clean person name plus an optional
+ * affiliation/context string (school, employer, org). Used across every
+ * person-research entry point (agent-server /research route, CLI) so the
+ * *name* stays clean for display, report titles, DB storage, and KG
+ * dedup — while the affiliation still gets threaded into search queries
+ * and the extraction prompt to help disambiguate common names.
+ *
+ * Detection, in priority order:
+ *   1. Explicit separator ("Jane Smith at Google", "Jane Smith - Acme").
+ *   2. Comma form ("Daniel Olmos, CSUN").
+ *   3. Implicit trailing-lowercase-word heuristic: ONLY when the presumed
+ *      name portion (first two words) is Title-Cased, a trailing run of
+ *      lowercase-initial word(s) is treated as affiliation shorthand
+ *      ("Daniel Olmos csun" -> name "Daniel Olmos", affiliation "csun").
+ *      Gated on the name being capitalized so an all-lowercase query
+ *      (common when users don't bother with caps at all) isn't
+ *      mis-split — ambiguous input is left alone rather than guessed.
+ * Falls back to treating the whole string as the name when nothing
+ * matches — same "don't guess" policy as the rest of this file.
+ */
+export function parsePersonQuery(raw: string): ParsedPersonQuery {
+  const trimmed = raw.trim().replace(/\s+/g, " ");
+  if (!trimmed) return { name: trimmed };
+
+  for (const sep of AFFILIATION_SEPARATORS) {
+    const idx = trimmed.toLowerCase().indexOf(sep);
+    if (idx > 0) {
+      const name = trimmed.slice(0, idx).trim();
+      const affiliation = trimmed.slice(idx + sep.length).trim();
+      if (name && affiliation) return { name, affiliation };
+    }
+  }
+
+  if (trimmed.includes(",")) {
+    const [namePart, ...rest] = trimmed.split(",");
+    const affiliation = rest.join(",").trim();
+    if (namePart.trim() && affiliation) return { name: namePart.trim(), affiliation };
+  }
+
+  const words = trimmed.split(" ");
+  const nameLooksCapitalized = words.length >= 2 && /^[A-Z]/.test(words[0]) && /^[A-Z]/.test(words[1]);
+  if (words.length >= 3 && nameLooksCapitalized) {
+    let i = words.length - 1;
+    while (i >= 2 && /^[a-z]/.test(words[i])) i--;
+    const splitIdx = i + 1;
+    if (splitIdx >= 2 && splitIdx < words.length) {
+      return { name: words.slice(0, splitIdx).join(" "), affiliation: words.slice(splitIdx).join(" ") };
+    }
+  }
+
+  return { name: trimmed };
+}
+
 // Title words reused from extractRoleAndCompany, kept as a flat list so
 // it can anchor a "Name, Title" / "Name is the Title" pattern too.
 const TITLE_WORDS_RE =

@@ -52,7 +52,7 @@ const PRICING = [
     tier: "BASIC",
     price: "$19",
     period: "/mo",
-    features: ["Unlimited quick profiles", "Company, person, product", "Watchlist (10 entities)", "Markdown export"],
+    features: ["25 quick profiles/mo", "Company, person, product", "Watchlist (5 entities)", "Markdown export"],
     cta: "Get Started",
     highlight: false,
     isEnterprise: false,

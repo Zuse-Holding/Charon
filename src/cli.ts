@@ -6,6 +6,7 @@ import { join } from "node:path";
 import "dotenv/config";
 import { ResearchOrchestrator } from "./agents/orchestrator/index.js";
 import { findEasterEgg } from "./easter-eggs/index.js";
+import { parsePersonQuery } from "./lib/nlp.js";
 import {
   recordRun,
   listRecent,
@@ -85,7 +86,12 @@ program
   .command("research-person")
   .argument("<name>")
   .description("Research a person")
-  .action(async (name: string) => {
+  .action(async (rawName: string) => {
+    // 7/17 weekend list #5 — same "Daniel Olmos csun" -> name + affiliation
+    // split as the server route (server/agent-server.ts), so CLI-driven
+    // runs get a clean subject/slug/report title too, not just web ones.
+    const { name, affiliation } = parsePersonQuery(rawName);
+
     const dir = join(process.cwd(), "reports", "people");
     mkdirSync(dir, { recursive: true });
     const outPath = join(dir, `${slugify(name)}.md`);
@@ -109,10 +115,10 @@ program
       return;
     }
 
-    console.log(`Researching person "${name}"...`);
+    console.log(`Researching person "${name}"${affiliation ? ` (${affiliation})` : ""}...`);
     warnIfNoSearchKey(); logLLMProvider();
     const orchestrator = new ResearchOrchestrator();
-    const { bundle, report } = await orchestrator.researchPerson(name);
+    const { bundle, report } = await orchestrator.researchPerson(name, false, affiliation);
     writeFileSync(outPath, report, "utf-8");
     recordRun({ id: randomUUID(), type: "person", subject: name, generatedAt: bundle.generatedAt, reportPath: outPath, bundle });
     console.log(`Report written to ${outPath}`);

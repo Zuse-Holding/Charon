@@ -20,6 +20,18 @@ export interface TierConfig {
   personResearchAccess: boolean;
   muckrockAccess: boolean;
   adminAccess: boolean;
+  // 7/17 weekend list #1 — hard monthly cap on quick profiles (all research
+  // types), scoped to Basic. -1 = unlimited.
+  monthlyResearchLimit: number;
+}
+
+/** Basic-tier monthly quick-profile usage, from the billing-anniversary
+ *  window computed server-side. Null when the tier has no monthly cap
+ *  (Pro/Team/internal/free). */
+export interface MonthlyUsage {
+  used: number;
+  limit: number;
+  resetsAt: string;
 }
 
 interface TierContextValue {
@@ -29,6 +41,7 @@ interface TierContextValue {
   isInternal: boolean;
   displayName: string | null;
   email: string | null;
+  monthlyUsage: MonthlyUsage | null;
   can: (feature: keyof TierConfig) => boolean;
   refresh: () => void;
   /** Sets the user's preferred display name (profiles.display_name).
@@ -53,6 +66,7 @@ const DEFAULT_CONFIG: TierConfig = {
   personResearchAccess: false,
   muckrockAccess: false,
   adminAccess: false,
+  monthlyResearchLimit: -1,
 };
 
 const TierContext = createContext<TierContextValue>({
@@ -62,6 +76,7 @@ const TierContext = createContext<TierContextValue>({
   isInternal: false,
   displayName: null,
   email: null,
+  monthlyUsage: null,
   can: () => false,
   refresh: () => {},
   updateDisplayName: async () => ({ ok: false }),
@@ -96,6 +111,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [emailDerivedName, setEmailDerivedName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [monthlyUsage, setMonthlyUsage] = useState<MonthlyUsage | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,6 +137,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setTier(data.tier);
           setConfig(data.config);
+          setMonthlyUsage(data.monthlyUsage ?? null);
           // Prefer the user's own saved preference over the email guess.
           if (data.displayName) setDisplayName(data.displayName);
         }
@@ -128,6 +145,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setTier("basic");
           setConfig(DEFAULT_CONFIG);
+          setMonthlyUsage(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -202,7 +220,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, can, refresh, updateDisplayName }}>
+    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, monthlyUsage, can, refresh, updateDisplayName }}>
       {children}
     </TierContext.Provider>
   );
