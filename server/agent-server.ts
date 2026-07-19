@@ -338,6 +338,26 @@ app.post("/research", async (req, res) => {
     }
   }
 
+  // Background-persistent search — insert the row up front, before any
+  // research runs, so its existence (status: 'pending') survives even if
+  // this request's client disconnects. The research itself keeps running
+  // regardless (nothing here aborts on client disconnect); this just makes
+  // that in-progress state visible so the web app can resume showing
+  // progress after a reload instead of losing track of it. Best-effort —
+  // a failed insert here shouldn't block the actual research request.
+  const runId = randomUUID();
+  const { error: pendingError } = await supabase.from("research_runs").insert({
+    id: runId,
+    user_id: userId,
+    type,
+    subject,
+    generated_at: new Date().toISOString(),
+    status: "pending",
+  });
+  if (pendingError) {
+    console.error("[research] Failed to insert pending run:", JSON.stringify(pendingError));
+  }
+
   try {
     let bundle: unknown;
     let report: string;
@@ -380,20 +400,18 @@ app.post("/research", async (req, res) => {
 
     writeFileSync(outPath, report, "utf-8");
 
-    const runId = randomUUID();
-
-    const { error } = await supabase.from("research_runs").insert({
-      id: runId,
-      user_id: userId,
-      type,
-      subject,
-      generated_at: new Date().toISOString(),
-      report_path: outPath,
-      bundle: { ...(bundle as object), reportMarkdown: report },
-    });
+    const { error } = await supabase
+      .from("research_runs")
+      .update({
+        generated_at: new Date().toISOString(),
+        report_path: outPath,
+        bundle: { ...(bundle as object), reportMarkdown: report },
+        status: "completed",
+      })
+      .eq("id", runId);
 
     if (error) {
-      console.error("[research] Supabase insert error:", JSON.stringify(error));
+      console.error("[research] Supabase update error:", JSON.stringify(error));
       throw new Error(error.message);
     }
 
@@ -406,7 +424,7 @@ app.post("/research", async (req, res) => {
       );
     }
 
-    res.json({ ok: true, reportPath: outPath, tier, charon: config.charonProtocol });
+    res.json({ ok: true, runId, reportPath: outPath, tier, charon: config.charonProtocol });
 
     if (type === "company" || type === "person" || type === "product" || type === "political") {
       const entityAgent = new EntityExtractionAgent();
@@ -419,6 +437,7 @@ app.post("/research", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err);
     console.error("[research] Error:", message);
+    await supabase.from("research_runs").update({ status: "failed", error: message }).eq("id", runId);
     res.status(500).json({ error: message });
   }
 });

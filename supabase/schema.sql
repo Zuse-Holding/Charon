@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS research_runs (
   generated_at TIMESTAMPTZ NOT NULL,
   report_path  TEXT,
   bundle       JSONB,
+  status       TEXT        NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'completed', 'failed')),
+  error        TEXT,
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -208,3 +210,24 @@ CREATE TRIGGER on_auth_user_created
 INSERT INTO public.profiles (id)
 SELECT id FROM auth.users
 ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- Background-persistent search
+-- research_runs previously only ever got a row AFTER the run finished
+-- (agent-server inserted the completed bundle in one shot), so there was
+-- no record of a run "in progress" — a page reload or closed tab during
+-- a run left zero trace it was ever happening, even though the actual
+-- research kept running server-side regardless (Node doesn't abort a
+-- handler just because the client disconnected). This adds a status so
+-- agent-server can insert a 'pending' row the moment a run starts and
+-- flip it to 'completed'/'failed' when it's done — the web app can then
+-- poll for a pending row on load and resume showing progress instead of
+-- losing it. Column add backfills existing (all-completed) rows to
+-- 'completed' automatically via the DEFAULT.
+-- ============================================================
+
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
+ALTER TABLE research_runs DROP CONSTRAINT IF EXISTS research_runs_status_check;
+ALTER TABLE research_runs ADD CONSTRAINT research_runs_status_check
+  CHECK (status IN ('pending', 'completed', 'failed'));
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS error TEXT;

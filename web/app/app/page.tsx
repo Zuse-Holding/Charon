@@ -60,6 +60,7 @@ function Dashboard() {
   const [pending, setPending]     = useState<{ subject: string; type: "company" | "person" | "product" } | null>(null);
   const selectedRef               = useRef<Run | null>(null);
   const [isWatching, setIsWatching] = useState(false);
+  const pendingPollRef            = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadRuns = useCallback(async () => {
     const res = await fetch("/api/runs");
@@ -71,11 +72,56 @@ function Dashboard() {
     return [];
   }, []);
 
+  // Background-persistent search — a run kicked off from this tab (or a
+  // different tab, or a previous session) keeps executing server-side
+  // regardless of whether anyone's still watching. This checks for a
+  // research_runs row still marked "pending" so a reload or a fresh tab
+  // resumes showing progress instead of looking like nothing happened.
+  // Returns whether a (non-stale) pending run was found.
+  const checkPendingRun = useCallback(async (): Promise<boolean> => {
+    const res = await fetch("/api/runs/pending");
+    if (!res.ok) return false;
+    const data: { id: string; type: string; subject: string; generatedAt: string } | null = await res.json();
+    if (!data) return false;
+
+    // A pending row stuck for 10+ minutes means the process that was
+    // running it almost certainly crashed or redeployed mid-run — treat
+    // it as stalled rather than showing a spinner forever.
+    const ageMs = Date.now() - new Date(data.generatedAt).getTime();
+    if (ageMs > 10 * 60 * 1000) return false;
+
+    const type: "company" | "person" | "product" =
+      data.type === "person" || data.type === "product" ? data.type : "company";
+    setPending({ subject: data.subject, type });
+    return true;
+  }, []);
+
   useEffect(() => {
     loadRuns().then(async (data) => {
       if (data.length > 0) await selectRun(data[0]);
     });
-  }, [loadRuns]);
+    checkPendingRun();
+  }, [loadRuns, checkPendingRun]);
+
+  // While a run is pending (whether triggered here, in another tab, or
+  // before a reload), poll until it resolves, then refresh the feed.
+  useEffect(() => {
+    if (!pending) {
+      if (pendingPollRef.current) { clearInterval(pendingPollRef.current); pendingPollRef.current = null; }
+      return;
+    }
+    pendingPollRef.current = setInterval(async () => {
+      const stillPending = await checkPendingRun();
+      if (!stillPending) {
+        setPending(null);
+        const data = await loadRuns();
+        if (data.length > 0) await selectRun(data[0]);
+      }
+    }, 4000);
+    return () => {
+      if (pendingPollRef.current) clearInterval(pendingPollRef.current);
+    };
+  }, [pending, checkPendingRun, loadRuns]);
 
   // Handle ?research=CompanyName from Intel Feed "Research X →" button
   useEffect(() => {

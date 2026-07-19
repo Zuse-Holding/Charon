@@ -132,6 +132,23 @@ export async function POST(req: NextRequest) {
 
   const PROJECT_ROOT = join(process.cwd(), "..");
 
+  // Background-persistent search — same pending/completed/failed pattern
+  // as server/agent-server.ts's production path, so a reload during a
+  // locally-run research call also has a row to resume from.
+  const runId = randomUUID();
+  try {
+    await supabase.from("research_runs").insert({
+      id: runId,
+      user_id: user.id,
+      type,
+      subject: sanitizedSubject,
+      generated_at: new Date().toISOString(),
+      status: "pending",
+    });
+  } catch (dbErr) {
+    console.error("[research] Supabase pending-row write failed:", dbErr);
+  }
+
   try {
     const { stdout, stderr } = await execFileAsync(
       "npx",
@@ -141,22 +158,26 @@ export async function POST(req: NextRequest) {
 
     try {
       const reportPath = getReportPath(sanitizedSubject, type);
-      await supabase.from("research_runs").insert({
-        id: randomUUID(),
-        user_id: user.id,
-        type,
-        subject: sanitizedSubject,
-        generated_at: new Date().toISOString(),
-        report_path: reportPath,
-        bundle: {},
-      });
+      await supabase
+        .from("research_runs")
+        .update({
+          generated_at: new Date().toISOString(),
+          report_path: reportPath,
+          bundle: {},
+          status: "completed",
+        })
+        .eq("id", runId);
     } catch (dbErr) {
       console.error("[research] Supabase write failed:", dbErr);
     }
 
-    return NextResponse.json({ ok: true, output: stdout + stderr });
+    return NextResponse.json({ ok: true, runId, output: stdout + stderr });
   } catch (err: unknown) {
     const error = err as { message?: string; stdout?: string; stderr?: string };
+    await supabase
+      .from("research_runs")
+      .update({ status: "failed", error: error.message ?? "Unknown error" })
+      .eq("id", runId);
     return NextResponse.json(
       { error: error.message, stderr: error.stderr, stdout: error.stdout },
       { status: 500 }

@@ -11,12 +11,40 @@ import { createServerSupabaseClient } from "./server";
 
 export async function getAllRunsForUser() {
   const supabase = await createServerSupabaseClient();
+  // Completed only — a run still in progress (status: 'pending') has no
+  // report yet and would break anything here that assumes reportPath/
+  // bundle are populated. Callers that need to know about an in-progress
+  // run should use getPendingRunForUser() instead.
   const { data, error } = await supabase
     .from("research_runs")
     .select("*")
+    .eq("status", "completed")
     .order("generated_at", { ascending: false });
   if (error) throw error;
   return (data ?? []).map(normalizeRun);
+}
+
+// Background-persistent search — the most recent run still in flight for
+// this user, if any. Lets the client detect and resume showing progress
+// after a reload or in a fresh tab, since the research itself keeps
+// running server-side independent of any one client connection.
+export async function getPendingRunForUser() {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("research_runs")
+    .select("id, type, subject, generated_at")
+    .eq("status", "pending")
+    .order("generated_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    type: row.type as string,
+    subject: row.subject as string,
+    generatedAt: row.generated_at as string,
+  };
 }
 
 export async function recordRunForUser(run: {
