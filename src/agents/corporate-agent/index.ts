@@ -38,7 +38,7 @@ export class CorporateAgent {
 
   async run(companyName: string): Promise<CorporateAgentResult> {
     const [results, form4Result] = await Promise.all([
-      this.searcher.search(`${companyName} funding round investors raised`, 5),
+      this.searcher.search(`${companyName} funding round investors raised parent company subsidiary`, 5),
       // Insider activity (Round 2, item 5) — same "who owns/controls this
       // company" question funding/ownership already answers here.
       this.form4Agent.run(companyName),
@@ -74,7 +74,7 @@ export class CorporateAgent {
 
     if (combinedText.length > 0) {
       const llmResult = await extractStructured(
-        `You are a business research assistant extracting funding history for the company "${companyName}" from search results. Only extract actual funding ROUNDS (raised/secured money), not valuation figures or unrelated dollar amounts.`,
+        `You are a business research assistant extracting funding history and ownership structure for the company "${companyName}" from search results. Only extract actual funding ROUNDS (raised/secured money), not valuation figures or unrelated dollar amounts. Also set "ownership" to a short note if the text says this company is a subsidiary of, owned by, or a division of another company (e.g. "Owned by Warner Bros. Discovery" or "Subsidiary of VF Corporation") — leave it unset if no such relationship is mentioned.`,
         combinedText,
         FundingExtractionSchema
       );
