@@ -228,6 +228,9 @@ export default function DashboardPage() {
   }, [loadWatchlist, loadIntel, loadRuns, loadAdminStats, hasAdminAccess]);
 
   // ── Brief items (derived from recent runs + watchlist) ──
+  // Platform tier line is shown separately below, always — it's status
+  // info, not a "brief" signal, so it shouldn't stop the empty state
+  // from showing for users with no runs or stale watchlist entries.
   const briefItems = [
     recentRuns.length > 0 && {
       tag: "RESEARCH",
@@ -239,12 +242,9 @@ export default function DashboardPage() {
       text: `${watchlist.filter(w => freshnessStatus(w.last_researched_at) === "stale").length} watchlist entities need a refresh.`,
       flag: "high",
     },
-    {
-      tag: "PLATFORM",
-      text: `You're on the ${tier?.toUpperCase() ?? "BASIC"} tier.${isInternal ? " Charon Protocol active." : ""}`,
-      flag: "low",
-    },
   ].filter(Boolean) as { tag: string; text: string; flag: string }[];
+
+  const platformLine = `You're on the ${tier?.toUpperCase() ?? "BASIC"} tier.${isInternal ? " Charon Protocol active." : ""}`;
 
   // ── Render ──
   return (
@@ -322,6 +322,14 @@ export default function DashboardPage() {
                       <span style={{ fontSize: 12, color: "#EDF2F7", lineHeight: 1.5 }}>{item.text}</span>
                     </div>
                   ))}
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 10 }}>
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, letterSpacing: "0.1em",
+                      color: "#6B7A99", border: "1px solid currentColor", borderRadius: 3,
+                      padding: "1px 5px", whiteSpace: "nowrap" as const, marginTop: 2,
+                    }}>PLATFORM</span>
+                    <span style={{ fontSize: 12, color: "#EDF2F7", lineHeight: 1.5 }}>{platformLine}</span>
+                  </div>
                 </div>
 
                 {/* Watchlist */}
