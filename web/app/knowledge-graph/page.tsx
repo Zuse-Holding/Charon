@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import styles from "./page.module.css";
@@ -49,12 +49,36 @@ const PLANNED_FEATURES = [
   { icon: "◎", title: "Ecosystem Mapping", desc: "Every research run adds to the graph — map entire market segments as you go." },
 ];
 
+// BFS over relationships (undirected) from a starting entity — used to
+// scope the graph down to just one entity's connected component instead
+// of showing every unrelated cluster the account has ever accumulated.
+function connectedComponentIds(startId: string, relationships: Relationship[]): Set<string> {
+  const reachable = new Set<string>([startId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const r of relationships) {
+      if (reachable.has(r.from_entity_id) && !reachable.has(r.to_entity_id)) { reachable.add(r.to_entity_id); grew = true; }
+      if (reachable.has(r.to_entity_id) && !reachable.has(r.from_entity_id)) { reachable.add(r.from_entity_id); grew = true; }
+    }
+  }
+  return reachable;
+}
+
 export default function KnowledgeGraph() {
   const [entities, setEntities]           = useState<Entity[]>([]);
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [loading, setLoading]             = useState(true);
   const [selected, setSelected]           = useState<NodeData | null>(null);
   const [hoveredId, setHoveredId]         = useState<string | null>(null);
+  // Focus mode — set when a search result is picked. Without this, the
+  // canvas always shows the 50 most-connected entities across the user's
+  // ENTIRE research history at once, so an unrelated cluster from an old,
+  // unrelated search (e.g. a pizza chain from months ago) renders right
+  // next to whatever you're actually looking for. Focusing scopes the
+  // view down to just the searched entity's connected component.
+  const [focusId, setFocusId]             = useState<string | null>(null);
+  const [focusName, setFocusName]         = useState<string | null>(null);
   const canvasRef                         = useRef<HTMLCanvasElement>(null);
   const nodesRef                          = useRef<NodeData[]>([]);
   const edgesRef                          = useRef<EdgeData[]>([]);
@@ -64,6 +88,15 @@ export default function KnowledgeGraph() {
   const transformRef                      = useRef({ scale: 1, tx: 0, ty: 0 });
   const hoveredRef                        = useRef<string | null>(null);
   const selectedRef                       = useRef<NodeData | null>(null);
+
+  // Onboarding checklist ("Explore the Knowledge Graph" step, see
+  // OnboardingChecklist) reads this flag from the dashboard — set once,
+  // on first visit, rather than re-writing it every mount.
+  useEffect(() => {
+    if (localStorage.getItem("metis_visited_kg") !== "1") {
+      localStorage.setItem("metis_visited_kg", "1");
+    }
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -92,6 +125,17 @@ export default function KnowledgeGraph() {
     const W = canvas.width / dpr || 900;
     const H = canvas.height / dpr || 500;
 
+    // When focused on a search result, restrict the pool to just that
+    // entity's connected component before the existing top-50-by-
+    // connectivity selection runs — this is what actually removes
+    // unrelated clusters from the view instead of just visually
+    // de-emphasizing them.
+    let pool = entities;
+    if (focusId) {
+      const reachable = connectedComponentIds(focusId, relationships);
+      pool = entities.filter(e => reachable.has(e.id));
+    }
+
     // Sort entities by relationship count — most connected first
     // then cap at 35 for performance and readability
     const relCount = new Map<string, number>();
@@ -99,7 +143,7 @@ export default function KnowledgeGraph() {
       relCount.set(r.from_entity_id, (relCount.get(r.from_entity_id) ?? 0) + 1);
       relCount.set(r.to_entity_id,   (relCount.get(r.to_entity_id)   ?? 0) + 1);
     }
-    const sorted = [...entities].sort((a, b) => (relCount.get(b.id) ?? 0) - (relCount.get(a.id) ?? 0));
+    const sorted = [...pool].sort((a, b) => (relCount.get(b.id) ?? 0) - (relCount.get(a.id) ?? 0));
     const visible = sorted.slice(0, 50);
 
     const nodes: NodeData[] = visible.map((e, i) => {
@@ -121,7 +165,15 @@ export default function KnowledgeGraph() {
 
     nodesRef.current = nodes;
     edgesRef.current = edges;
-  }, [entities, relationships]);
+
+    // Nodes were just rebuilt (possibly filtered to the focused entity's
+    // component) — (re)select the focused node now that it's guaranteed
+    // to exist in this pass, rather than at click time when it might not
+    // have been in the pre-filter node set yet.
+    if (focusId) {
+      setSelected(nodes.find(n => n.id === focusId) ?? null);
+    }
+  }, [entities, relationships, focusId]);
 
   // Force simulation
   const simulate = useCallback(() => {
@@ -364,6 +416,11 @@ export default function KnowledgeGraph() {
   const peopleCount    = entities.filter(e => e.type === "person").length;
   const productsCount  = entities.filter(e => e.type === "product").length;
 
+  const focusVisibleCount = useMemo(() => {
+    if (!focusId) return entities.length;
+    return connectedComponentIds(focusId, relationships).size;
+  }, [focusId, entities.length, relationships]);
+
   return (
     <div className={styles.shell}>
       <Sidebar />
@@ -375,7 +432,11 @@ export default function KnowledgeGraph() {
             <div>
               <h1 className={styles.title}>Knowledge Graph</h1>
               <div className={styles.subtitle}>
-                {loading ? "Loading..." : `${entities.length} entities · ${relationships.length} relationships`}
+                {loading
+                  ? "Loading..."
+                  : focusId
+                    ? `Showing ${focusVisibleCount} of ${entities.length} entities · focused on ${focusName}`
+                    : `${entities.length} entities · ${relationships.length} relationships`}
               </div>
             </div>
             <div className={styles.headerRight}>
@@ -383,10 +444,19 @@ export default function KnowledgeGraph() {
               <KGSearchBox
   entities={entities}
   onSelect={(entity) => {
-    const node = nodesRef.current.find(n => n.id === entity.id);
-    if (node) setSelected(node);
+    setFocusId(entity.id);
+    setFocusName(entity.name);
   }}
 />
+
+                {focusId && (
+                  <button
+                    className={styles.focusPill}
+                    onClick={() => { setFocusId(null); setFocusName(null); setSelected(null); }}
+                  >
+                    ⊙ Focused on {focusName} · Show all →
+                  </button>
+                )}
 
                 {Object.entries(TYPE_COLORS).map(([type, color]) => (
                   <span key={type} className={styles.legendItem}>
@@ -474,6 +544,7 @@ export default function KnowledgeGraph() {
                         await fetch(`/api/knowledge-graph/entities/${selected.id}`, { method: "DELETE" });
                         setEntities(prev => prev.filter(e => e.id !== selected.id));
                         setRelationships(prev => prev.filter(r => r.from_entity_id !== selected.id && r.to_entity_id !== selected.id));
+                        if (focusId === selected.id) { setFocusId(null); setFocusName(null); }
                         setSelected(null);
                       }}
                     >

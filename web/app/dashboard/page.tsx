@@ -6,6 +6,7 @@ import Topbar from "../../components/Topbar";
 import EmptyState from "../../components/EmptyState";
 import PersonResearchModal from "../../components/PersonResearchModal";
 import MuckRockSearchModal from "../../components/MuckRockSearchModal";
+import OnboardingChecklist from "../../components/OnboardingChecklist";
 import { useTier } from "../../lib/tier-context";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -295,6 +296,12 @@ export default function DashboardPage() {
           {/* ── DASHBOARD TAB ── */}
           {tab === "dashboard" && (
             <>
+              <OnboardingChecklist
+                hasResearch={recentRuns.length > 0}
+                hasWatchlistItem={watchlist.length > 0}
+                hasDisplayName={!!displayName && displayName.trim().length > 0}
+              />
+
               {/* Row 1: Brief + Watchlist */}
               <div style={{ ...S.row, ...(isMobile ? { flexDirection: "column" as const } : {}) }}>
                 {/* Morning Brief */}

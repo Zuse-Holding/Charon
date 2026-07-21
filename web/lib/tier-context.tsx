@@ -34,6 +34,20 @@ export interface MonthlyUsage {
   resetsAt: string;
 }
 
+/** profiles.notification_preferences — persisted now even though no
+ *  notification-sending code reads it yet (see Settings #67). */
+export interface NotificationPreferences {
+  watchlistRefresh: boolean;
+  weeklyDigest: boolean;
+  productUpdates: boolean;
+}
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  watchlistRefresh: true,
+  weeklyDigest: false,
+  productUpdates: true,
+};
+
 interface TierContextValue {
   tier: Tier | null;
   config: TierConfig | null;
@@ -42,6 +56,7 @@ interface TierContextValue {
   displayName: string | null;
   email: string | null;
   monthlyUsage: MonthlyUsage | null;
+  notificationPreferences: NotificationPreferences;
   can: (feature: keyof TierConfig) => boolean;
   refresh: () => void;
   /** Sets the user's preferred display name (profiles.display_name).
@@ -50,6 +65,9 @@ interface TierContextValue {
    *  (if any) so callers can actually show what went wrong instead of a
    *  silent no-op. */
   updateDisplayName: (name: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Merges the given fields into profiles.notification_preferences and
+   *  saves the full result. Returns whether the save succeeded. */
+  updateNotificationPreferences: (partial: Partial<NotificationPreferences>) => Promise<{ ok: boolean; error?: string }>;
 }
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
@@ -77,9 +95,11 @@ const TierContext = createContext<TierContextValue>({
   displayName: null,
   email: null,
   monthlyUsage: null,
+  notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
   can: () => false,
   refresh: () => {},
   updateDisplayName: async () => ({ ok: false }),
+  updateNotificationPreferences: async () => ({ ok: false }),
 });
 
 /** Best-effort human-friendly name: metadata full name -> email local part. */
@@ -112,6 +132,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   const [emailDerivedName, setEmailDerivedName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [monthlyUsage, setMonthlyUsage] = useState<MonthlyUsage | null>(null);
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,6 +161,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
           setMonthlyUsage(data.monthlyUsage ?? null);
           // Prefer the user's own saved preference over the email guess.
           if (data.displayName) setDisplayName(data.displayName);
+          setNotificationPreferences({ ...DEFAULT_NOTIFICATION_PREFERENCES, ...(data.notificationPreferences ?? {}) });
         }
       } catch {
         if (!cancelled) {
@@ -171,6 +193,26 @@ export function TierProvider({ children }: { children: ReactNode }) {
       // Server returns null when the name was cleared — fall back to the
       // email-derived guess so the UI never shows a blank name.
       setDisplayName(data.displayName || emailDerivedName);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "Network error." };
+    }
+  };
+
+  const updateNotificationPreferences = async (
+    partial: Partial<NotificationPreferences>
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const merged = { ...notificationPreferences, ...partial };
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ notificationPreferences: merged }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: data.error ?? `Save failed (HTTP ${res.status}).` };
+      setNotificationPreferences(merged);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : "Network error." };
@@ -220,7 +262,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, monthlyUsage, can, refresh, updateDisplayName }}>
+    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, monthlyUsage, notificationPreferences, can, refresh, updateDisplayName, updateNotificationPreferences }}>
       {children}
     </TierContext.Provider>
   );

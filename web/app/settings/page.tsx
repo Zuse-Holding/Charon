@@ -44,8 +44,17 @@ function PasswordToggle({ show, onToggle }: { show: boolean; onToggle: () => voi
   );
 }
 
+// Watchlist/product-update rows are on by default (matches
+// DEFAULT_NOTIFICATION_PREFERENCES in tier-context.tsx); weekly digest
+// defaults off since nothing generates one yet.
+const NOTIFICATION_ITEMS: { key: "watchlistRefresh" | "weeklyDigest" | "productUpdates"; label: string; description: string }[] = [
+  { key: "watchlistRefresh", label: "Watchlist Alerts", description: "Notify me when a tracked entity's report goes stale." },
+  { key: "weeklyDigest",     label: "Weekly Digest",     description: "A summary of your research activity, once a week." },
+  { key: "productUpdates",   label: "Product Updates",   description: "New features and changes to Metis." },
+];
+
 export default function Settings() {
-  const { displayName, updateDisplayName, tier, monthlyUsage } = useTier();
+  const { displayName, updateDisplayName, tier, monthlyUsage, notificationPreferences, updateNotificationPreferences, can } = useTier();
   const [email, setEmail]           = useState<string>("");
   const [resetSent, setResetSent]   = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
@@ -61,6 +70,12 @@ export default function Settings() {
   const [pwError, setPwError]       = useState<string | null>(null);
   const [showNewPassword, setShowNewPassword]         = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const [notifSavingKey, setNotifSavingKey] = useState<string | null>(null);
+  const [notifError, setNotifError]         = useState<string | null>(null);
+
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError]     = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -114,6 +129,40 @@ export default function Settings() {
     setNewPassword("");
     setConfirmPassword("");
     setTimeout(() => setPwSaved(false), 2500);
+  }
+
+  async function handleToggleNotification(key: "watchlistRefresh" | "weeklyDigest" | "productUpdates") {
+    setNotifError(null);
+    setNotifSavingKey(key);
+    const { ok, error } = await updateNotificationPreferences({ [key]: !notificationPreferences[key] });
+    setNotifSavingKey(null);
+    if (!ok) setNotifError(error ?? "Save failed — please try again.");
+  }
+
+  async function handleExport() {
+    setExportError(null);
+    setExportLoading(true);
+    try {
+      const res = await fetch("/api/export");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setExportError(data.error ?? "Export failed — please try again.");
+        return;
+      }
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `metis-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportError("Export failed — please try again.");
+    } finally {
+      setExportLoading(false);
+    }
   }
 
   const SYSTEM_INFO = [
@@ -261,6 +310,57 @@ export default function Settings() {
             >
               {resetSent ? "✓ Reset email sent" : resetLoading ? "Sending..." : "Or send a reset link to your email instead"}
             </button>
+          </div>
+
+          <div className={styles.group}>
+            <div className={styles.groupLabel}>NOTIFICATIONS</div>
+            {NOTIFICATION_ITEMS.map((item) => (
+              <div key={item.key} className={styles.row}>
+                <span className={styles.rowLabel}>{item.label}</span>
+                <span className={styles.rowDescription}>{item.description}</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={notificationPreferences[item.key]}
+                  aria-label={item.label}
+                  className={`${styles.toggle} ${notificationPreferences[item.key] ? styles.toggleOn : ""}`}
+                  onClick={() => handleToggleNotification(item.key)}
+                  disabled={notifSavingKey === item.key}
+                >
+                  <span className={styles.toggleKnob} />
+                </button>
+              </div>
+            ))}
+            {notifError && <div className={styles.fieldError}>{notifError}</div>}
+          </div>
+
+          <div className={styles.group}>
+            <div className={styles.groupLabel}>DATA EXPORT</div>
+            {can("exportAccess") ? (
+              <div className={styles.row}>
+                <span className={styles.rowLabel}>Export your data</span>
+                <span className={styles.rowDescription}>
+                  Download all your research runs, watchlist, and knowledge graph as JSON.
+                </span>
+                <button
+                  className={styles.resetBtn}
+                  onClick={handleExport}
+                  disabled={exportLoading}
+                >
+                  {exportLoading ? "Preparing..." : "Export →"}
+                </button>
+              </div>
+            ) : (
+              <div className={styles.upgradeCard}>
+                <div className={styles.upgradeText}>
+                  Data export is available on Pro and above.
+                </div>
+                <a href="mailto:support@metisanalytic.com?subject=Metis Pro Upgrade" className={styles.upgradeBtn}>
+                  Contact us to upgrade →
+                </a>
+              </div>
+            )}
+            {exportError && <div className={styles.fieldError}>{exportError}</div>}
           </div>
 
           <div className={styles.group}>

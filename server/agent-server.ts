@@ -610,7 +610,7 @@ app.get("/tier/:userId", async (req, res) => {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name")
+    .select("display_name, notification_preferences")
     .eq("id", req.params.userId)
     .single();
 
@@ -634,8 +634,26 @@ app.get("/tier/:userId", async (req, res) => {
     monthlyUsage = { used, limit: config.monthlyResearchLimit, resetsAt: resetsAt.toISOString() };
   }
 
-  res.json({ tier, config: effectiveConfig, displayName: profile?.display_name ?? null, monthlyUsage });
+  res.json({
+    tier,
+    config: effectiveConfig,
+    displayName: profile?.display_name ?? null,
+    monthlyUsage,
+    notificationPreferences: profile?.notification_preferences ?? DEFAULT_NOTIFICATION_PREFERENCES,
+  });
 });
+
+interface NotificationPreferences {
+  watchlistRefresh: boolean;
+  weeklyDigest: boolean;
+  productUpdates: boolean;
+}
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  watchlistRefresh: true,
+  weeklyDigest: false,
+  productUpdates: true,
+};
 
 const MAX_DISPLAY_NAME_LENGTH = 60;
 
@@ -648,21 +666,45 @@ const MAX_DISPLAY_NAME_LENGTH = 60;
 app.patch("/profile/:userId", async (req, res) => {
   if (!authCheck(req, res)) return;
 
-  const raw = req.body?.displayName;
-  if (raw !== null && typeof raw !== "string") {
-    res.status(400).json({ error: "displayName must be a string or null" });
-    return;
+  // Each field is independently optional — a caller updating just
+  // notificationPreferences shouldn't have to also resend displayName
+  // (and vice versa), and only fields actually present in the body get
+  // written, so an omitted field never clobbers what's already stored.
+  const updates: { display_name?: string | null; notification_preferences?: NotificationPreferences } = {};
+
+  if ("displayName" in req.body) {
+    const raw = req.body.displayName;
+    if (raw !== null && typeof raw !== "string") {
+      res.status(400).json({ error: "displayName must be a string or null" });
+      return;
+    }
+    const trimmed = typeof raw === "string" ? raw.trim() : null;
+    if (trimmed && trimmed.length > MAX_DISPLAY_NAME_LENGTH) {
+      res.status(400).json({ error: `displayName must be ${MAX_DISPLAY_NAME_LENGTH} characters or fewer` });
+      return;
+    }
+    // Empty string -> null, so clearing the field falls back to the
+    // email-derived name instead of storing/displaying blank text.
+    updates.display_name = trimmed || null;
   }
 
-  const trimmed = typeof raw === "string" ? raw.trim() : null;
-  if (trimmed && trimmed.length > MAX_DISPLAY_NAME_LENGTH) {
-    res.status(400).json({ error: `displayName must be ${MAX_DISPLAY_NAME_LENGTH} characters or fewer` });
-    return;
+  if ("notificationPreferences" in req.body) {
+    const raw = req.body.notificationPreferences;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      res.status(400).json({ error: "notificationPreferences must be an object" });
+      return;
+    }
+    const merged = { ...DEFAULT_NOTIFICATION_PREFERENCES };
+    for (const key of Object.keys(DEFAULT_NOTIFICATION_PREFERENCES) as (keyof NotificationPreferences)[]) {
+      if (typeof raw[key] === "boolean") merged[key] = raw[key];
+    }
+    updates.notification_preferences = merged;
   }
 
-  // Empty string -> null, so clearing the field falls back to the
-  // email-derived name instead of storing/displaying blank text.
-  const displayName = trimmed || null;
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No valid fields to update" });
+    return;
+  }
 
   // Update first, then only insert if nothing matched. Deliberately not
   // using .upsert(onConflict:"id") here — that requires Postgres to already
@@ -671,29 +713,81 @@ app.patch("/profile/:userId", async (req, res) => {
   // than falling back to update. This two-step version works regardless.
   const { data: updated, error: updateError } = await supabase
     .from("profiles")
-    .update({ display_name: displayName })
+    .update(updates)
     .eq("id", req.params.userId)
     .select("id");
 
   if (updateError) {
-    console.error("[profile] display_name update failed:", JSON.stringify(updateError));
-    res.status(500).json({ error: `Failed to update display name: ${updateError.message}` });
+    console.error("[profile] update failed:", JSON.stringify(updateError));
+    res.status(500).json({ error: `Failed to update profile: ${updateError.message}` });
     return;
   }
 
   if (!updated || updated.length === 0) {
     const { error: insertError } = await supabase
       .from("profiles")
-      .insert({ id: req.params.userId, display_name: displayName });
+      .insert({ id: req.params.userId, ...updates });
 
     if (insertError) {
-      console.error("[profile] display_name insert failed:", JSON.stringify(insertError));
-      res.status(500).json({ error: `Failed to update display name: ${insertError.message}` });
+      console.error("[profile] insert failed:", JSON.stringify(insertError));
+      res.status(500).json({ error: `Failed to update profile: ${insertError.message}` });
       return;
     }
   }
 
-  res.json({ ok: true, displayName });
+  res.json({
+    ok: true,
+    displayName: updates.display_name,
+    notificationPreferences: updates.notification_preferences,
+  });
+});
+
+/**
+ * Data export (Settings #68) — gated on config.exportAccess, same tier
+ * flag that's existed on TierConfig since before this route existed but
+ * had no endpoint to check it. Returns everything this user owns across
+ * the app (completed research runs, watchlist, knowledge graph) as one
+ * JSON bundle; the web app turns that into a file download client-side.
+ */
+app.get("/export/:userId", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const userId = req.params.userId;
+  const tier = await getUserTier(userId);
+  const config = getTierConfig(tier);
+
+  if (!config.exportAccess) {
+    tierDenied(res, "Data export is not available on your current plan.", "Upgrade to Pro for data export.");
+    return;
+  }
+
+  const [runsRes, watchlistRes, entitiesRes, relationshipsRes] = await Promise.all([
+    supabase.from("research_runs").select("id, type, subject, generated_at, report_path, bundle")
+      .eq("user_id", userId).eq("status", "completed").order("generated_at", { ascending: false }),
+    supabase.from("watchlist").select("id, type, subject, added_at, last_refreshed_at, refresh_interval_days")
+      .eq("user_id", userId).order("added_at", { ascending: false }),
+    supabase.from("kg_entities").select("id, name, type, first_seen_at")
+      .eq("user_id", userId).order("first_seen_at", { ascending: false }),
+    supabase.from("kg_relationships").select("id, from_entity_id, to_entity_id, relationship_type, created_at")
+      .eq("user_id", userId).order("created_at", { ascending: false }),
+  ]);
+
+  const dbError = runsRes.error || watchlistRes.error || entitiesRes.error || relationshipsRes.error;
+  if (dbError) {
+    console.error("[export] query failed:", JSON.stringify(dbError));
+    res.status(500).json({ error: "Failed to gather export data" });
+    return;
+  }
+
+  res.json({
+    exportedAt: new Date().toISOString(),
+    researchRuns: runsRes.data ?? [],
+    watchlist: watchlistRes.data ?? [],
+    knowledgeGraph: {
+      entities: entitiesRes.data ?? [],
+      relationships: relationshipsRes.data ?? [],
+    },
+  });
 });
 
 /**
