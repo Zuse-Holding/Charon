@@ -28,6 +28,15 @@
 }
 .legendDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
+.focusPill {
+  display: flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em;
+  color: var(--orange); background: rgba(255, 107, 43, 0.1);
+  border: 1px solid var(--orange); border-radius: 20px;
+  padding: 4px 10px; cursor: pointer; white-space: nowrap;
+}
+.focusPill:hover { background: rgba(255, 107, 43, 0.18); }
+
 /* GRAPH AREA */
 .graphArea {
   position: relative; margin-bottom: 24px;

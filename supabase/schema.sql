@@ -231,3 +231,14 @@ ALTER TABLE research_runs DROP CONSTRAINT IF EXISTS research_runs_status_check;
 ALTER TABLE research_runs ADD CONSTRAINT research_runs_status_check
   CHECK (status IN ('pending', 'completed', 'failed'));
 ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS error TEXT;
+
+-- ============================================================
+-- Notification preferences (Settings #67)
+-- Persisted now even though nothing actually sends notifications yet —
+-- this is genuine storage for future notification code to read, not a
+-- placeholder. Defaults: watchlist refresh alerts and product updates
+-- on, weekly digest off.
+-- ============================================================
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notification_preferences JSONB NOT NULL
+  DEFAULT '{"watchlistRefresh": true, "weeklyDigest": false, "productUpdates": true}'::jsonb;
