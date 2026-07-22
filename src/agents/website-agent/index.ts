@@ -18,7 +18,7 @@ import {
   PRODUCT_STOPWORDS,
 } from "../../lib/nlp.js";
 import { CompanyExtractionSchema, extractStructured } from "../../lib/llm.js";
-import { findOverride, EntityOverride } from "../../entity-validation.js";
+import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
 
 // Domains that should never be treated as a company's official website
 // even if they rank first in search results for "X official website".
@@ -53,24 +53,9 @@ function isOfficialDomain(url: string): boolean {
   }
 }
 
-/**
- * Per-entity domain block list (src/entity-validation.ts ENTITY_OVERRIDES).
- * "Alan Health" is the motivating case: search results for that name
- * regularly surface alan.com (an unrelated French health-insurance
- * company) as a top "official site" hit, which used to get treated as a
- * real source — pulling in that company's CEO/description instead of
- * Alan Health Technologies'. reject_domains was defined on the override
- * but never actually consulted anywhere until now.
- */
-function isRejectedDomain(url: string, override: EntityOverride | undefined): boolean {
-  if (!override?.reject_domains?.length) return false;
-  try {
-    const hostname = new URL(url).hostname.replace(/^www\./, "");
-    return override.reject_domains.some((d) => d.replace(/^www\./, "") === hostname);
-  } catch {
-    return false;
-  }
-}
+// isRejectedDomain moved to src/entity-validation.ts (7/20) — now shared
+// across corporate-agent, news-agent, and competitor-agent too, not just
+// this file. See that file's doc comment for why.
 
 /**
  * Strips common nav/header noise patterns from raw page text before
@@ -162,17 +147,22 @@ export class WebsiteAgent {
       ? `https://${override.canonical_domain}`
       : this.guessDomain(companyName);
 
+    // 7/20 hardening — exclude a known-wrong domain (e.g. alan.com) at
+    // the query itself via Serper/Google's -site: operator, on top of
+    // the isRejectedDomain post-filter below. Query-level exclusion
+    // means the result-count budget (5, 3, etc per call) isn't partly
+    // spent on hits that were only going to be dropped anyway.
     const [pageRaw, leadershipResultsRaw, productResultsRaw, overviewResultsRaw] =
       await Promise.all([
         resolveAndFetch(
           directUrl,
-          `${companyName} official website`,
+          appendDomainExclusions(`${companyName} official website`, override),
           this.fetcher,
           this.searcher
         ),
-        this.searcher.search(`${companyName} CEO founder executive leadership team`, 5),
-        this.searcher.search(`${companyName} products and services`, 5),
-        this.searcher.search(`${companyName} overview what is`, 3),
+        this.searcher.search(appendDomainExclusions(`${companyName} CEO founder executive leadership team`, override), 5),
+        this.searcher.search(appendDomainExclusions(`${companyName} products and services`, override), 5),
+        this.searcher.search(appendDomainExclusions(`${companyName} overview what is`, override), 3),
       ]);
 
     // Drop any result whose domain is on this entity's reject list before

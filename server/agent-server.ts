@@ -89,21 +89,27 @@ interface TierConfig {
   // only. -1 = unlimited. Resets on the account's billing anniversary,
   // not the calendar month — see getBillingPeriodStart.
   monthlyResearchLimit: number;
+  // 7/20 public-record fusion sources (sanctions screening, Wayback
+  // archive history, ProPublica nonprofit lookup, LittleSis power-
+  // mapping) — Pro/Team+ per the roadmap ask; Basic/Free don't get
+  // these. Separate from charonProtocol, which gates the further-still
+  // ICIJ Offshore Leaks source on top of this.
+  publicRecordsAccess: boolean;
 }
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1 },
-  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1 },
-  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1 },
-  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25 },
-  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1 },
+  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, publicRecordsAccess: true },
+  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true },
+  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true },
+  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, publicRecordsAccess: false },
+  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: false },
   // Time-boxed tier for external demo/partner accounts (limited partners,
   // investor trials, etc). Deliberately mirrors "team" limits and features
   // so the demo shows the platform at full strength — the ONLY things it
   // withholds are politicalAccess and charonProtocol, which stay off
   // regardless of what tier gets requested for these accounts. Expiry
   // enforced via profiles.trial_expires_at, checked in getUserTier below.
-  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1 },
+  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true },
 };
 
 /**
@@ -136,7 +142,7 @@ const EXPIRED_CONFIG: TierConfig = {
   politicalAccess: false, watchlistLimit: 0, knowledgeGraphAccess: false,
   exportAccess: false, charonProtocol: false, chatWidgetAccess: false,
   personResearchAccess: false, muckrockAccess: false, adminAccess: false,
-  monthlyResearchLimit: 0,
+  monthlyResearchLimit: 0, publicRecordsAccess: false,
 };
 
 function getTierConfig(tier: Tier | "expired"): TierConfig {
@@ -372,15 +378,21 @@ app.post("/research", async (req, res) => {
       const orchestrator = new ResearchOrchestrator();
       // Charon Protocol (internal tier only): deeper sourcing on person/
       // political research, on top of the unlimited quotas internal
-      // already gets everywhere else in this file.
+      // already gets everywhere else in this file. Also gates the ICIJ
+      // Offshore Leaks source (7/20 public-record fusion) on company/
+      // person reports.
       const deep = tier === "internal";
+      // 7/20 public-record fusion — sanctions screening, Wayback archive
+      // history, ProPublica nonprofit lookup, LittleSis power-mapping.
+      // Pro/Team+ per the roadmap ask.
+      const proAccess = config.publicRecordsAccess;
 
       if (type === "company") {
-        const result = await orchestrator.researchCompany(subject);
+        const result = await orchestrator.researchCompany(subject, proAccess, deep);
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, `${slugify(subject)}.md`);
       } else if (type === "person") {
-        const result = await orchestrator.researchPerson(subject, deep, personAffiliation);
+        const result = await orchestrator.researchPerson(subject, deep, personAffiliation, proAccess);
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, "people", `${slugify(subject)}.md`);
       } else if (type === "political") {

@@ -133,6 +133,48 @@ export function validateAndCorrectFact(
 }
 
 /**
+ * Per-entity domain block list. "Alan Health" is the motivating case:
+ * search results for that name regularly surface alan.com (an unrelated
+ * French health-insurance company) as a top hit. Originally defined only
+ * inside website-agent (the first place this actually got wired in) —
+ * moved here so every agent that runs a search for a company/person name
+ * can drop the same rejected domains from its OWN results, not just the
+ * one agent that resolves the "official website." A round from
+ * corporate-agent or a headline from news-agent sourced off alan.com was
+ * previously untouched by this filter and could still reach the LLM
+ * prompt and the final report even when website-agent's own output was
+ * clean. Now applied in corporate-agent, news-agent, and
+ * competitor-agent too (7/20) — website-agent updated to import this
+ * shared copy instead of keeping its own private one.
+ */
+/**
+ * Appends Google/Serper `-site:` exclusion operators for an entity's
+ * reject_domains directly onto a search query string. isRejectedDomain
+ * above is a post-fetch drop — necessary regardless (an excluded domain
+ * can still slip through indexing quirks), but exclusion at the query
+ * itself means the 5-10 results budget per search isn't partly wasted on
+ * hits that were only going to be thrown away, and reduces the odds a
+ * wrong-entity snippet gets pulled into an LLM prompt at all. No-op
+ * (returns the query unchanged) when there's no override or no
+ * reject_domains — every call site can apply this unconditionally.
+ */
+export function appendDomainExclusions(query: string, override: EntityOverride | undefined): string {
+  if (!override?.reject_domains?.length) return query;
+  const exclusions = override.reject_domains.map((d) => `-site:${d}`).join(" ");
+  return `${query} ${exclusions}`;
+}
+
+export function isRejectedDomain(url: string, override: EntityOverride | undefined): boolean {
+  if (!override?.reject_domains?.length) return false;
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    return override.reject_domains.some((d) => d.replace(/^www\./, "") === hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Convenience: look up an override by any known alias.
  *
  * Two match strategies:

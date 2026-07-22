@@ -151,6 +151,8 @@ export class ReportAgent {
     }
     lines.push(``);
 
+    this.pushPublicRecordsSection(lines, bundle);
+
     lines.push(`## Sources`);
     if (bundle.sources.length === 0) {
       lines.push(`_No sources recorded._`);
@@ -161,6 +163,69 @@ export class ReportAgent {
     }
 
     return lines.join("\n");
+  }
+
+  /**
+   * 7/20 public-record fusion sources (sanctions screening, Wayback
+   * archive history, ProPublica nonprofit lookup, LittleSis power-
+   * mapping, ICIJ Offshore Leaks) — shared between company and person
+   * reports since every source but Wayback applies to both. Renders
+   * nothing at all when none of the fields are present, so Basic/Free
+   * reports (which never populate these) don't show an empty section.
+   */
+  private pushPublicRecordsSection(
+    lines: string[],
+    bundle: Pick<ResearchBundle, "sanctionsMatches" | "webArchive" | "nonprofitFilings" | "powerMapConnections" | "offshoreLeaksMatches">
+  ) {
+    const hasAny =
+      (bundle.sanctionsMatches && bundle.sanctionsMatches.length > 0) ||
+      bundle.webArchive ||
+      (bundle.nonprofitFilings && bundle.nonprofitFilings.length > 0) ||
+      (bundle.powerMapConnections && bundle.powerMapConnections.length > 0) ||
+      (bundle.offshoreLeaksMatches && bundle.offshoreLeaksMatches.length > 0);
+    if (!hasAny) return;
+
+    lines.push(`## Public Records`);
+
+    if (bundle.sanctionsMatches && bundle.sanctionsMatches.length > 0) {
+      lines.push(`**Sanctions Screening** _(possible matches — not confirmed identity, verify before acting)_`);
+      for (const m of bundle.sanctionsMatches) {
+        lines.push(`- **${m.name}** — ${m.source}${m.type ? ` (${m.type})` : ""}${m.programs?.length ? ` · ${m.programs.join(", ")}` : ""}`);
+      }
+      lines.push(``);
+    }
+
+    if (bundle.webArchive) {
+      lines.push(`**Web Archive History**`);
+      if (bundle.webArchive.firstSnapshot) lines.push(`- First archived: [${bundle.webArchive.firstSnapshot.timestamp}](${bundle.webArchive.firstSnapshot.url})`);
+      if (bundle.webArchive.latestSnapshot) lines.push(`- Most recent snapshot: [${bundle.webArchive.latestSnapshot.timestamp}](${bundle.webArchive.latestSnapshot.url})`);
+      if (bundle.webArchive.snapshotCount) lines.push(`- ${bundle.webArchive.snapshotCount} snapshot(s) on record`);
+      lines.push(``);
+    }
+
+    if (bundle.nonprofitFilings && bundle.nonprofitFilings.length > 0) {
+      lines.push(`**Nonprofit Filings (990s)**`);
+      for (const n of bundle.nonprofitFilings) {
+        lines.push(`- [${n.name}](${n.url})${n.ntee ? ` — ${n.ntee}` : ""} (EIN ${n.ein})`);
+      }
+      lines.push(``);
+    }
+
+    if (bundle.powerMapConnections && bundle.powerMapConnections.length > 0) {
+      lines.push(`**Power-Map Connections** _(LittleSis)_`);
+      for (const p of bundle.powerMapConnections) {
+        lines.push(`- [${p.name}](${p.url})${p.entityKind ? ` (${p.entityKind})` : ""}${p.blurb ? ` — ${p.blurb}` : ""}`);
+      }
+      lines.push(``);
+    }
+
+    if (bundle.offshoreLeaksMatches && bundle.offshoreLeaksMatches.length > 0) {
+      lines.push(`**Offshore Leaks Database** _(possible matches — ICIJ reconciliation confidence score, not a confirmed hit)_`);
+      for (const o of bundle.offshoreLeaksMatches) {
+        lines.push(`- [${o.name}](${o.url})${o.entityType ? ` (${o.entityType})` : ""}${o.score !== undefined ? ` · score ${o.score}` : ""}`);
+      }
+      lines.push(``);
+    }
   }
 
   /**
@@ -265,6 +330,8 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+
+    this.pushPublicRecordsSection(lines, bundle);
 
     lines.push(`## Sources`);
     if (bundle.sources.length === 0) {

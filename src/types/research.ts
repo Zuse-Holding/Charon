@@ -186,6 +186,12 @@ export interface PersonResearchBundle {
   sources: Source[];
   corporateAffiliations?: CorporateAffiliationEntry[];
   foiaRequests?: FoiaRequestEntry[];
+  // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess),
+  // except offshoreLeaksMatches which is Charon/internal-only (deep mode).
+  sanctionsMatches?: SanctionsMatch[];
+  nonprofitFilings?: NonprofitFilingEntry[];
+  powerMapConnections?: PowerMapEntry[];
+  offshoreLeaksMatches?: OffshoreLeakMatch[];
 }
 
 // --- Deep Dive types ---
@@ -231,6 +237,13 @@ export interface ResearchBundle {
   opportunities?: string[];
   federalSpending?: FederalSpendingEntry[];
   insiderActivity?: Form4Entry[];
+  // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess),
+  // except offshoreLeaksMatches which is Charon/internal-only.
+  sanctionsMatches?: SanctionsMatch[];
+  webArchive?: WebArchiveSummary;
+  nonprofitFilings?: NonprofitFilingEntry[];
+  powerMapConnections?: PowerMapEntry[];
+  offshoreLeaksMatches?: OffshoreLeakMatch[];
 }
 
 // --- Political research types (Round 2, item 1) ---
@@ -395,6 +408,94 @@ export interface FederalSpendingEntry {
 
 export interface USASpendingAgentResult {
   awards: FederalSpendingEntry[];
+  sources: Source[];
+}
+
+// --- Sanctions screening (7/20 public-record fusion, roadmap #1) ---
+// Consolidated Screening List — Commerce/State/Treasury's combined feed
+// of 11 export-control and sanctions lists (including OFAC's SDN list),
+// via api.trade.gov. Free key required (TRADE_GOV_API_KEY). Pro/Team+
+// only — see TierConfig.publicRecordsAccess.
+export interface SanctionsMatch {
+  name: string;
+  source: string;       // which of the 11 lists matched, e.g. "SDN", "Entity List"
+  type?: string;         // "Individual" | "Entity" | "Vessel" | "Aircraft"
+  programs?: string[];   // sanction program codes, e.g. ["SDGT", "UKRAINE-EO13662"]
+  remarks?: string;
+  url?: string;
+}
+
+export interface SanctionsAgentResult {
+  matches: SanctionsMatch[];
+  sources: Source[];
+}
+
+// --- Wayback Machine archive history (7/20 public-record fusion, roadmap #2) ---
+// web.archive.org's Availability + CDX APIs, no key required. Company
+// research only for now — see src/agents/wayback-agent.
+export interface ArchiveSnapshot {
+  timestamp: string;   // wayback 14-digit timestamp, e.g. "20200101120000"
+  url: string;          // full wayback URL to view this snapshot
+}
+
+export interface WebArchiveSummary {
+  firstSnapshot?: ArchiveSnapshot;
+  latestSnapshot?: ArchiveSnapshot;
+  snapshotCount?: number;
+}
+
+export interface WaybackAgentResult {
+  summary: WebArchiveSummary;
+  sources: Source[];
+}
+
+// --- ProPublica Nonprofit Explorer (7/20 public-record fusion) ---
+// 990-filing lookup, no key required. Relevant to both company and
+// person research (board/officer affiliations, or the entity itself
+// being a registered nonprofit).
+export interface NonprofitFilingEntry {
+  ein: string;
+  name: string;
+  ntee?: string;          // NTEE classification code, e.g. "B25" (education)
+  totalRevenue?: string;
+  taxPeriod?: string;
+  url: string;
+}
+
+export interface NonprofitAgentResult {
+  organizations: NonprofitFilingEntry[];
+  sources: Source[];
+}
+
+// --- LittleSis power-mapping (7/20 public-record fusion, roadmap #3 —
+// cross-entity resolution layer). No key required. Pro/Team+ — see
+// TierConfig.publicRecordsAccess.
+export interface PowerMapEntry {
+  name: string;
+  entityKind?: string;   // "Person" | "Org"
+  blurb?: string;
+  url: string;
+}
+
+export interface LittleSisAgentResult {
+  matches: PowerMapEntry[];
+  sources: Source[];
+}
+
+// --- ICIJ Offshore Leaks (7/20 public-record fusion) — Charon-tier only.
+// Reconciliation API match candidates against Pandora/Paradise/Panama/
+// Bahamas/Offshore Leaks. No key required, but these are fuzzy-match
+// candidates, not confirmed hits — always presented as "possible
+// matches," never asserted as fact. See src/agents/icij-agent.
+export interface OffshoreLeakMatch {
+  name: string;
+  entityType?: string;   // reconciliation schema type: Entity/Officer/Intermediary/Address/Other
+  score?: number;         // reconciliation API match confidence, 0-100
+  url: string;
+}
+
+export interface IcijAgentResult {
+  matches: OffshoreLeakMatch[];
   sources: Source[];
 }
 

@@ -38,6 +38,7 @@ export async function GET() {
         muckrockAccess: false,
         adminAccess: false,
         monthlyResearchLimit: 25,
+        publicRecordsAccess: false,
       },
       displayName: null,
       monthlyUsage: null,

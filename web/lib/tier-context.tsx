@@ -23,6 +23,11 @@ export interface TierConfig {
   // 7/17 weekend list #1 — hard monthly cap on quick profiles (all research
   // types), scoped to Basic. -1 = unlimited.
   monthlyResearchLimit: number;
+  // 7/20 public-record fusion sources (sanctions screening, Wayback
+  // archive history, ProPublica nonprofit lookup, LittleSis power-
+  // mapping) — Pro/Team+ only, surfaces as a "Public Records" section on
+  // company/person reports when true.
+  publicRecordsAccess: boolean;
 }
 
 /** Basic-tier monthly quick-profile usage, from the billing-anniversary
@@ -85,6 +90,7 @@ const DEFAULT_CONFIG: TierConfig = {
   muckrockAccess: false,
   adminAccess: false,
   monthlyResearchLimit: -1,
+  publicRecordsAccess: false,
 };
 
 const TierContext = createContext<TierContextValue>({
