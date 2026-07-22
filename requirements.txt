@@ -1,0 +1,10 @@
+# Agent core (agents/selene.py, agents/mcp_tools.py)
+supabase
+mcp[cli]
+
+# Interactive chat loop (agents/selene_chat.py) — Groq/Ollama, unrelated to
+# the claude -p path above
+openai
+
+# Tests
+pytest

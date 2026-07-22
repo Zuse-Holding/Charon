@@ -1,0 +1,200 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ember);
+}
+
+.count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 24px 4px;
+  color: var(--text-dim);
+  font-size: 13px;
+  max-width: 360px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--ember);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.module {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ember);
+  text-transform: uppercase;
+}
+
+.ts {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.summary {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.payload {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.payloadRow {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.payloadKey {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.payloadVal {
+  font-family: var(--font-mono);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.btn {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-align: center;
+}
+
+.approve {
+  background: var(--ok);
+  color: #05170c;
+}
+
+.approve:hover {
+  filter: brightness(1.08);
+}
+
+.reject {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+
+.reject:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.toasts {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 20;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.toastLabel {
+  white-space: nowrap;
+}
+
+.undo {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--selene);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.undo:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+  .toasts {
+    left: 12px;
+    right: 12px;
+  }
+
+  .toast {
+    justify-content: space-between;
+  }
+
+  .toastLabel {
+    white-space: normal;
+  }
+}
