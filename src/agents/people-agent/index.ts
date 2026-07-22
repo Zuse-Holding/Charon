@@ -8,6 +8,12 @@ import {
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractRoleAndCompany, splitSentences } from "../../lib/nlp.js";
 import { PersonExtractionSchema, extractStructured } from "../../lib/llm.js";
+import {
+  appendDomainExclusions,
+  findOverride,
+  isRejectedDomain,
+  resolveCompanyNameAsPerson,
+} from "../../entity-validation.js";
 
 /**
  * People Agent
@@ -36,6 +42,23 @@ export class PeopleAgent {
    *   sources get treated as authoritative when several show up.
    */
   async run(personName: string, deep = false, affiliation?: string): Promise<PersonAgentResult> {
+    // Guard against a company name literally routed into person search
+    // (e.g. "Alan Health" run with the Person type selected). Without
+    // this, the searches below go out as a blind "Alan Health ..." query
+    // with no domain filtering, and just as easily surface an unrelated
+    // same-first-name person at an unrelated health company as the real
+    // one — the entity-validation registry already knows "Alan Health"
+    // resolves to a company with a known CEO, so redirect to that person
+    // instead of searching the literal company name as if it were one.
+    const companyOverride = resolveCompanyNameAsPerson(personName);
+    if (companyOverride?.ceo) {
+      personName = companyOverride.ceo;
+    }
+    // Also covers prefix/aka matches (e.g. "Alan Health Technologies")
+    // so domain exclusions apply even when the literal-name redirect
+    // above didn't fire — same pattern as corporate-agent's 7/20 fix.
+    const override = findOverride(personName) ?? companyOverride;
+
     const currentYear = new Date().getFullYear();
     const resultCount = deep ? 10 : 5;
     const bgResultCount = deep ? 8 : 4;
@@ -47,11 +70,15 @@ export class PeopleAgent {
     // Google, even though the stored/displayed name stays just "Daniel Olmos".
     const searchSubject = affiliation ? `${personName} ${affiliation}` : personName;
 
-    const [bioResults, newsResults, backgroundResults] = await Promise.all([
-      this.searcher.search(`${searchSubject} current role position ${currentYear}`, resultCount),
-      this.searcher.search(`${searchSubject} news ${currentYear}`, resultCount),
-      this.searcher.search(`${searchSubject} education net worth background biography`, bgResultCount),
+    const [bioResultsRaw, newsResultsRaw, backgroundResultsRaw] = await Promise.all([
+      this.searcher.search(appendDomainExclusions(`${searchSubject} current role position ${currentYear}`, override), resultCount),
+      this.searcher.search(appendDomainExclusions(`${searchSubject} news ${currentYear}`, override), resultCount),
+      this.searcher.search(appendDomainExclusions(`${searchSubject} education net worth background biography`, override), bgResultCount),
     ]);
+
+    const bioResults = bioResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
+    const newsResults = newsResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
+    const backgroundResults = backgroundResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
 
     // Filtering: when an affiliation was given, sources that actually
     // mention it are much more likely to be about the right person (vs.

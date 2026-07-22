@@ -164,6 +164,29 @@ export function appendDomainExclusions(query: string, override: EntityOverride |
   return `${query} ${exclusions}`;
 }
 
+/**
+ * True when `name` is literally an org's own registry key, canonical
+ * name, or alias — i.e. a "person" search was actually run with a
+ * company name as the subject (e.g. someone searches "Alan Health" with
+ * the Person type selected). Exact match only, unlike findOverride's
+ * prefix matching: this decides whether to swap the search subject out
+ * for the org's known CEO entirely, so it needs to be conservative about
+ * what counts as "this literally is the company name."
+ */
+export function resolveCompanyNameAsPerson(name: string): EntityOverride | undefined {
+  const key = name.toLowerCase().trim();
+  if (!key) return undefined;
+  for (const [overrideKey, override] of Object.entries(ENTITY_OVERRIDES)) {
+    const variants = [
+      overrideKey,
+      override.canonical_name.toLowerCase().trim(),
+      ...override.aka.map((a) => a.toLowerCase().trim()),
+    ];
+    if (variants.includes(key)) return override;
+  }
+  return undefined;
+}
+
 export function isRejectedDomain(url: string, override: EntityOverride | undefined): boolean {
   if (!override?.reject_domains?.length) return false;
   try {
