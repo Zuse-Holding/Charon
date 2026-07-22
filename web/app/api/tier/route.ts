@@ -15,7 +15,7 @@ export async function GET() {
 
     const res = await fetch(`${AGENT_URL}/tier/${user.id}`, {
       headers: { "x-agent-secret": AGENT_SECRET },
-      next: { revalidate: 60 },
+      cache: "no-store",
     });
 
     if (!res.ok) throw new Error("Agent tier fetch failed");
