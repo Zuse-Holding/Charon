@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import { useTier } from "../../lib/tier-context";
@@ -61,11 +61,12 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   const router   = useRouter();
   const params   = useSearchParams();
   const next     = params.get("next") ?? "/app";
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient({ rememberMe }), [rememberMe]);
   const { refresh: refreshTier } = useTier();
 
   useEffect(() => {
@@ -73,8 +74,7 @@ function LoginPage() {
       if (event === "PASSWORD_RECOVERY") setRecoveryMode(true);
     });
     return () => listener.subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supabase]);
 
   async function handleEmail() {
     if (!email || !password) { setError("Email and password required."); return; }
@@ -325,10 +325,20 @@ function LoginPage() {
             </div>
 
             {mode === "signin" && (
-              <button
-                className={styles.forgotLink}
-                onClick={() => { setForgotOpen(true); setError(null); setMessage(null); }}
-              >Forgot password?</button>
+              <div className={styles.optionsRow}>
+                <label className={styles.rememberMe}>
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={e => setRememberMe(e.target.checked)}
+                  />
+                  Remember me
+                </label>
+                <button
+                  className={styles.forgotLink}
+                  onClick={() => { setForgotOpen(true); setError(null); setMessage(null); }}
+                >Forgot password?</button>
+              </div>
             )}
 
             {error   && <div className={styles.error}>{error}</div>}
