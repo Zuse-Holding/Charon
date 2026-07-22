@@ -620,11 +620,23 @@ app.get("/tier/:userId", async (req, res) => {
   const tier = await getUserTier(req.params.userId);
   const config = getTierConfig(tier);
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("display_name, notification_preferences")
-    .eq("id", req.params.userId)
-    .single();
+  // Two independent queries, not one — a missing/broken column on either
+  // side (e.g. notification_preferences not yet migrated in some
+  // environment) must not silently null out the other, working field.
+  const [displayNameResult, notifPrefsResult] = await Promise.all([
+    supabase.from("profiles").select("display_name").eq("id", req.params.userId).single(),
+    supabase.from("profiles").select("notification_preferences").eq("id", req.params.userId).single(),
+  ]);
+  if (displayNameResult.error) {
+    console.error("[tier] display_name fetch failed:", JSON.stringify(displayNameResult.error));
+  }
+  if (notifPrefsResult.error) {
+    console.error("[tier] notification_preferences fetch failed:", JSON.stringify(notifPrefsResult.error));
+  }
+  const profile = {
+    display_name: displayNameResult.data?.display_name ?? null,
+    notification_preferences: notifPrefsResult.data?.notification_preferences ?? null,
+  };
 
   // Reflect the real, allowlist-aware political access here too — not
   // just tier config — so the frontend's "POL" pill hides itself for
