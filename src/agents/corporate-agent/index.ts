@@ -7,6 +7,7 @@ import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/provider
 import { splitSentences } from "../../lib/nlp.js";
 import { FundingExtractionSchema, extractStructured } from "../../lib/llm.js";
 import { Form4Agent } from "../form4-agent/index.js";
+import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
 
 const AMOUNT_RE = /\$\s?\d+(?:[.,]\d+)?\s?(?:million|billion|M|B|K)\b/i;
 const ROUND_RE = /\b(Pre-[Ss]eed|[Ss]eed|Series [A-F])\b/;
@@ -37,12 +38,25 @@ export class CorporateAgent {
   }
 
   async run(companyName: string): Promise<CorporateAgentResult> {
-    const [results, form4Result] = await Promise.all([
-      this.searcher.search(`${companyName} funding round investors raised parent company subsidiary`, 5),
+    // 7/20 fix — this agent used to have no awareness of the entity
+    // override registry at all, so a funding round or ownership note
+    // sourced from a known-wrong domain (e.g. alan.com when researching
+    // "Alan Health") could reach the LLM prompt and the final report
+    // even when website-agent's own output was correctly filtered.
+    // Excluding at the query itself (-site:) plus dropping any
+    // rejected-domain result that still slips through, before any
+    // full-text fetch or prompt assembly, closes that gap the same way
+    // website-agent's filter does for company overview/leadership/products.
+    const override = findOverride(companyName);
+
+    const [rawResults, form4Result] = await Promise.all([
+      this.searcher.search(appendDomainExclusions(`${companyName} funding round investors raised parent company subsidiary`, override), 5),
       // Insider activity (Round 2, item 5) — same "who owns/controls this
       // company" question funding/ownership already answers here.
       this.form4Agent.run(companyName),
     ]);
+
+    const results = rawResults.filter((r) => !isRejectedDomain(r.url, override));
 
     const sources: Source[] = results.map((r) => ({
       url: r.url,

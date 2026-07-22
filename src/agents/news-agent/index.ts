@@ -1,5 +1,6 @@
 import { NewsAgentResult, NewsEntry, Source } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
+import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
 
 /**
  * News Agent
@@ -16,13 +17,21 @@ export class NewsAgent {
 
   async run(companyName: string): Promise<NewsAgentResult> {
     const currentYear = new Date().getFullYear();
+    // 7/20 fix — same entity-override reject list website-agent uses, now
+    // applied here too, both at the query (-site: exclusion) and as a
+    // post-fetch drop below. A generic noise-domain filter alone doesn't
+    // catch a wrong-but-legitimate-looking site like alan.com; this
+    // needs the per-entity registry specifically.
+    const override = findOverride(companyName);
     const results = await this.searcher.search(
-      `"${companyName}" news ${currentYear}`,
+      appendDomainExclusions(`"${companyName}" news ${currentYear}`, override),
       7
     );
 
     const NOISE_DOMAINS = ["youtube.com", "facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com"];
-    const filtered = results.filter(r => !NOISE_DOMAINS.some(d => r.url?.includes(d)));
+    const filtered = results
+      .filter(r => !NOISE_DOMAINS.some(d => r.url?.includes(d)))
+      .filter(r => !isRejectedDomain(r.url, override));
     const top = filtered.slice(0, 5);
 
     // Fetch full text for top 2 articles in parallel — gives the LLM

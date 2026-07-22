@@ -6,6 +6,7 @@ import {
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractOrganizations } from "../../lib/nlp.js";
 import { CompetitorExtractionSchema, extractStructured } from "../../lib/llm.js";
+import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
 
 const NON_COMPETITOR_ENTITIES = new Set([
   // Social media platforms
@@ -36,10 +37,19 @@ export class CompetitorAgent {
   ) {}
 
   async run(companyName: string): Promise<CompetitorAgentResult> {
-    const results = await this.searcher.search(
-      `${companyName} top competitors and alternatives`,
+    // 7/20 fix — a competitor-comparison article sourced from a known-
+    // wrong domain (e.g. alan.com when researching "Alan Health") could
+    // both mislabel a competitor list AND get fetched as the "full
+    // article" context below, same underlying gap as corporate-agent/
+    // news-agent. Excluded at the query itself, plus a post-fetch drop
+    // as a backstop.
+    const override = findOverride(companyName);
+    const rawResults = await this.searcher.search(
+      appendDomainExclusions(`${companyName} top competitors and alternatives`, override),
       5
     );
+
+    const results = rawResults.filter((r) => !isRejectedDomain(r.url, override));
 
     const sources: Source[] = results.map((r) => ({
       url: r.url,

@@ -11,6 +11,11 @@ import { OpenFecAgent } from "../openfec-agent/index.js";
 import { OpenCorporatesAgent } from "../opencorporates-agent/index.js";
 import { MuckRockAgent } from "../muckrock-agent/index.js";
 import { USASpendingAgent } from "../usaspending-agent/index.js";
+import { SanctionsAgent } from "../sanctions-agent/index.js";
+import { WaybackAgent } from "../wayback-agent/index.js";
+import { ProPublicaNonprofitAgent } from "../propublica-nonprofit-agent/index.js";
+import { LittleSisAgent } from "../littlesis-agent/index.js";
+import { IcijAgent } from "../icij-agent/index.js";
 import { synthesizeRisksOpportunities } from "../synthesis-agent/index.js";
 import { ReportAgent } from "../report-agent/index.js";
 import {
@@ -24,6 +29,7 @@ import {
   ProductResearchBundle,
   ResearchBundle,
   Source,
+  WebArchiveSummary,
 } from "../../types/research.js";
 import { classifyOfficeType } from "../../lib/office-classifier.js";
 import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
@@ -54,6 +60,11 @@ export class ResearchOrchestrator {
   private openCorporatesAgent: OpenCorporatesAgent;
   private muckRockAgent: MuckRockAgent;
   private usaSpendingAgent: USASpendingAgent;
+  private sanctionsAgent: SanctionsAgent;
+  private waybackAgent: WaybackAgent;
+  private nonprofitAgent: ProPublicaNonprofitAgent;
+  private littleSisAgent: LittleSisAgent;
+  private icijAgent: IcijAgent;
   private reportAgent: ReportAgent;
   private searcher: SearchProvider;
 
@@ -74,10 +85,23 @@ export class ResearchOrchestrator {
     this.openCorporatesAgent = new OpenCorporatesAgent(searcher, fetcher);
     this.muckRockAgent = new MuckRockAgent();
     this.usaSpendingAgent = new USASpendingAgent();
+    this.sanctionsAgent = new SanctionsAgent();
+    this.waybackAgent = new WaybackAgent();
+    this.nonprofitAgent = new ProPublicaNonprofitAgent();
+    this.littleSisAgent = new LittleSisAgent();
+    this.icijAgent = new IcijAgent();
     this.reportAgent = new ReportAgent();
   }
 
-  async researchCompany(companyName: string): Promise<{
+  /**
+   * @param proAccess 7/20 public-record fusion sources (sanctions
+   *   screening, Wayback archive history, ProPublica nonprofit lookup,
+   *   LittleSis power-mapping) — gated to Pro/Team/internal via
+   *   TierConfig.publicRecordsAccess, checked by the caller.
+   * @param deep Charon Protocol (internal tier only) — adds the ICIJ
+   *   Offshore Leaks reconciliation lookup on top of proAccess sources.
+   */
+  async researchCompany(companyName: string, proAccess = false, deep = false): Promise<{
     bundle: ResearchBundle;
     report: string;
   }> {
@@ -91,12 +115,29 @@ export class ResearchOrchestrator {
         this.usaSpendingAgent.run(companyName),
       ]);
 
+    // Public-record fusion sources — Pro/Team+ only. Wayback needs a
+    // resolved website URL, which only exists once siteResult is in, so
+    // this batch runs after the first Promise.all rather than alongside it.
+    const [sanctionsResult, waybackResult, nonprofitResult, littleSisResult, icijResult] =
+      await Promise.all([
+        proAccess ? this.sanctionsAgent.run(companyName) : Promise.resolve({ matches: [], sources: [] }),
+        proAccess && siteResult.company.website ? this.waybackAgent.run(siteResult.company.website) : Promise.resolve({ summary: {} as WebArchiveSummary, sources: [] }),
+        proAccess ? this.nonprofitAgent.run(companyName) : Promise.resolve({ organizations: [], sources: [] }),
+        proAccess ? this.littleSisAgent.run(companyName) : Promise.resolve({ matches: [], sources: [] }),
+        deep ? this.icijAgent.run(companyName) : Promise.resolve({ matches: [], sources: [] }),
+      ]);
+
     const sources: Source[] = [
       ...siteResult.sources,
       ...newsResult.sources,
       ...competitorResult.sources,
       ...corporateResult.sources,
       ...spendingResult.sources,
+      ...sanctionsResult.sources,
+      ...waybackResult.sources,
+      ...nonprofitResult.sources,
+      ...littleSisResult.sources,
+      ...icijResult.sources,
     ];
 
     const bundle: ResearchBundle = {
@@ -112,6 +153,11 @@ export class ResearchOrchestrator {
       sources,
       federalSpending: spendingResult.awards,
       insiderActivity: corporateResult.insiderActivity,
+      sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
+      webArchive: waybackResult.summary.snapshotCount ? waybackResult.summary : undefined,
+      nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
+      powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
+      offshoreLeaksMatches: icijResult.matches.length > 0 ? icijResult.matches : undefined,
     };
 
     // Risks/Opportunities is pure LLM synthesis with no heuristic
@@ -141,15 +187,24 @@ export class ResearchOrchestrator {
    *   e.g. "csun" from "Daniel Olmos csun". `personName` here is always
    *   the clean name; OpenCorporates/MuckRock search by legal name only,
    *   so affiliation is passed to the people agent alone.
+   * @param proAccess 7/20 public-record fusion sources (sanctions
+   *   screening, ProPublica nonprofit lookup, LittleSis power-mapping) —
+   *   gated to Pro/Team/internal via TierConfig.publicRecordsAccess,
+   *   checked by the caller. No Wayback for person research — see
+   *   wayback-agent's doc comment for why.
    */
-  async researchPerson(personName: string, deep = false, affiliation?: string): Promise<{
+  async researchPerson(personName: string, deep = false, affiliation?: string, proAccess = false): Promise<{
     bundle: PersonResearchBundle;
     report: string;
   }> {
-    const [result, corporateResult, foiaResult] = await Promise.all([
+    const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult, icijResult] = await Promise.all([
       this.peopleAgent.run(personName, deep, affiliation),
       deep ? this.openCorporatesAgent.run(personName) : Promise.resolve({ affiliations: [], sources: [] }),
       deep ? this.muckRockAgent.run(personName) : Promise.resolve({ requests: [], sources: [] }),
+      proAccess ? this.sanctionsAgent.run(personName) : Promise.resolve({ matches: [], sources: [] }),
+      proAccess ? this.nonprofitAgent.run(personName) : Promise.resolve({ organizations: [], sources: [] }),
+      proAccess ? this.littleSisAgent.run(personName) : Promise.resolve({ matches: [], sources: [] }),
+      deep ? this.icijAgent.run(personName) : Promise.resolve({ matches: [], sources: [] }),
     ]);
 
     const bundle: PersonResearchBundle = {
@@ -158,9 +213,16 @@ export class ResearchOrchestrator {
       person: result.person,
       careerHistory: result.careerHistory,
       news: result.news,
-      sources: [...result.sources, ...corporateResult.sources, ...foiaResult.sources],
+      sources: [
+        ...result.sources, ...corporateResult.sources, ...foiaResult.sources,
+        ...sanctionsResult.sources, ...nonprofitResult.sources, ...littleSisResult.sources, ...icijResult.sources,
+      ],
       corporateAffiliations: corporateResult.affiliations.length > 0 ? corporateResult.affiliations : undefined,
       foiaRequests: foiaResult.requests.length > 0 ? foiaResult.requests : undefined,
+      sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
+      nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
+      powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
+      offshoreLeaksMatches: icijResult.matches.length > 0 ? icijResult.matches : undefined,
     };
 
     const report = this.reportAgent.generatePerson(bundle);
