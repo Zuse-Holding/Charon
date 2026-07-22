@@ -1,0 +1,349 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.subtitle {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.statRow {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.statCard {
+  flex: 1;
+  min-width: 140px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.statLabel {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.statVal {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.statVal.in {
+  color: var(--ok);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sectionTitle {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.splitRow {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.splitCol {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.splitLine {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.splitLine .k {
+  color: var(--text-dim);
+  text-transform: capitalize;
+}
+
+.splitLine .v {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 8px 0;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field.span2 {
+  grid-column: span 2;
+}
+
+.field label {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.field input,
+.field select {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 7px 8px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--selene);
+}
+
+.checkField {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-start;
+}
+
+.checkField label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.submitRow {
+  grid-column: span 6;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+}
+
+.submitBtn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  background: var(--ember);
+  color: #1a0d02;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.submitBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.formError {
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.tableScroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch; /* momentum scroll on older iOS Safari */
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th {
+  text-align: left;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+
+.table .amt {
+  font-family: var(--font-mono);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table .amt.in {
+  color: var(--ok);
+}
+
+.table .dateCell {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+}
+
+.recurringHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.linkBtn {
+  font-size: 11px;
+  color: var(--selene);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.linkBtn:hover {
+  text-decoration: underline;
+}
+
+.rowActions {
+  display: flex;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.cellInput {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: var(--font-ui);
+  margin-bottom: 2px;
+}
+
+.cellInput:focus {
+  outline: none;
+  border-color: var(--selene);
+}
+
+.recurringAddForm {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.recurringAddSubmit {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .recurringAddForm {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 420px) {
+  .recurringAddForm {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .form {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .field.span2 {
+    grid-column: span 2;
+  }
+
+  .submitRow {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 420px) {
+  .form {
+    grid-template-columns: 1fr;
+  }
+
+  .field.span2 {
+    grid-column: span 1;
+  }
+
+  .submitRow {
+    grid-column: span 1;
+  }
+}
