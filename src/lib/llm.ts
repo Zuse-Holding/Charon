@@ -63,6 +63,39 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
   return result;
 }
 
+// --- Groq concurrency limiter ---
+// Every website/news/competitor/corporate/people/product/political agent
+// calls extractStructured independently, and the orchestrator fires several
+// of them via Promise.all per research run — if OpenRouter is down (as it
+// silently was after 2026-07-17, see DEFAULT_OPENROUTER_MODELS above), all
+// of them fall through to Groq at nearly the same instant. Groq's free tier
+// caps out at 12K TPM, and one extraction call (full-page-fetch input +
+// 1024-token output) can run into the low thousands of tokens by itself, so
+// a burst of 5-7 simultaneous calls can blow past both the TPM and 30 RPM
+// ceiling in one shot. This queues calls instead of rejecting or skipping
+// any of them — same number of extractions eventually run, just spread out
+// — so it only adds latency under contention, never drops coverage.
+// Only wraps the network call itself (not the retry backoff below) so a
+// call sleeping through a 429 backoff doesn't block other queued callers.
+const GROQ_MAX_CONCURRENT = 2;
+let groqActive = 0;
+const groqQueue: Array<() => void> = [];
+
+async function acquireGroqSlot(): Promise<void> {
+  if (groqActive < GROQ_MAX_CONCURRENT) {
+    groqActive++;
+    return;
+  }
+  await new Promise<void>((resolve) => groqQueue.push(resolve));
+  groqActive++;
+}
+
+function releaseGroqSlot(): void {
+  groqActive--;
+  const next = groqQueue.shift();
+  if (next) next();
+}
+
 // --- Ollama availability ---
 let ollamaAvailable: boolean | null = null;
 export async function isOllamaAvailable(): Promise<boolean> {
@@ -91,19 +124,25 @@ async function extractViaGroq<T>(
   if (!process.env.GROQ_API_KEY) return null;
   try {
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-    const completion = await groq.chat.completions.create({
-      model: modelOverride ?? GROQ_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: `${systemPrompt}\n\nIMPORTANT: Only extract facts explicitly present in the provided text. Never guess or invent information. Omit any field you're not confident about. Respond with ONLY valid JSON, no other text, no markdown backticks.`,
-        },
-        { role: "user", content: userContent },
-      ],
-      temperature: 0.1,
-      max_tokens: 1024,
-      response_format: { type: "json_object" },
-    });
+    await acquireGroqSlot();
+    let completion;
+    try {
+      completion = await groq.chat.completions.create({
+        model: modelOverride ?? GROQ_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: `${systemPrompt}\n\nIMPORTANT: Only extract facts explicitly present in the provided text. Never guess or invent information. Omit any field you're not confident about. Respond with ONLY valid JSON, no other text, no markdown backticks.`,
+          },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.1,
+        max_tokens: 1024,
+        response_format: { type: "json_object" },
+      });
+    } finally {
+      releaseGroqSlot();
+    }
 
     const raw = completion.choices[0]?.message?.content;
     if (!raw) { console.error("[llm:groq] No content in response"); return null; }
@@ -190,10 +229,28 @@ let openRouterKeyIndex = 0;
 // families that reason-by-default (Nvidia Nemotron 3, DeepSeek-R1,
 // QwQ, gpt-oss, o1/o3-style) aren't safe for strict-JSON extraction
 // even when asked for "ONLY JSON, no explanation".
+// meta-llama/llama-3.3-70b-instruct:free and qwen/qwen3-next-80b-a3b-instruct:free
+// (the prior defaults) were pulled from OpenRouter's free tier sometime after
+// 2026-07-17 — both now 404 with "unavailable for free", which silently killed
+// every OpenRouter call (fell through to Groq/Ollama with no visible error,
+// hence zero OpenRouter activity since that date) since the only model left in
+// the old list, Gemma, is frequently rate-limited upstream on its own.
+//
+// Confirmed live 2026-07-22 against the current /models catalog:
+// cohere/north-mini-code:free looked promising but is actually a reasoning
+// model despite the name — under a tight token budget it burns the whole
+// budget on a "reasoning" field and returns content: null, the same failure
+// mode already documented above for Nemotron/gpt-oss/DeepSeek-R1/QwQ. Ruled
+// out for the same reason. poolside/laguna-xs-2.1:free tested clean
+// (direct content, reasoning: null) and is currently the only non-Google
+// free vendor that isn't reasoning-first or rate-limited, so it's the
+// second entry despite the list only spanning two vendors right now — the
+// free-tier catalog has shrunk since the three-vendor rule above was
+// written. Re-diversify if a viable third vendor shows up.
 const DEFAULT_OPENROUTER_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "qwen/qwen3-next-80b-a3b-instruct:free",
   "google/gemma-4-31b-it:free",
+  "poolside/laguna-xs-2.1:free",
+  "google/gemma-4-26b-a4b-it:free",
 ];
 
 async function extractViaOpenRouter<T>(
