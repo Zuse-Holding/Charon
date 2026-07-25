@@ -29,7 +29,9 @@ export interface TierConfig {
   // company/person reports when true.
   publicRecordsAccess: boolean;
   // Creator / market-signal research (docs/next-verticals-scoping.md
-  // item #1) — Pro/Team+ only, same reasoning as publicRecordsAccess.
+  // item #1) — Charon/internal-only for now, while output quality gets
+  // validated on real cases. See the matching comment in
+  // server/agent-server.ts's TierConfig.
   creatorAccess: boolean;
 }
 
