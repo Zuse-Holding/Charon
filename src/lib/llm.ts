@@ -776,6 +776,7 @@ function toCreatorSignalArray(v: unknown): { topic: string; finding: string; sen
 }
 
 export const CreatorExtractionSchema = AnyObject.transform((obj) => ({
+  realName: toStringOrUndefined(obj.realName ?? obj.real_name ?? obj.fullName ?? obj.full_name),
   handle: toStringOrUndefined(obj.handle ?? obj.username),
   platform: toStringOrUndefined(obj.platform),
   category: toStringOrUndefined(obj.category ?? obj.niche),
