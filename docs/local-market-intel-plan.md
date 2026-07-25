@@ -3,9 +3,8 @@
 Status: **someday**. Not scheduled, not started, no code written. This is the
 build blueprint to execute *when* the go/no-go call in
 [`next-verticals-scoping.md`](./next-verticals-scoping.md) (item #2) gets
-made — pricing/tier placement and the "is CRE brokers/franchise scouts the
-right buyer" question are still open and belong to that conversation, not
-this doc. This doc only answers "how would we actually build it."
+made. Tier placement is decided (§3, white-glove/as-built service tier,
+Charon-gated) — what's still open is *when* to build it, not where it lives.
 
 ---
 
@@ -65,7 +64,7 @@ Same for the Census BFS API's current endpoint shape.
 ```ts
 export interface LocalMarketQuery {
   metro: "nyc" | "la" | "chicago"; // v1 — closed set, not freeform
-  businessType?: string;            // e.g. "restaurant", "retail"
+  businessType?: string;            // e.g. "restaurant", "retail" — omit for a full category breakdown
   dateRange?: { from: string; to: string }; // ISO dates
 }
 
@@ -78,6 +77,11 @@ export interface BusinessLicenseEntry {
   sourceUrl: string;
 }
 
+export interface CategoryCount {
+  category: string;
+  count: number;
+}
+
 export interface FormationTrendPoint {
   period: string;   // e.g. "2026-Q2"
   applications: number;
@@ -87,6 +91,17 @@ export interface FormationTrendPoint {
 export interface LocalMarketBundle {
   query: LocalMarketQuery;
   generatedAt: string;
+  // The headline answer to "how many Y businesses are in this area" —
+  // a server-side SoQL count(*), not a client-side count of `listings`
+  // below. Scales fine even when the true count is in the thousands.
+  totalCount: number;
+  // Populated when `query.businessType` is omitted — "what's actually
+  // here" as a category breakdown instead of one number.
+  categoryBreakdown?: CategoryCount[];
+  // A capped sample (e.g. the 50 most recent), NOT every matching row —
+  // for a specific-address/name lookup on top of the count, not a bulk
+  // export. Raise the cap or add pagination later if that becomes a real
+  // ask; don't default to returning everything.
   listings: BusinessLicenseEntry[];
   formationTrend?: FormationTrendPoint[]; // county/state-level, from Census BFS
   coverageNote: string; // always present — explicit "NYC/LA/Chicago only" disclaimer
@@ -100,7 +115,13 @@ export interface LocalMarketBundle {
   agents. Takes a per-metro config object (`{domain, datasetId, fieldMap}`)
   and speaks SoQL (Socrata's query language) to filter by date range and
   category. Adding a fourth metro later means adding a config entry, not a
-  new agent class.
+  new agent class. Issues two kinds of SoQL query, not one:
+  1. **Aggregate** (`$select=business_type,count(*)&$group=business_type`,
+     or a plain `count(*)` when `businessType` is specified) for
+     `totalCount`/`categoryBreakdown` — this is the primary "how many Y
+     businesses in this area" answer, computed server-side by Socrata.
+  2. **Row-level** (`$where`/`$limit=50`/`$order=issue_date DESC`) for the
+     capped `listings` sample — supporting evidence, not the headline number.
 - **`census-bfs-agent`** — separate agent, resolves the query's metro to a
   county/state FIPS code, pulls formation-trend data. Runs alongside
   `socrata-agent`, not dependent on it.
@@ -134,11 +155,15 @@ export interface LocalMarketBundle {
 
 ### Tier placement
 
-**Not decided — business/pricing call, not an engineering one.** Likely its
-own tier or add-on given the buyer (CRE brokers/franchise scouts) doesn't
-overlap with the existing LP/investor-research audience. Don't default this
-to any existing tier's access list without that conversation happening
-first.
+**Decided (7/24):** part of the white-glove/as-built service tier — a
+bespoke, managed offering rather than standard self-serve SaaS access,
+consistent with the buyer (CRE brokers/franchise scouts) not overlapping
+the existing LP/investor-research audience. Access-control-wise, gate it
+the same way `creatorAccess` is gated — Charon/internal-only in
+`TierConfig` (`server/agent-server.ts`) — until/unless the white-glove tier
+gets built out as its own real product surface rather than an internal-only
+flag. Don't wire it into `politicalAccess`/`publicRecordsAccess`-style
+self-serve tier gating.
 
 ---
 
@@ -161,7 +186,6 @@ first.
 - Whether "business type" filtering should be a curated dropdown (cleaner
   SoQL queries, consistent categories across metros) or freeform text
   (more flexible, messier to normalize across three different schemas).
-- Tier/pricing placement (business call).
 - Whether this ever needs `NewsAgent`/synthesis-style enrichment, or stays
   pure structured-data — leaning toward the latter for v1 given the
   audience wants filterable listings, not narrative.
