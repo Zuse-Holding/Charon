@@ -12,6 +12,7 @@ const CLI_COMMANDS: Record<string, string> = {
   person:    "research-person",
   product:   "research-product",
   political: "research-political",
+  creator:   "research-creator",
 };
 
 function slugify(name: string) {
@@ -23,6 +24,7 @@ function getReportPath(subject: string, type: string): string {
   if (type === "person") return join(root, "reports", "people", `${slugify(subject)}.md`);
   if (type === "product") return join(root, "reports", "products", `${slugify(subject)}.md`);
   if (type === "political") return join(root, "reports", "political", `${slugify(subject)}.md`);
+  if (type === "creator") return join(root, "reports", "creators", `${slugify(subject)}.md`);
   return join(root, "reports", `${slugify(subject)}.md`);
 }
 

@@ -10,3 +10,4 @@
 .company { background: rgba(255,107,43,0.15); color: var(--orange); }
 .person  { background: rgba(0,229,255,0.12);  color: var(--cyan);   }
 .product { background: rgba(0,255,148,0.10);  color: var(--green);  }
+.creator { background: rgba(255,212,71,0.12); color: var(--yellow); }

@@ -1,6 +1,6 @@
 import styles from "./EntityTag.module.css";
 
-type Type = "company" | "person" | "product";
+type Type = "company" | "person" | "product" | "creator";
 
 export default function EntityTag({ type }: { type: Type }) {
   return (

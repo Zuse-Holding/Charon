@@ -20,7 +20,15 @@ export interface SearchResult {
 }
 
 export interface SearchProvider {
-  search(query: string, count?: number): Promise<SearchResult[]>;
+  /**
+   * @param tbs Optional Google time-based-search filter (Serper passes
+   *   this straight through) — "qdr:h" past hour, "qdr:d" past day,
+   *   "qdr:w" past week, "qdr:m" past month, "qdr:y" past year. Omit for
+   *   no time restriction (existing behavior, unchanged for every caller
+   *   that doesn't pass it). Added for creator-signal-agent's short-form
+   *   mention search, where freshness is the point — see that agent.
+   */
+  search(query: string, count?: number, tbs?: string): Promise<SearchResult[]>;
 }
 
 export interface FetchProvider {
@@ -87,7 +95,7 @@ export class SerperSearchProvider implements SearchProvider {
     this.apiKey = apiKey ?? process.env.SERPER_API_KEY;
   }
 
-  async search(query: string, count = 5): Promise<SearchResult[]> {
+  async search(query: string, count = 5, tbs?: string): Promise<SearchResult[]> {
     if (!this.apiKey) return [];
     try {
       const res = await fetch("https://google.serper.dev/search", {
@@ -96,7 +104,7 @@ export class SerperSearchProvider implements SearchProvider {
           "X-API-KEY": this.apiKey,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ q: query, num: count }),
+        body: JSON.stringify(tbs ? { q: query, num: count, tbs } : { q: query, num: count }),
       });
       if (!res.ok) return [];
       const data = (await res.json()) as {

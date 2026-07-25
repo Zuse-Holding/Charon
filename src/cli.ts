@@ -144,6 +144,25 @@ program
     console.log(`Report written to ${outPath}`);
   });
 
+// ── research-creator ──────────────────────────────────────────────────
+program
+  .command("research-creator")
+  .argument("<name>")
+  .description("Creator / market-signal research: bio, YouTube stats, interest trend, what people are saying")
+  .action(async (name: string) => {
+    const dir = join(process.cwd(), "reports", "creators");
+    mkdirSync(dir, { recursive: true });
+    const outPath = join(dir, `${slugify(name)}.md`);
+
+    console.log(`Researching (creator) "${name}"...`);
+    warnIfNoSearchKey(); logLLMProvider();
+    const orchestrator = new ResearchOrchestrator();
+    const { bundle, report } = await orchestrator.researchCreator(name);
+    writeFileSync(outPath, report, "utf-8");
+    recordRun({ id: randomUUID(), type: "creator", subject: name, generatedAt: bundle.generatedAt, reportPath: outPath, bundle });
+    console.log(`Report written to ${outPath}`);
+  });
+
 // ── research-product ──────────────────────────────────────────────────
 program
   .command("research-product")

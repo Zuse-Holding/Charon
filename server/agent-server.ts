@@ -95,21 +95,26 @@ interface TierConfig {
   // these. Separate from charonProtocol, which gates the further-still
   // ICIJ Offshore Leaks source on top of this.
   publicRecordsAccess: boolean;
+  // Creator / market-signal research (docs/next-verticals-scoping.md
+  // item #1, general v1) — gated above Basic per that doc's recommendation
+  // ("data quality is inherently softer than the company/person pipelines
+  // — revisit once real output quality is validated").
+  creatorAccess: boolean;
 }
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, publicRecordsAccess: true },
-  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true },
-  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true },
-  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, publicRecordsAccess: false },
-  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: false },
+  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
+  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
+  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
+  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, publicRecordsAccess: false, creatorAccess: false },
+  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: false, creatorAccess: false },
   // Time-boxed tier for external demo/partner accounts (limited partners,
   // investor trials, etc). Deliberately mirrors "team" limits and features
   // so the demo shows the platform at full strength — the ONLY things it
   // withholds are politicalAccess and charonProtocol, which stay off
   // regardless of what tier gets requested for these accounts. Expiry
   // enforced via profiles.trial_expires_at, checked in getUserTier below.
-  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true },
+  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
 };
 
 /**
@@ -142,7 +147,7 @@ const EXPIRED_CONFIG: TierConfig = {
   politicalAccess: false, watchlistLimit: 0, knowledgeGraphAccess: false,
   exportAccess: false, charonProtocol: false, chatWidgetAccess: false,
   personResearchAccess: false, muckrockAccess: false, adminAccess: false,
-  monthlyResearchLimit: 0, publicRecordsAccess: false,
+  monthlyResearchLimit: 0, publicRecordsAccess: false, creatorAccess: false,
 };
 
 function getTierConfig(tier: Tier | "expired"): TierConfig {
@@ -268,6 +273,7 @@ mkdirSync(REPORTS_DIR, { recursive: true });
 mkdirSync(join(REPORTS_DIR, "people"), { recursive: true });
 mkdirSync(join(REPORTS_DIR, "products"), { recursive: true });
 mkdirSync(join(REPORTS_DIR, "political"), { recursive: true });
+mkdirSync(join(REPORTS_DIR, "creators"), { recursive: true });
 
 function slugify(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -309,6 +315,10 @@ app.post("/research", async (req, res) => {
     // this (not tier), "requires Pro or higher" would be misleading for
     // an account that's actually already on Pro/Team.
     return tierDenied(res, "Political research is not enabled for this account.");
+  }
+
+  if (type === "creator" && !config.creatorAccess) {
+    return tierDenied(res, "Creator research requires Pro or higher.");
   }
 
   if (config.dailyResearchLimit !== -1) {
@@ -403,6 +413,10 @@ app.post("/research", async (req, res) => {
         const result = await orchestrator.researchPolitical(subject, deep);
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, "political", `${slugify(subject)}.md`);
+      } else if (type === "creator") {
+        const result = await orchestrator.researchCreator(subject);
+        bundle = result.bundle; report = result.report;
+        outPath = join(REPORTS_DIR, "creators", `${slugify(subject)}.md`);
       } else {
         const result = await orchestrator.researchProduct(subject);
         bundle = result.bundle; report = result.report;
@@ -438,7 +452,7 @@ app.post("/research", async (req, res) => {
 
     res.json({ ok: true, runId, reportPath: outPath, tier, charon: config.charonProtocol });
 
-    if (type === "company" || type === "person" || type === "product" || type === "political") {
+    if (type === "company" || type === "person" || type === "product" || type === "political" || type === "creator") {
       const entityAgent = new EntityExtractionAgent();
       setTimeout(() => {
         entityAgent.extract(report, { name: subject, type })

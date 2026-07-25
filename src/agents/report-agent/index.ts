@@ -1,4 +1,4 @@
-import { PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle } from "../../types/research.js";
+import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle } from "../../types/research.js";
 
 /**
  * Report Agent
@@ -578,6 +578,113 @@ export class ReportAgent {
       for (const o of bundle.oppositionResearch) {
         const severityTag = o.severity ? ` [${o.severity.toUpperCase()}]` : "";
         lines.push(`- **${o.topic}**${severityTag} — ${o.finding}`);
+      }
+    }
+    lines.push(``);
+
+    lines.push(`## Recent News`);
+    if (bundle.news.length === 0) {
+      lines.push(`_No recent news found._`);
+    } else {
+      for (const n of bundle.news) {
+        lines.push(`- [${n.headline}](${n.url ?? "#"})${n.summary ? ` — ${n.summary}` : ""}`);
+      }
+    }
+    lines.push(``);
+
+    lines.push(`## Sources`);
+    if (bundle.sources.length === 0) {
+      lines.push(`_No sources recorded._`);
+    } else {
+      bundle.sources.forEach((s, i) => {
+        lines.push(`${i + 1}. [${s.title ?? s.url}](${s.url})`);
+      });
+    }
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Creator / market-signal report (general v1). Trend and YouTube stats
+   * are shown as best-effort/sourced-but-unverified where they came from
+   * search synthesis, and as real numbers where they came from the
+   * YouTube Data API — same "don't blur real data with a guess"
+   * discipline as the political report's FEC vs. search-synthesis split.
+   */
+  generateCreator(bundle: CreatorResearchBundle): string {
+    const lines: string[] = [];
+
+    lines.push(`# ${bundle.profile.name} — Creator / Market-Signal Report`);
+    lines.push(``);
+    lines.push(`*Generated ${bundle.generatedAt}*`);
+    lines.push(``);
+
+    lines.push(`## Profile`);
+    lines.push(
+      bundle.profile.summary
+        ? bundle.profile.summary
+        : `_No summary data found for ${bundle.profile.name}._`
+    );
+    lines.push(``);
+    const facts: string[] = [];
+    if (bundle.profile.handle) facts.push(`**Handle:** ${bundle.profile.handle}`);
+    if (bundle.profile.platform) facts.push(`**Platform:** ${bundle.profile.platform}`);
+    if (bundle.profile.category) facts.push(`**Category:** ${bundle.profile.category}`);
+    if (bundle.profile.knownFor) facts.push(`**Known For:** ${bundle.profile.knownFor}`);
+    if (facts.length > 0) {
+      for (const f of facts) lines.push(`- ${f}`);
+      lines.push(``);
+    }
+
+    lines.push(`## YouTube Stats`);
+    if (bundle.youtubeStats) {
+      const s = bundle.youtubeStats;
+      lines.push(`- **Channel:** [${s.channelTitle}](${s.url})`);
+      lines.push(`- **Subscribers:** ${s.subscriberCount ?? "Hidden"}`);
+      lines.push(`- **Total Views:** ${s.viewCount ?? "Unknown"}`);
+      lines.push(`- **Videos:** ${s.videoCount ?? "Unknown"}`);
+      if (s.publishedAt) lines.push(`- **Channel Created:** ${s.publishedAt.slice(0, 10)}`);
+    } else {
+      lines.push(`_No matching YouTube channel found, or YOUTUBE_API_KEY isn't configured._`);
+    }
+    lines.push(``);
+
+    lines.push(`## Interest Trend`);
+    if (bundle.trend && bundle.trend.points.length > 0) {
+      const t = bundle.trend;
+      const directionLabel = t.direction === "rising" ? "Rising ↑" : t.direction === "falling" ? "Falling ↓" : "Flat →";
+      lines.push(`- **Direction (last 3mo):** ${directionLabel}`);
+      if (t.averageInterest !== undefined) lines.push(`- **Average Relative Interest:** ${t.averageInterest}/100`);
+      lines.push(`_Google Trends search-interest index, 0-100 relative to the term's own peak — not a follower or view count._`);
+    } else {
+      lines.push(`_No Google Trends data available for this name — either search interest is too low to chart, or the lookup failed._`);
+    }
+    lines.push(``);
+
+    lines.push(`## Short-Form Mentions (TikTok / Instagram)`);
+    if (bundle.shortFormMentions.length === 0) {
+      lines.push(`_No recent (past month) TikTok or Instagram mentions found via search. Neither platform has a reliable free API for follower/post data on an arbitrary account, so this is search-indexed mentions only, not a full scan of either platform — see docs/next-verticals-scoping.md._`);
+    } else {
+      const tiktok = bundle.shortFormMentions.filter((m) => m.platform === "tiktok");
+      const instagram = bundle.shortFormMentions.filter((m) => m.platform === "instagram");
+      if (tiktok.length > 0) {
+        lines.push(`**TikTok:**`);
+        for (const m of tiktok) lines.push(`- [${m.title}](${m.url})${m.snippet ? ` — ${m.snippet}` : ""}`);
+      }
+      if (instagram.length > 0) {
+        lines.push(`**Instagram:**`);
+        for (const m of instagram) lines.push(`- [${m.title}](${m.url})${m.snippet ? ` — ${m.snippet}` : ""}`);
+      }
+    }
+    lines.push(``);
+
+    lines.push(`## What People Are Saying`);
+    if (bundle.signals.length === 0) {
+      lines.push(`_No specific chatter, controversy, or sponsorship-reaction findings in this pass._`);
+    } else {
+      for (const s of bundle.signals) {
+        const sentimentTag = s.sentiment ? ` [${s.sentiment.toUpperCase()}]` : "";
+        lines.push(`- **${s.topic}**${sentimentTag} — ${s.finding}`);
       }
     }
     lines.push(``);

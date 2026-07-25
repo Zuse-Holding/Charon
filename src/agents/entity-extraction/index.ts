@@ -56,18 +56,20 @@ export interface EntityExtractionResult {
 export class EntityExtractionAgent {
   async extract(
     reportMarkdown: string,
-    primarySubject: { name: string; type: "company" | "person" | "product" | "political" }
+    primarySubject: { name: string; type: "company" | "person" | "product" | "political" | "creator" }
   ): Promise<EntityExtractionResult> {
     const truncated = reportMarkdown.slice(0, 4000);
 
     // The knowledge graph's entity type only has three kinds (matches
-    // the kg_entities DB CHECK constraint) — "political" isn't a graph
-    // entity type, it's a research-run type. A politician is a person
-    // for graph purposes. Confirmed in production: passing "political"
+    // the kg_entities DB CHECK constraint) — "political" and "creator"
+    // aren't graph entity types, they're research-run types. A politician
+    // or a content creator is a person for graph purposes (same reasoning
+    // for both — most creators are individuals, not registered
+    // companies). Confirmed in production for "political": passing it
     // straight into the prompt as "(political)" got the LLM to echo
     // "political" back as an entity type, which the schema (rightly)
     // rejects, silently dropping every entity in that batch.
-    const graphType = primarySubject.type === "political" ? "person" : primarySubject.type;
+    const graphType = primarySubject.type === "political" || primarySubject.type === "creator" ? "person" : primarySubject.type;
 
     const prompt = `You are extracting named entities and relationships from a business research report about "${primarySubject.name}" for a knowledge graph.
 

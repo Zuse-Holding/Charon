@@ -13,6 +13,7 @@
     "research-person": "tsx src/cli.ts research-person",
     "research-product": "tsx src/cli.ts research-product",
     "research-political": "tsx src/cli.ts research-political",
+    "research-creator": "tsx src/cli.ts research-creator",
     "deep-dive": "tsx src/cli.ts deep-dive",
     "list": "tsx src/cli.ts list",
     "show": "tsx src/cli.ts show",

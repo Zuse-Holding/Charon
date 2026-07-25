@@ -755,3 +755,32 @@ export const PoliticalExtractionSchema = AnyObject.transform((obj) => ({
   oppositionResearch: toOppositionResearchArray(obj.oppositionResearch ?? obj.opposition_research),
 }));
 export type PoliticalExtraction = z.infer<typeof PoliticalExtractionSchema>;
+
+// --- Creator / market-signal extraction (general v1) ---
+
+function toCreatorSignalArray(v: unknown): { topic: string; finding: string; sentiment?: "positive" | "negative" | "neutral" | "mixed" }[] {
+  if (!v) return [];
+  const items = Array.isArray(v) ? v : [v];
+  return items.flatMap((item) => {
+    if (typeof item !== "object" || item === null) return [];
+    const o = item as Record<string, unknown>;
+    const topic = String(o.topic ?? o.category ?? "").replace(/\*\*/g, "").trim();
+    const finding = String(o.finding ?? o.description ?? o.detail ?? "").replace(/\*\*/g, "").trim();
+    if (!topic || !finding) return [];
+    const sentimentRaw = String(o.sentiment ?? "").toLowerCase();
+    const sentiment = ["positive", "negative", "neutral", "mixed"].includes(sentimentRaw)
+      ? (sentimentRaw as "positive" | "negative" | "neutral" | "mixed")
+      : undefined;
+    return [{ topic, finding, sentiment }];
+  });
+}
+
+export const CreatorExtractionSchema = AnyObject.transform((obj) => ({
+  handle: toStringOrUndefined(obj.handle ?? obj.username),
+  platform: toStringOrUndefined(obj.platform),
+  category: toStringOrUndefined(obj.category ?? obj.niche),
+  summary: toStringOrUndefined(obj.summary),
+  knownFor: toStringOrUndefined(obj.knownFor ?? obj.known_for),
+  signals: toCreatorSignalArray(obj.signals ?? obj.chatter ?? obj.discussion),
+}));
+export type CreatorExtraction = z.infer<typeof CreatorExtractionSchema>;

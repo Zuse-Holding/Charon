@@ -214,7 +214,7 @@ export interface DeepDiveBundle {
 
 export interface WatchlistEntry {
   id: string;
-  type: "company" | "person" | "product" | "political";
+  type: "company" | "person" | "product" | "political" | "creator";
   subject: string;
   addedAt: string;
   lastRefreshedAt?: string;
@@ -496,6 +496,92 @@ export interface OffshoreLeakMatch {
 
 export interface IcijAgentResult {
   matches: OffshoreLeakMatch[];
+  sources: Source[];
+}
+
+// --- Creator / Market-Signal Intelligence (roadmap #1, general v1) ---
+// General, multi-industry version of the bespoke TikTok tool in
+// src/agents/creator-agent (hardcoded to GLP-1/weight-loss hashtags, paid
+// unofficial RapidAPI scraper — see that file's doc comment). This is
+// search-synthesis (same pattern as political-agent) plus one real free
+// API — YouTube Data API for subscriber/view counts, the one
+// authoritative hard-numbers source here — and a best-effort Google
+// Trends read for rising/falling interest. TikTok/Instagram/X follower
+// stats have no reliable free API for arbitrary accounts, so this
+// intentionally doesn't attempt them; see docs/next-verticals-scoping.md.
+// See src/agents/creator-signal-agent.
+
+export interface CreatorProfile {
+  name: string;
+  handle?: string;    // e.g. "@mkbhd" — only if a specific platform handle was identified in source text
+  platform?: string;  // "YouTube" | "TikTok" | "Instagram" | "X" | etc — best-effort from source text
+  category?: string;  // niche/vertical, e.g. "tech reviews", "GLP-1/weight-loss"
+  summary?: string;
+  knownFor?: string;
+}
+
+export interface YoutubeChannelStats {
+  channelId: string;
+  channelTitle: string;
+  subscriberCount?: string;
+  viewCount?: string;
+  videoCount?: string;
+  publishedAt?: string; // channel creation date
+  url: string;
+}
+
+export interface TrendPoint {
+  date: string;     // ISO date
+  interest: number; // Google Trends 0-100 relative interest
+}
+
+export interface TrendSummary {
+  keyword: string;
+  points: TrendPoint[];
+  direction?: "rising" | "falling" | "flat";
+  averageInterest?: number;
+}
+
+export interface CreatorSignalEntry {
+  topic: string; // what's being said, e.g. "sponsorship backlash", "viral growth"
+  finding: string;
+  sentiment?: "positive" | "negative" | "neutral" | "mixed";
+}
+
+// Raw, unsynthesized search hits on tiktok.com/instagram.com — deliberately
+// NOT run through the LLM like `signals` above. A direct link to the actual
+// post is sharper evidence than a paraphrase, and it's the free
+// alternative to a paid TikTok/Instagram data API (Modash, HypeAuditor,
+// etc — no reliable free API exists for either platform's follower/post
+// data on an arbitrary account, see docs/next-verticals-scoping.md).
+// Filtered to recent activity (see fetchShortFormMentions) since the
+// whole point is catching what's happening *now*, not a historical
+// archive.
+export interface ShortFormMention {
+  platform: "tiktok" | "instagram";
+  title: string;
+  url: string;
+  snippet?: string;
+}
+
+export interface CreatorAgentResult {
+  profile: CreatorProfile;
+  youtubeStats?: YoutubeChannelStats;
+  trend?: TrendSummary;
+  signals: CreatorSignalEntry[];
+  shortFormMentions: ShortFormMention[];
+  sources: Source[];
+}
+
+export interface CreatorResearchBundle {
+  query: string;
+  generatedAt: string;
+  profile: CreatorProfile;
+  youtubeStats?: YoutubeChannelStats;
+  trend?: TrendSummary;
+  signals: CreatorSignalEntry[];
+  shortFormMentions: ShortFormMention[];
+  news: NewsEntry[];
   sources: Source[];
 }
 

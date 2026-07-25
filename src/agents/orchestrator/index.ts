@@ -5,6 +5,7 @@ import { CorporateAgent } from "../corporate-agent/index.js";
 import { PeopleAgent } from "../people-agent/index.js";
 import { ProductAgent } from "../product-agent/index.js";
 import { PoliticalAgent } from "../political-agent/index.js";
+import { CreatorSignalAgent } from "../creator-signal-agent/index.js";
 import { CongressAgent } from "../congress-agent/index.js";
 import { LegiScanAgent } from "../legiscan-agent/index.js";
 import { OpenFecAgent } from "../openfec-agent/index.js";
@@ -24,6 +25,7 @@ import {
   SearchProvider,
 } from "../../lib/providers.js";
 import {
+  CreatorResearchBundle,
   PersonResearchBundle,
   PoliticalResearchBundle,
   ProductResearchBundle,
@@ -54,6 +56,7 @@ export class ResearchOrchestrator {
   private peopleAgent: PeopleAgent;
   private productAgent: ProductAgent;
   private politicalAgent: PoliticalAgent;
+  private creatorSignalAgent: CreatorSignalAgent;
   private congressAgent: CongressAgent;
   private legiScanAgent: LegiScanAgent;
   private openFecAgent: OpenFecAgent;
@@ -79,6 +82,7 @@ export class ResearchOrchestrator {
     this.peopleAgent = new PeopleAgent(fetcher, searcher);
     this.productAgent = new ProductAgent(fetcher, searcher);
     this.politicalAgent = new PoliticalAgent(fetcher, searcher);
+    this.creatorSignalAgent = new CreatorSignalAgent(fetcher, searcher);
     this.congressAgent = new CongressAgent(searcher);
     this.legiScanAgent = new LegiScanAgent();
     this.openFecAgent = new OpenFecAgent();
@@ -236,6 +240,40 @@ export class ResearchOrchestrator {
   }> {
     const bundle = await this.productAgent.run(productName);
     const report = this.reportAgent.generateProduct(bundle);
+    return { bundle, report };
+  }
+
+  /**
+   * Creator / market-signal research (general v1, per
+   * docs/next-verticals-scoping.md item #1): who is this creator/account,
+   * is their reach rising or falling, and what are people currently
+   * saying about them. Reuses NewsAgent directly for press coverage —
+   * same parallel-dispatch pattern researchCompany uses for its own news
+   * call — rather than duplicating that logic inside the signal agent.
+   */
+  async researchCreator(name: string): Promise<{
+    bundle: CreatorResearchBundle;
+    report: string;
+  }> {
+    const [signalResult, newsResult] = await Promise.all([
+      this.creatorSignalAgent.run(name),
+      this.newsAgent.run(name),
+    ]);
+
+    const bundle: CreatorResearchBundle = {
+      query: name,
+      generatedAt: new Date().toISOString(),
+      profile: signalResult.profile,
+      youtubeStats: signalResult.youtubeStats,
+      trend: signalResult.trend,
+      signals: signalResult.signals,
+      shortFormMentions: signalResult.shortFormMentions,
+      news: newsResult.news,
+      sources: [...signalResult.sources, ...newsResult.sources],
+    };
+
+    const report = this.reportAgent.generateCreator(bundle);
+
     return { bundle, report };
   }
 
