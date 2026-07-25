@@ -59,8 +59,12 @@ interface YoutubeSearchResponse {
   items?: { id?: { channelId?: string }; snippet?: { channelId?: string } }[];
 }
 
+// Shape of a channels.list response — used for both the id= lookup and
+// the forHandle= lookup below. Unlike search.list, the channel ID here
+// sits directly on `id` (a plain string), not nested under `id.channelId`.
 interface YoutubeChannelsResponse {
   items?: {
+    id?: string;
     snippet?: { title?: string; publishedAt?: string };
     statistics?: {
       subscriberCount?: string;
@@ -71,31 +75,67 @@ interface YoutubeChannelsResponse {
   }[];
 }
 
-async function fetchYoutubeChannelStats(name: string): Promise<YoutubeChannelStats | null> {
+/**
+ * @param handle The exact @handle, if the query looked like one (see
+ *   `isHandleQuery` in `run()`) — tried first via `forHandle`, YouTube's
+ *   direct/exact lookup (1 quota unit, no fuzzy matching), before falling
+ *   back to the `name`-based fuzzy `search.list` call (100 units). Using
+ *   the wrong tool for a known-exact handle was the likely cause of
+ *   "YouTube Stats" silently coming back empty for a handle that fuzzy
+ *   text search didn't happen to match well.
+ */
+async function fetchYoutubeChannelStats(name: string, handle?: string): Promise<YoutubeChannelStats | null> {
   if (!YOUTUBE_API_KEY) return null;
   try {
-    const searchRes = await fetch(
-      `${YOUTUBE_BASE}/search?part=snippet&type=channel&maxResults=1&q=${encodeURIComponent(name)}&key=${YOUTUBE_API_KEY}`,
-      { signal: AbortSignal.timeout(10_000) }
-    );
-    if (!searchRes.ok) {
-      console.warn(`[creator-signal-agent] YouTube search HTTP ${searchRes.status} for "${name}"`);
-      return null;
-    }
-    const searchData = (await searchRes.json()) as YoutubeSearchResponse;
-    const channelId = searchData.items?.[0]?.id?.channelId ?? searchData.items?.[0]?.snippet?.channelId;
-    if (!channelId) return null;
+    let channelId: string | undefined;
+    let channelData: YoutubeChannelsResponse | undefined;
 
-    const statsRes = await fetch(
-      `${YOUTUBE_BASE}/channels?part=snippet,statistics&id=${channelId}&key=${YOUTUBE_API_KEY}`,
-      { signal: AbortSignal.timeout(10_000) }
-    );
-    if (!statsRes.ok) {
-      console.warn(`[creator-signal-agent] YouTube channels HTTP ${statsRes.status} for "${name}"`);
-      return null;
+    if (handle) {
+      const handleRes = await fetch(
+        `${YOUTUBE_BASE}/channels?part=snippet,statistics&forHandle=${encodeURIComponent(handle)}&key=${YOUTUBE_API_KEY}`,
+        { signal: AbortSignal.timeout(10_000) }
+      );
+      if (handleRes.ok) {
+        const data = (await handleRes.json()) as YoutubeChannelsResponse;
+        if (data.items?.[0]?.id) {
+          channelId = data.items[0].id;
+          channelData = data;
+        }
+      } else {
+        console.warn(`[creator-signal-agent] YouTube forHandle HTTP ${handleRes.status} for "${handle}"`);
+      }
     }
-    const statsData = (await statsRes.json()) as YoutubeChannelsResponse;
-    const item = statsData.items?.[0];
+
+    // Fuzzy fallback — either no handle was given, or the given handle
+    // isn't actually this creator's YouTube handle (e.g. a TikTok-only
+    // or Instagram-only @).
+    if (!channelId) {
+      const searchRes = await fetch(
+        `${YOUTUBE_BASE}/search?part=snippet&type=channel&maxResults=1&q=${encodeURIComponent(name)}&key=${YOUTUBE_API_KEY}`,
+        { signal: AbortSignal.timeout(10_000) }
+      );
+      if (!searchRes.ok) {
+        console.warn(`[creator-signal-agent] YouTube search HTTP ${searchRes.status} for "${name}"`);
+        return null;
+      }
+      const searchData = (await searchRes.json()) as YoutubeSearchResponse;
+      channelId = searchData.items?.[0]?.id?.channelId ?? searchData.items?.[0]?.snippet?.channelId;
+      if (!channelId) return null;
+    }
+
+    if (!channelData) {
+      const statsRes = await fetch(
+        `${YOUTUBE_BASE}/channels?part=snippet,statistics&id=${channelId}&key=${YOUTUBE_API_KEY}`,
+        { signal: AbortSignal.timeout(10_000) }
+      );
+      if (!statsRes.ok) {
+        console.warn(`[creator-signal-agent] YouTube channels HTTP ${statsRes.status} for "${name}"`);
+        return null;
+      }
+      channelData = (await statsRes.json()) as YoutubeChannelsResponse;
+    }
+
+    const item = channelData.items?.[0];
     if (!item) return null;
 
     return {
@@ -217,6 +257,20 @@ export class CreatorSignalAgent {
   ) {}
 
   async run(name: string): Promise<CreatorAgentResult> {
+    // A query starting with "@" is unambiguously a handle/username, not
+    // a real name — e.g. "@mkbhd" instead of "Marques Brownlee". Search
+    // queries built as `${name} ...` still work fine with the raw handle
+    // (Google/Serper handles a literal "@word" query text without
+    // issue), but two things specifically benefit from knowing it's a
+    // handle: (1) YouTube lookup can use the exact `forHandle` API
+    // instead of fuzzy name search, and (2) the resolved real name (once
+    // the LLM finds it in source text) should replace the bare handle as
+    // `profile.name` — so the report title reads "Marques Brownlee," not
+    // "@mkbhd" — everywhere except `bundle.query`/the DB subject, which
+    // orchestrator.researchCreator sets from the original input and
+    // must stay exactly what the user typed (re-run matching, slugs).
+    const isHandleQuery = name.trim().startsWith("@");
+
     const queries = [
       `${name} creator influencer bio niche platform followers`,
       `${name} going viral trending growth`,
@@ -267,6 +321,9 @@ export class CreatorSignalAgent {
     const combinedText = sectionTexts.filter(Boolean).join("\n\n");
 
     const profile: CreatorProfile = { name };
+    // Already 100% certain from the input itself — don't let a fuzzy
+    // LLM-extracted `handle` (re-derived from source text) overwrite this.
+    if (isHandleQuery) profile.handle = name.trim();
     let signals: CreatorSignalEntry[] = [];
 
     if (combinedText.length > 0) {
@@ -275,6 +332,9 @@ export class CreatorSignalAgent {
 
 CRITICAL RULES:
 - Report facts as found in the source text. Do not editorialize or invent a platform/niche not stated in the text.
+${isHandleQuery
+  ? `- realName: "${name}" is a handle/username, not a real name — identify this person's actual real/full name from the source text if it's mentioned (e.g. source text says "Marques Brownlee, known as ${name}" -> realName is "Marques Brownlee"). Omit if no real name appears in the source text — do not guess.`
+  : `- realName: omit this field — "${name}" already looks like a real name, not a handle.`}
 - handle: the specific @handle/username, only if explicitly stated. Omit rather than guess.
 - platform: the primary platform (YouTube, TikTok, Instagram, X, etc), only if clearly indicated.
 - category: their content niche/vertical (e.g. "tech reviews", "GLP-1/weight-loss", "personal finance").
@@ -286,7 +346,13 @@ CRITICAL RULES:
       );
 
       if (llmResult) {
-        if (llmResult.handle) profile.handle = llmResult.handle;
+        // Promote the resolved real name to the display name — everywhere
+        // that isn't `bundle.query`/the DB subject (set upstream in
+        // orchestrator.researchCreator from the raw input, unaffected by
+        // this), this replaces the bare handle: report title, YouTube
+        // fuzzy-search fallback text, Google Trends keyword below.
+        if (llmResult.realName) profile.name = llmResult.realName;
+        if (llmResult.handle && !profile.handle) profile.handle = llmResult.handle;
         if (llmResult.platform) profile.platform = llmResult.platform;
         if (llmResult.category) profile.category = llmResult.category;
         if (llmResult.summary) profile.summary = llmResult.summary;
@@ -299,9 +365,16 @@ CRITICAL RULES:
       profile.summary = bioResults[0].snippet;
     }
 
+    // Use the resolved real name (once known) for the YouTube fuzzy-search
+    // fallback and Google Trends — a real name is a safer general search
+    // term than a bare handle when forHandle doesn't resolve. Short-form
+    // mentions intentionally keep using the original raw `name` — a
+    // TikTok/Instagram post is more likely to literally contain the
+    // handle than the real name, and that's already confirmed working.
+    const resolvedName = profile.name;
     const [youtubeStats, trendPoints, shortFormMentions] = await Promise.all([
-      fetchYoutubeChannelStats(name),
-      fetchTrendPoints(name),
+      fetchYoutubeChannelStats(resolvedName, profile.handle),
+      fetchTrendPoints(resolvedName),
       fetchShortFormMentions(name, this.searcher),
     ]);
 
@@ -323,11 +396,11 @@ CRITICAL RULES:
       });
     }
 
-    const trend = summarizeTrend(name, trendPoints);
+    const trend = summarizeTrend(resolvedName, trendPoints);
     if (trend) {
       sources.push({
-        url: `https://trends.google.com/trends/explore?q=${encodeURIComponent(name)}`,
-        title: `Google Trends — ${name}`,
+        url: `https://trends.google.com/trends/explore?q=${encodeURIComponent(resolvedName)}`,
+        title: `Google Trends — ${resolvedName}`,
         retrievedAt: new Date().toISOString(),
         usedFor: ["trend"],
       });
