@@ -136,8 +136,19 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
               // Clearing the field resets to fresh auto-detect for the
               // next search rather than staying locked to a prior pick.
               if (!val.trim()) { setTypeManuallySet(false); return; }
-              if (!typeManuallySet && val.trim().length > 2) {
-                setType(detectEntityType(val.trim()) as ResearchType);
+              if (!typeManuallySet) {
+                const trimmed = val.trim();
+                // "@" is an unambiguous handle/username signal — switch
+                // immediately (no 3-character minimum like the general
+                // heuristic below needs). Only for internal/Charon users:
+                // creator research is hidden from everyone else, so
+                // auto-selecting a type they can't use and can't even see
+                // as a pill would just be confusing.
+                if (isInternal && trimmed.startsWith("@")) {
+                  setType("creator");
+                } else if (trimmed.length > 2) {
+                  setType(detectEntityType(trimmed) as ResearchType);
+                }
               }
             }}
             onKeyDown={(e) => e.key === "Enter" && handleRun()}
