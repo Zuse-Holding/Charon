@@ -57,7 +57,7 @@ function Dashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("summary");
   const [deepDiveState, setDeepDiveState] = useState<DeepDiveState>("idle");
   const [deepDive, setDeepDive]   = useState<DeepDiveBundle | null>(null);
-  const [pending, setPending]     = useState<{ subject: string; type: "company" | "person" | "product" } | null>(null);
+  const [pending, setPending]     = useState<{ subject: string; type: "company" | "person" | "product" | "political" | "creator" } | null>(null);
   const selectedRef               = useRef<Run | null>(null);
   const [isWatching, setIsWatching] = useState(false);
   const pendingPollRef            = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -90,8 +90,10 @@ function Dashboard() {
     const ageMs = Date.now() - new Date(data.generatedAt).getTime();
     if (ageMs > 10 * 60 * 1000) return false;
 
-    const type: "company" | "person" | "product" =
-      data.type === "person" || data.type === "product" ? data.type : "company";
+    const type: "company" | "person" | "product" | "political" | "creator" =
+      data.type === "person" || data.type === "product" || data.type === "political" || data.type === "creator"
+        ? data.type
+        : "company";
     setPending({ subject: data.subject, type });
     return true;
   }, []);

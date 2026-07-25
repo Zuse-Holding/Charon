@@ -307,12 +307,27 @@ export class ResearchOrchestrator {
     const runStatewideLookup = officeType === "statewide-executive" || officeType === "unknown";
     const skipLegiscan = officeType === "local";
 
+    // Fallback literals below spell out every optional field the real
+    // agent result can have (as explicit `undefined`) rather than just
+    // `{ sponsoredLegislation: [], sources: [] }` etc — TS infers a
+    // fallback's type from the literal alone with no contextual typing
+    // here, so an object missing a key entirely (vs. having it as
+    // `undefined`) produces a narrower type than the real result, and
+    // the union access below (`congressResult.state`, `fecResult.summary`,
+    // `statewideResult.office`, ...) fails to compile. No behavior change
+    // — a missing optional key already read as `undefined`.
     const [searchResult, congressResult, fecResult, foiaResult, statewideResult] = await Promise.all([
       this.politicalAgent.run(name, deep),
-      runFederalSources ? this.congressAgent.run(name) : Promise.resolve({ sponsoredLegislation: [], sources: [] }),
-      runFederalSources ? this.openFecAgent.run(name) : Promise.resolve({ donorBreakdown: [], sources: [] }),
+      runFederalSources
+        ? this.congressAgent.run(name)
+        : Promise.resolve({ sponsoredLegislation: [], office: undefined, party: undefined, state: undefined, district: undefined, sources: [] }),
+      runFederalSources
+        ? this.openFecAgent.run(name)
+        : Promise.resolve({ summary: undefined, donorBreakdown: [], sources: [] }),
       deep ? this.muckRockAgent.run(name) : Promise.resolve({ requests: [], sources: [] }),
-      runStatewideLookup ? lookupStatewideExecutive(name) : Promise.resolve({ found: false }),
+      runStatewideLookup
+        ? lookupStatewideExecutive(name)
+        : Promise.resolve({ found: false, office: undefined, party: undefined, state: undefined, termStart: undefined, sourceUrl: undefined }),
     ]);
 
     const state = congressResult.state ?? statewideResult.state ?? searchResult.profile.state;

@@ -3,7 +3,7 @@ import styles from "./ResearchSkeleton.module.css";
 
 interface Props {
   subject: string;
-  type: "company" | "person" | "product";
+  type: "company" | "person" | "product" | "political" | "creator";
 }
 
 const STEPS = [
