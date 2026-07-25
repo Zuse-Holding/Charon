@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS research_runs (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  type         TEXT        NOT NULL CHECK (type IN ('company', 'person', 'product', 'political')),
+  type         TEXT        NOT NULL CHECK (type IN ('company', 'person', 'product', 'political', 'creator')),
   subject      TEXT        NOT NULL,
   generated_at TIMESTAMPTZ NOT NULL,
   report_path  TEXT,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS research_runs (
 CREATE TABLE IF NOT EXISTS watchlist (
   id                   TEXT        PRIMARY KEY,
   user_id              UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  type                 TEXT        NOT NULL CHECK (type IN ('company', 'person', 'product', 'political')),
+  type                 TEXT        NOT NULL CHECK (type IN ('company', 'person', 'product', 'political', 'creator')),
   subject              TEXT        NOT NULL,
   added_at             TIMESTAMPTZ NOT NULL,
   last_refreshed_at    TIMESTAMPTZ,
@@ -164,6 +164,26 @@ ALTER TABLE research_runs ADD CONSTRAINT research_runs_type_check
 ALTER TABLE watchlist DROP CONSTRAINT IF EXISTS watchlist_type_check;
 ALTER TABLE watchlist ADD CONSTRAINT watchlist_type_check
   CHECK (type IN ('company', 'person', 'product', 'political'));
+
+-- ============================================================
+-- Creator research type (general v1)
+-- Same exact bug as the political-research migration directly above,
+-- recurring: research_runs.type/watchlist.type's CHECK constraint was
+-- never widened when creator research shipped, so every creator run's
+-- DB insert was silently rejected by Postgres (app-level validation
+-- passed; the report generated fine; it just never landed in the table
+-- the web feed reads from). Run this block against the existing
+-- database — the CREATE TABLE statements above are already updated for
+-- fresh databases.
+-- ============================================================
+
+ALTER TABLE research_runs DROP CONSTRAINT IF EXISTS research_runs_type_check;
+ALTER TABLE research_runs ADD CONSTRAINT research_runs_type_check
+  CHECK (type IN ('company', 'person', 'product', 'political', 'creator'));
+
+ALTER TABLE watchlist DROP CONSTRAINT IF EXISTS watchlist_type_check;
+ALTER TABLE watchlist ADD CONSTRAINT watchlist_type_check
+  CHECK (type IN ('company', 'person', 'product', 'political', 'creator'));
 
 -- ============================================================
 -- Auto-create profiles row on signup
