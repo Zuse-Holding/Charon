@@ -20,13 +20,14 @@ const RISK_COLORS: Record<string, string> = {
   low: "#38a169",
 };
 
-export default async function PrintPage({ params }: { params: { id: string } }) {
+export default async function PrintPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createServerSupabaseClient();
 
   const { data: run } = await supabase
     .from("deep_dives")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (!run) notFound();
