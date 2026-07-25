@@ -39,6 +39,7 @@ export async function GET() {
         adminAccess: false,
         monthlyResearchLimit: 25,
         publicRecordsAccess: false,
+        creatorAccess: false,
       },
       displayName: null,
       monthlyUsage: null,

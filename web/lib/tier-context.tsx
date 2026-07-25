@@ -28,6 +28,9 @@ export interface TierConfig {
   // mapping) — Pro/Team+ only, surfaces as a "Public Records" section on
   // company/person reports when true.
   publicRecordsAccess: boolean;
+  // Creator / market-signal research (docs/next-verticals-scoping.md
+  // item #1) — Pro/Team+ only, same reasoning as publicRecordsAccess.
+  creatorAccess: boolean;
 }
 
 /** Basic-tier monthly quick-profile usage, from the billing-anniversary
@@ -91,6 +94,7 @@ const DEFAULT_CONFIG: TierConfig = {
   adminAccess: false,
   monthlyResearchLimit: -1,
   publicRecordsAccess: false,
+  creatorAccess: false,
 };
 
 const TierContext = createContext<TierContextValue>({

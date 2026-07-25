@@ -9,7 +9,7 @@ import { AmbiguousOption, findAmbiguousMatch } from "../lib/ambiguous-entities";
 import DisambiguationModal from "./DisambiguationModal";
 import styles from "./Topbar.module.css";
 
-type ResearchType = "company" | "person" | "product" | "political";
+type ResearchType = "company" | "person" | "product" | "political" | "creator";
 
 interface TopbarProps {
   onResearchStart?: (subject: string, type: ResearchType) => void;
@@ -41,6 +41,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
     { value: "person",    label: "PERSON" },
     { value: "product",   label: "PRODUCT" },
     { value: "political", label: "POL", gated: !can("politicalAccess") },
+    { value: "creator",   label: "CREATOR", gated: !can("creatorAccess") },
   ];
 
   async function handleRun() {
@@ -49,6 +50,12 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
     // Gate political research on the frontend too
     if (type === "political" && !can("politicalAccess")) {
       setStatus("✗ Political research requires Pro or higher");
+      setTimeout(() => setStatus(""), 4000);
+      return;
+    }
+
+    if (type === "creator" && !can("creatorAccess")) {
+      setStatus("✗ Creator research requires Pro or higher");
       setTimeout(() => setStatus(""), 4000);
       return;
     }
@@ -139,7 +146,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
               key={t.value}
               className={`${styles.pill} ${type === t.value ? styles.active : ""} ${t.gated ? styles.gated ?? "" : ""}`}
               onClick={() => { if (!t.gated) { setType(t.value); setTypeManuallySet(true); } }}
-              title={t.gated ? "Upgrade to Pro to unlock political research" : undefined}
+              title={t.gated ? `Upgrade to Pro to unlock ${t.value} research` : undefined}
               style={t.gated ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
             >
               {t.label}
@@ -158,6 +165,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
           <option value="person">Person</option>
           <option value="product">Product</option>
           {can("politicalAccess") && <option value="political">Political</option>}
+          {can("creatorAccess") && <option value="creator">Creator</option>}
         </select>
 
         <button
