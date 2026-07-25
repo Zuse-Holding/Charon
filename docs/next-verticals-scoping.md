@@ -69,6 +69,12 @@ down before build starts.
 ## 2. Local Market Intelligence
 Business license/permit data — aimed at CRE brokers and franchise site scouts.
 
+**Status (7/24): someday, not started.** The scoping below still holds; a
+full implementation plan (architecture, data-source specifics, build order,
+open questions) is written up and ready in
+[`local-market-intel-plan.md`](./local-market-intel-plan.md) for whenever
+this gets greenlit — no need to re-derive it from scratch at that point.
+
 **This one is architecturally different from everything else in the
 platform**, worth flagging up front: every existing agent answers "tell me
 about this named entity." This vertical answers "what's happening in this
