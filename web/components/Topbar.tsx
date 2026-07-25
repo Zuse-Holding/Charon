@@ -33,15 +33,20 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
   const [ambiguousOptions, setAmbiguousOptions] = useState<AmbiguousOption[] | null>(null);
   const router = useRouter();
   const { startResearch, completeResearch } = useResearch();
-  const { can } = useTier();
+  const { can, isInternal } = useTier();
 
-  // Available types based on tier
+  // Available types based on tier. Creator research is Charon/internal-
+  // only for now (see creatorAccess doc comment in web/lib/tier-context.tsx)
+  // — hidden entirely for everyone else rather than shown locked, unlike
+  // Political (a real Pro+ upsell). Showing a locked pill only makes
+  // sense when upgrading would actually unlock it; here it wouldn't, and
+  // hiding it also cuts down the pill count for the vast majority of users.
   const availableTypes: { value: ResearchType; label: string; gated?: boolean }[] = [
     { value: "company",   label: "CO" },
     { value: "person",    label: "PERSON" },
     { value: "product",   label: "PRODUCT" },
     { value: "political", label: "POL", gated: !can("politicalAccess") },
-    { value: "creator",   label: "CREATOR", gated: !can("creatorAccess") },
+    ...(isInternal ? [{ value: "creator" as const, label: "CREATOR" }] : []),
   ];
 
   async function handleRun() {
@@ -55,7 +60,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
     }
 
     if (type === "creator" && !can("creatorAccess")) {
-      setStatus("✗ Creator research requires Pro or higher");
+      setStatus("✗ Creator research is a Charon-tier feature");
       setTimeout(() => setStatus(""), 4000);
       return;
     }

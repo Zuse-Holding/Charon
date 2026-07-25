@@ -96,25 +96,28 @@ interface TierConfig {
   // ICIJ Offshore Leaks source on top of this.
   publicRecordsAccess: boolean;
   // Creator / market-signal research (docs/next-verticals-scoping.md
-  // item #1, general v1) — gated above Basic per that doc's recommendation
-  // ("data quality is inherently softer than the company/person pipelines
-  // — revisit once real output quality is validated").
+  // item #1, general v1) — Charon/internal-only for now while output
+  // quality gets validated on real cases (was briefly Pro+, dialed back
+  // to internal-only 7/24 per direct product decision — cheaper blast
+  // radius than a paid-tier upsell before it's been proven out). Revisit
+  // once it's been run against enough real names to trust the signal.
   creatorAccess: boolean;
 }
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
   internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
-  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
-  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
+  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false },
+  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false },
   basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, publicRecordsAccess: false, creatorAccess: false },
   free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: false, creatorAccess: false },
   // Time-boxed tier for external demo/partner accounts (limited partners,
   // investor trials, etc). Deliberately mirrors "team" limits and features
   // so the demo shows the platform at full strength — the ONLY things it
-  // withholds are politicalAccess and charonProtocol, which stay off
-  // regardless of what tier gets requested for these accounts. Expiry
-  // enforced via profiles.trial_expires_at, checked in getUserTier below.
-  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
+  // withholds are politicalAccess, creatorAccess, and charonProtocol,
+  // which stay off regardless of what tier gets requested for these
+  // accounts. Expiry enforced via profiles.trial_expires_at, checked in
+  // getUserTier below.
+  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false },
 };
 
 /**
@@ -318,7 +321,10 @@ app.post("/research", async (req, res) => {
   }
 
   if (type === "creator" && !config.creatorAccess) {
-    return tierDenied(res, "Creator research requires Pro or higher.");
+    // Charon-only for now (see creatorAccess doc comment on TierConfig) —
+    // no upgradeHint pointing at a paid tier, since paying for Pro/Team
+    // wouldn't actually unlock this yet.
+    return tierDenied(res, "Creator research is a Charon-tier feature.");
   }
 
   if (config.dailyResearchLimit !== -1) {
