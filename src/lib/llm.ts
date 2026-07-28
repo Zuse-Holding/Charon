@@ -785,3 +785,17 @@ export const CreatorExtractionSchema = AnyObject.transform((obj) => ({
   signals: toCreatorSignalArray(obj.signals ?? obj.chatter ?? obj.discussion),
 }));
 export type CreatorExtraction = z.infer<typeof CreatorExtractionSchema>;
+
+// --- Handle resolution (Person Search evidence source) ---
+// Extracts a real-name candidate from a profile/bio page — only when the
+// page EXPLICITLY states it (an "About" line, a bio sentence) — plus any
+// outbound links (Linktree, personal site, LinkedIn) worth following one
+// hop for corroboration. See src/agents/handle-resolver-agent.
+
+export const HandleProfileExtractionSchema = AnyObject.transform((obj) => ({
+  name: toStringOrUndefined(obj.name ?? obj.realName ?? obj.real_name ?? obj.fullName ?? obj.full_name),
+  outboundLinks: toStringArray(obj.outboundLinks ?? obj.outbound_links ?? obj.links).filter(
+    (l) => /^https?:\/\//.test(l)
+  ),
+}));
+export type HandleProfileExtraction = z.infer<typeof HandleProfileExtractionSchema>;

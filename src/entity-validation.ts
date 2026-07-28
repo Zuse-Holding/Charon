@@ -89,13 +89,7 @@ function validatePersonField(
   }
 
   // 3. Person names: 2-4 tokens, each starting with a capital, no digits
-  const rawTokens = extractedValue.trim().split(/\s+/);
-  const looksLikePerson =
-    rawTokens.length >= 2 &&
-    rawTokens.length <= 4 &&
-    rawTokens.every((t) => /^[A-Z][a-zA-Z'.-]*$/.test(t));
-
-  if (!looksLikePerson) {
+  if (!looksLikePersonName(extractedValue)) {
     return {
       valid: false,
       reason: `"${fieldName}" value "${extractedValue}" doesn't match expected person-name format.`,
@@ -104,6 +98,27 @@ function validatePersonField(
   }
 
   return { valid: true };
+}
+
+/**
+ * Bare format/plausibility check for "does this string look like a person's
+ * name" — same org-token/shape heuristics validatePersonField above uses,
+ * exposed standalone since not every caller has a PERSON_FIELDS field name
+ * to hang the check off of. Added for handle-resolver-agent, which scores
+ * name candidates pulled from bio text rather than validating a single
+ * already-labeled fact field.
+ */
+export function looksLikePersonName(value: string): boolean {
+  const normalized = value.toLowerCase().trim();
+  const tokens = normalized.split(/\s+/);
+  if (ORG_TOKENS.some((t) => tokens.includes(t))) return false;
+
+  const rawTokens = value.trim().split(/\s+/);
+  return (
+    rawTokens.length >= 2 &&
+    rawTokens.length <= 4 &&
+    rawTokens.every((t) => /^[A-Z][a-zA-Z'.-]*$/.test(t))
+  );
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

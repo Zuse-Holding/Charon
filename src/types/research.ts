@@ -600,3 +600,36 @@ export interface Form4Entry {
   date?: string;
   filingUrl?: string;
 }
+
+// --- Handle Resolution (Person Search evidence source) ---
+// Resolves a username/handle to real-name candidates: domain-gated search
+// across GitHub/X/Twitter/Instagram/Reddit plus guessed personal domains,
+// bio-text + outbound-link extraction (one hop), and (for confirmed
+// platform profile URLs only) a Wayback Machine snapshot check for a name
+// shown in an early archive but not the current bio. See
+// src/agents/handle-resolver-agent. This is an additional evidence source
+// for Person Search, alongside OpenCorporates/FEC/CourtListener — NOT a
+// creator vertical, so deliberately has no audience/engagement/monetization
+// fields (those stay scoped to src/agents/creator-signal-agent).
+
+export type HandleResolutionConfidence = "high" | "medium" | "low";
+
+export interface HandleResolutionCandidate {
+  name: string;
+  confidence: HandleResolutionConfidence;
+  // Every platform that independently produced this name, e.g.
+  // ["github", "twitter"]. "wayback" and "outbound-link" appear here too,
+  // but only ever corroborate a candidate — see handle-resolver-agent's
+  // confidence-scoring comment for why they can't push a candidate above
+  // "low" on their own.
+  platforms: string[];
+  profileUrls: string[];   // the confirmed profile URL(s) this candidate came from
+  evidence: string;        // short human-readable note, e.g. "GitHub bio", "Linktree outbound link", "Wayback snapshot (2019)"
+  sourceUrls: string[];    // full audit trail — every URL that contributed to this candidate
+}
+
+export interface HandleResolutionAgentResult {
+  handle: string;
+  candidates: HandleResolutionCandidate[];
+  sources: Source[];
+}
