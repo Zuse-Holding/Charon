@@ -28,6 +28,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-rekognition": "^3.716.0",
     "@supabase/supabase-js": "^2.108.2",
     "commander": "^15.0.0",
     "compromise": "^14.15.1",
