@@ -15,7 +15,7 @@ import { USASpendingAgent } from "../usaspending-agent/index.js";
 import { SanctionsAgent } from "../sanctions-agent/index.js";
 import { WaybackAgent } from "../wayback-agent/index.js";
 import { ProPublicaNonprofitAgent } from "../propublica-nonprofit-agent/index.js";
-import { LittleSisAgent } from "../littlesis-agent/index.js";
+import { LittleSisAgent, LittleSisRelationshipEntry } from "../littlesis-agent/index.js";
 import { IcijAgent } from "../icij-agent/index.js";
 import { synthesizeRisksOpportunities } from "../synthesis-agent/index.js";
 import { ReportAgent } from "../report-agent/index.js";
@@ -108,6 +108,11 @@ export class ResearchOrchestrator {
   async researchCompany(companyName: string, proAccess = false, deep = false): Promise<{
     bundle: ResearchBundle;
     report: string;
+    // Charon/internal-only (deep) — LittleSis relationships (board/officer
+    // positions, memberships, family ties, donations, ownership) for the
+    // caller to feed into the Knowledge Graph. Not part of the report
+    // itself, see littlesis-agent's doc comment.
+    littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
     const [siteResult, newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
@@ -127,7 +132,7 @@ export class ResearchOrchestrator {
         proAccess ? this.sanctionsAgent.run(companyName) : Promise.resolve({ matches: [], sources: [] }),
         proAccess && siteResult.company.website ? this.waybackAgent.run(siteResult.company.website) : Promise.resolve({ summary: {} as WebArchiveSummary, sources: [] }),
         proAccess ? this.nonprofitAgent.run(companyName) : Promise.resolve({ organizations: [], sources: [] }),
-        proAccess ? this.littleSisAgent.run(companyName) : Promise.resolve({ matches: [], sources: [] }),
+        proAccess ? this.littleSisAgent.run(companyName, "company", deep) : Promise.resolve({ matches: [], relationships: [], sources: [] }),
         deep ? this.icijAgent.run(companyName) : Promise.resolve({ matches: [], sources: [] }),
       ]);
 
@@ -161,7 +166,11 @@ export class ResearchOrchestrator {
       webArchive: waybackResult.summary.snapshotCount ? waybackResult.summary : undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
-      offshoreLeaksMatches: icijResult.matches.length > 0 ? icijResult.matches : undefined,
+      // undefined = ICIJ never ran (not Charon tier); [] = it ran and
+      // found nothing above the relevance floor. Report needs to tell
+      // these apart to show an explicit "no matches" state rather than
+      // silently omitting the section — see icij-agent/report-agent.
+      offshoreLeaksMatches: deep ? icijResult.matches : undefined,
     };
 
     // Risks/Opportunities is pure LLM synthesis with no heuristic
@@ -175,7 +184,11 @@ export class ResearchOrchestrator {
 
     const report = this.reportAgent.generate(bundle);
 
-    return { bundle, report };
+    return {
+      bundle,
+      report,
+      littleSisRelationships: littleSisResult.relationships.length > 0 ? littleSisResult.relationships : undefined,
+    };
   }
 
   /**
@@ -200,6 +213,8 @@ export class ResearchOrchestrator {
   async researchPerson(personName: string, deep = false, affiliation?: string, proAccess = false): Promise<{
     bundle: PersonResearchBundle;
     report: string;
+    // Charon/internal-only (deep) — see researchCompany's same field.
+    littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
     const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult, icijResult] = await Promise.all([
       this.peopleAgent.run(personName, deep, affiliation),
@@ -207,7 +222,7 @@ export class ResearchOrchestrator {
       deep ? this.muckRockAgent.run(personName) : Promise.resolve({ requests: [], sources: [] }),
       proAccess ? this.sanctionsAgent.run(personName) : Promise.resolve({ matches: [], sources: [] }),
       proAccess ? this.nonprofitAgent.run(personName) : Promise.resolve({ organizations: [], sources: [] }),
-      proAccess ? this.littleSisAgent.run(personName) : Promise.resolve({ matches: [], sources: [] }),
+      proAccess ? this.littleSisAgent.run(personName, "person", deep) : Promise.resolve({ matches: [], relationships: [], sources: [] }),
       deep ? this.icijAgent.run(personName) : Promise.resolve({ matches: [], sources: [] }),
     ]);
 
@@ -226,12 +241,20 @@ export class ResearchOrchestrator {
       sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
-      offshoreLeaksMatches: icijResult.matches.length > 0 ? icijResult.matches : undefined,
+      // undefined = ICIJ never ran (not Charon tier); [] = it ran and
+      // found nothing above the relevance floor. Report needs to tell
+      // these apart to show an explicit "no matches" state rather than
+      // silently omitting the section — see icij-agent/report-agent.
+      offshoreLeaksMatches: deep ? icijResult.matches : undefined,
     };
 
     const report = this.reportAgent.generatePerson(bundle);
 
-    return { bundle, report };
+    return {
+      bundle,
+      report,
+      littleSisRelationships: littleSisResult.relationships.length > 0 ? littleSisResult.relationships : undefined,
+    };
   }
 
   async researchProduct(productName: string): Promise<{

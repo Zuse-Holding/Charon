@@ -53,6 +53,16 @@ export class SanctionsAgent {
         return { matches: [], sources: [] };
       }
 
+      // trade.gov occasionally returns a 200 with an HTML maintenance/WAF
+      // page instead of JSON — res.ok alone doesn't catch that, and
+      // res.json() throwing a raw SyntaxError on "<!DOCTYPE ..." reads
+      // like a real bug in the logs. Treat it the same as a bad status.
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        console.warn(`[sanctions-agent] "${name}" — non-JSON response (content-type: "${contentType}"), treating as unavailable`);
+        return { matches: [], sources: [] };
+      }
+
       const data = (await res.json()) as CslResponse;
       const results = data.results ?? [];
 

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { EntityExtractionResult } from "../agents/entity-extraction/index.js";
+import { LittleSisRelationshipEntry } from "../agents/littlesis-agent/index.js";
 import { validateAndCorrectFact, findOverride } from "../entity-validation.js";
 
 /**
@@ -99,4 +100,38 @@ export async function saveEntityExtraction(
   if (relationshipRows.length > 0) {
     await supabase.from("kg_relationships").insert(relationshipRows);
   }
+}
+
+/**
+ * Writes LittleSis relationships (board/officer positions, memberships,
+ * family ties, donations, ownership — see src/agents/littlesis-agent) as
+ * real Knowledge Graph edges, not just report text. Reuses
+ * saveEntityExtraction's upsert/dedup/override-canonicalization logic
+ * rather than duplicating it — LittleSis relationships are just another
+ * source of {entities, relationships} pairs, same shape the LLM
+ * extraction pass already produces from report prose.
+ */
+export async function saveLittleSisRelationships(
+  userId: string,
+  sourceRunId: string,
+  relationships: LittleSisRelationshipEntry[]
+): Promise<void> {
+  if (relationships.length === 0) return;
+
+  const entityMap = new Map<string, "company" | "person">();
+  for (const rel of relationships) {
+    entityMap.set(rel.fromName, rel.fromType);
+    entityMap.set(rel.toName, rel.toType);
+  }
+
+  const extraction: EntityExtractionResult = {
+    entities: [...entityMap.entries()].map(([name, type]) => ({ name, type })),
+    relationships: relationships.map((rel) => ({
+      from: rel.fromName,
+      to: rel.toName,
+      type: rel.role ? `${rel.relationshipType} (${rel.role})` : rel.relationshipType,
+    })),
+  };
+
+  await saveEntityExtraction(userId, sourceRunId, extraction);
 }

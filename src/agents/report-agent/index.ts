@@ -172,6 +172,13 @@ export class ReportAgent {
    * reports since every source but Wayback applies to both. Renders
    * nothing at all when none of the fields are present, so Basic/Free
    * reports (which never populate these) don't show an empty section.
+   *
+   * offshoreLeaksMatches is checked with `!== undefined` rather than
+   * `.length > 0` like the others — ICIJ (Charon-only) sets it to `[]`
+   * when it ran and found nothing above the relevance floor, vs.
+   * `undefined` when it never ran at all (see orchestrator's `deep`
+   * gate). That distinction is what lets the section below show an
+   * explicit "no matches" line instead of silently vanishing.
    */
   private pushPublicRecordsSection(
     lines: string[],
@@ -182,7 +189,7 @@ export class ReportAgent {
       bundle.webArchive ||
       (bundle.nonprofitFilings && bundle.nonprofitFilings.length > 0) ||
       (bundle.powerMapConnections && bundle.powerMapConnections.length > 0) ||
-      (bundle.offshoreLeaksMatches && bundle.offshoreLeaksMatches.length > 0);
+      bundle.offshoreLeaksMatches !== undefined;
     if (!hasAny) return;
 
     lines.push(`## Public Records`);
@@ -219,10 +226,14 @@ export class ReportAgent {
       lines.push(``);
     }
 
-    if (bundle.offshoreLeaksMatches && bundle.offshoreLeaksMatches.length > 0) {
+    if (bundle.offshoreLeaksMatches !== undefined) {
       lines.push(`**Offshore Leaks Database** _(possible matches — ICIJ reconciliation confidence score, not a confirmed hit)_`);
-      for (const o of bundle.offshoreLeaksMatches) {
-        lines.push(`- [${o.name}](${o.url})${o.entityType ? ` (${o.entityType})` : ""}${o.score !== undefined ? ` · score ${o.score}` : ""}`);
+      if (bundle.offshoreLeaksMatches.length === 0) {
+        lines.push(`- No offshore leaks matches found above the relevance threshold.`);
+      } else {
+        for (const o of bundle.offshoreLeaksMatches) {
+          lines.push(`- [${o.name}](${o.url})${o.entityType ? ` (${o.entityType})` : ""}${o.score !== undefined ? ` · score ${o.score}` : ""}`);
+        }
       }
       lines.push(``);
     }
