@@ -262,3 +262,34 @@ ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS error TEXT;
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notification_preferences JSONB NOT NULL
   DEFAULT '{"watchlistRefresh": true, "weeklyDigest": false, "productUpdates": true}'::jsonb;
+
+-- ============================================================
+-- Identity Verification audit (Charon-only, src/agents/face-verify-agent)
+-- Mirrors person_search_audit's shape/intent (that table's own CREATE
+-- TABLE isn't captured in this file either — see the "Auto-create
+-- profiles row on signup" block above for why). One row per
+-- /person-research/verify-photo call, success or failure, so there's a
+-- record of who ran a face comparison and when — deliberately NO column
+-- for the photos themselves; see FaceVerifyAgent's doc comment for why
+-- this tool never persists the images it compares.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS identity_verification_audit (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  subject_name TEXT,
+  match        BOOLEAN     NOT NULL,
+  confidence   NUMERIC,
+  ip_address   TEXT,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE identity_verification_audit ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users manage own identity verification audit rows"
+  ON identity_verification_audit FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_identity_verification_audit_user_date
+  ON identity_verification_audit (user_id, created_at DESC);
