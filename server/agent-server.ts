@@ -15,9 +15,10 @@ import { OpenCorporatesAgent } from "../src/agents/opencorporates-agent/index.js
 import { OpenFecAgent } from "../src/agents/openfec-agent/index.js";
 import { CourtListenerAgent } from "../src/agents/courtlistener-agent/index.js";
 import { HandleResolverAgent } from "../src/agents/handle-resolver-agent/index.js";
+import { LittleSisRelationshipEntry } from "../src/agents/littlesis-agent/index.js";
 import { MuckRockAgent } from "../src/agents/muckrock-agent/index.js";
 import { findEasterEgg } from "../src/easter-eggs/index.js";
-import { saveEntityExtraction } from "../src/database/knowledge-graph.js";
+import { saveEntityExtraction, saveLittleSisRelationships } from "../src/database/knowledge-graph.js";
 import { upsertStatewideExecutives } from "../src/database/statewide-executives.js";
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { parsePersonQuery } from "../src/lib/nlp.js";
@@ -385,6 +386,10 @@ app.post("/research", async (req, res) => {
     let bundle: unknown;
     let report: string;
     let outPath: string;
+    // Charon-only (see `deep` below) — LittleSis relationships to write
+    // as real Knowledge Graph edges once the run completes. Only company/
+    // person research call LittleSis at all.
+    let littleSisRelationships: LittleSisRelationshipEntry[] | undefined;
 
     const egg = findEasterEgg(subject);
     if (egg && egg.type === type) {
@@ -397,7 +402,7 @@ app.post("/research", async (req, res) => {
       // political research, on top of the unlimited quotas internal
       // already gets everywhere else in this file. Also gates the ICIJ
       // Offshore Leaks source (7/20 public-record fusion) on company/
-      // person reports.
+      // person reports, and LittleSis relationship-pulling below.
       const deep = tier === "internal";
       // 7/20 public-record fusion — sanctions screening, Wayback archive
       // history, ProPublica nonprofit lookup, LittleSis power-mapping.
@@ -407,10 +412,12 @@ app.post("/research", async (req, res) => {
       if (type === "company") {
         const result = await orchestrator.researchCompany(subject, proAccess, deep);
         bundle = result.bundle; report = result.report;
+        littleSisRelationships = result.littleSisRelationships;
         outPath = join(REPORTS_DIR, `${slugify(subject)}.md`);
       } else if (type === "person") {
         const result = await orchestrator.researchPerson(subject, deep, personAffiliation, proAccess);
         bundle = result.bundle; report = result.report;
+        littleSisRelationships = result.littleSisRelationships;
         outPath = join(REPORTS_DIR, "people", `${slugify(subject)}.md`);
       } else if (type === "political") {
         // Was a stub that silently ran regular person research and
@@ -466,6 +473,17 @@ app.post("/research", async (req, res) => {
           .then((extraction) => saveEntityExtraction(userId, runId, extraction))
           .catch((err) => console.error("[entity-extraction] failed:", err));
       }, 3000);
+    }
+
+    // LittleSis relationships as Knowledge Graph edges — Charon/internal
+    // tier only (see orchestrator.researchCompany/researchPerson's `deep`
+    // gate). Staggered after the entity-extraction write above so the two
+    // background writes don't race each other.
+    if (littleSisRelationships && littleSisRelationships.length > 0 && tier === "internal") {
+      setTimeout(() => {
+        saveLittleSisRelationships(userId, runId, littleSisRelationships!)
+          .catch((err) => console.error("[littlesis-kg] failed:", err));
+      }, 4000);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err);

@@ -256,3 +256,64 @@ export function findOverride(entityName: string): EntityOverride | undefined {
   }
   return undefined;
 }
+
+// ── Cross-source person deduplication ───────────────────────────────────────────
+// General entity-resolution gap, first hit by littlesis-agent: a source can
+// return several distinct records for the same real person — LittleSis
+// gives "Charles Koch" (41340), "Charles John Koch" (5125), and "Charles G.
+// Koch" (465621) as three separate entity IDs for one individual, alongside
+// "Chase Koch" (41698), who is a genuinely different person (his son). Any
+// source returning a plain list of named people can hit this same problem,
+// so this lives here rather than inside littlesis-agent.
+
+/**
+ * Normalizes a person's name to a first+last comparison key, dropping
+ * middle names/initials and punctuation — "Charles G. Koch" and "Charles
+ * John Koch" both key to "charles koch", same as plain "Charles Koch".
+ * "Chase Koch" keys to "chase koch" and correctly stays distinct: first
+ * names differ, so this never conflates two different real people who
+ * merely share a surname.
+ *
+ * Known limitation, same class as PERSON_FIELDS' 2-4-token regex above:
+ * doesn't handle nicknames ("Bill" vs "William") or non-Western name
+ * order. Good enough for "does this source's own near-duplicate records
+ * refer to the same person," not a general identity-resolution engine.
+ */
+export function personGroupKey(name: string): string {
+  const tokens = name.replace(/[.,]/g, "").trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return name.toLowerCase().trim();
+  return `${tokens[0].toLowerCase()} ${tokens[tokens.length - 1].toLowerCase()}`;
+}
+
+/** True if two person names share a first+last name per personGroupKey. */
+export function samePerson(nameA: string, nameB: string): boolean {
+  return personGroupKey(nameA) === personGroupKey(nameB);
+}
+
+/**
+ * Collapses a list of items down to one per distinct `getKey` group,
+ * keeping the richest item in each group (per `isRicher`) and preserving
+ * first-occurrence order across groups. Deliberately generic — not
+ * person-specific — so any source can dedupe on whatever key makes sense
+ * for it; for people, pass `(item) => "person:" + personGroupKey(name)`
+ * for person-typed items and a unique per-item key (e.g. a source ID) for
+ * anything that should never merge with anything else.
+ *
+ * This is the "if genuinely ambiguous, surface the single highest-
+ * confidence match rather than listing duplicates" behavior: a group of
+ * 2+ items collapses to exactly one, chosen by `isRicher`, never a
+ * dangling list of unresolved near-duplicates.
+ */
+export function mergeByKey<T>(items: T[], getKey: (item: T) => string, isRicher: (a: T, b: T) => boolean): T[] {
+  const groups = new Map<string, T[]>();
+  const order: string[] = [];
+  for (const item of items) {
+    const key = getKey(item);
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      order.push(key);
+    }
+    groups.get(key)!.push(item);
+  }
+  return order.map((key) => groups.get(key)!.reduce((best, candidate) => (isRicher(candidate, best) ? candidate : best)));
+}
