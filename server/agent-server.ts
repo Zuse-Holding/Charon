@@ -14,6 +14,7 @@ import { EntityExtractionAgent } from "../src/agents/entity-extraction/index.js"
 import { OpenCorporatesAgent } from "../src/agents/opencorporates-agent/index.js";
 import { OpenFecAgent } from "../src/agents/openfec-agent/index.js";
 import { CourtListenerAgent } from "../src/agents/courtlistener-agent/index.js";
+import { HandleResolverAgent } from "../src/agents/handle-resolver-agent/index.js";
 import { MuckRockAgent } from "../src/agents/muckrock-agent/index.js";
 import { findEasterEgg } from "../src/easter-eggs/index.js";
 import { saveEntityExtraction } from "../src/database/knowledge-graph.js";
@@ -485,12 +486,17 @@ app.post("/research", async (req, res) => {
  * `deep` flag on top of it — there's no reduced version of this for
  * other tiers.
  *
- * Four sources per the spec: OpenCorporates and FEC cross-reference are
- * real (existing agents, this just wires FEC into a person lookup for
- * the first time). CourtListener is a real new integration (free RECAP
- * search — the closest no-cost mirror of PACER). PACER and Form 4 come
- * back as explicit "not available" placeholders — and PERMANENTLY so,
- * not a "coming soon":
+ * Five sources now: OpenCorporates and FEC cross-reference are real
+ * (existing agents, this just wires FEC into a person lookup for the
+ * first time). CourtListener is a real new integration (free RECAP
+ * search — the closest no-cost mirror of PACER). Handle Resolution
+ * (src/agents/handle-resolver-agent) is a new evidence source, not a
+ * separate tool/tier — resolves a @handle/username typed into the same
+ * `name` field to real-name candidates via GitHub/Twitter-X/Instagram/
+ * Reddit + personal-domain guesses; harmlessly returns zero candidates
+ * when `name` is an ordinary full name rather than a handle. PACER and
+ * Form 4 come back as explicit "not available" placeholders — and
+ * PERMANENTLY so, not a "coming soon":
  *   - PACER has no free/keyless API at all. The only way in is a paid,
  *     individually-registered CM/ECF account with per-page billing.
  *     There is nothing to "finish building" here without that account.
@@ -519,10 +525,11 @@ app.post("/person-research/deep", async (req, res) => {
   }
 
   try {
-    const [openCorporates, fec, courtListener] = await Promise.all([
+    const [openCorporates, fec, courtListener, handleResolution] = await Promise.all([
       new OpenCorporatesAgent(new SerperSearchProvider(), new DirectFetchProvider()).run(name),
       new OpenFecAgent().run(name),
       new CourtListenerAgent().run(name),
+      new HandleResolverAgent(new SerperSearchProvider(), new DirectFetchProvider()).run(name),
     ]);
 
     res.json({
@@ -531,6 +538,7 @@ app.post("/person-research/deep", async (req, res) => {
       openCorporates: { affiliations: openCorporates.affiliations, sources: openCorporates.sources },
       fec: { summary: fec.summary, donorBreakdown: fec.donorBreakdown, sources: fec.sources },
       courtListener: { records: courtListener.records, sources: courtListener.sources },
+      handleResolution: { candidates: handleResolution.candidates, sources: handleResolution.sources },
       form4: {
         available: false,
         reason: "Permanently unavailable, not a gap to fill in: Form 4 lookup in this codebase is keyed by company name, not person — a person-first query is a different lookup, not a missing wire-up.",

@@ -37,12 +37,22 @@ interface CourtListenerRecord {
   docketNumber?: string;
 }
 
+interface HandleResolutionCandidate {
+  name: string;
+  confidence: "high" | "medium" | "low";
+  platforms: string[];
+  profileUrls: string[];
+  evidence: string;
+  sourceUrls: string[];
+}
+
 interface PersonResearchResult {
   name: string;
   generatedAt: string;
   openCorporates: { affiliations: CorporateAffiliation[]; sources: Source[] };
   fec: { summary?: FecSummary; donorBreakdown: FecDonorBreakdownEntry[]; sources: Source[] };
   courtListener: { records: CourtListenerRecord[]; sources: Source[] };
+  handleResolution: { candidates: HandleResolutionCandidate[]; sources: Source[] };
   form4: { available: false; reason: string };
   pacer: { available: false; reason: string };
 }
@@ -89,7 +99,7 @@ export default function PersonResearchModal({ onClose }: Props) {
           <button className={styles.close} onClick={onClose}>✕</button>
         </div>
         <p className={styles.subtitle}>
-          Cross-references corporate directorships, federal campaign finance, and federal court records for a name.
+          Cross-references corporate directorships, federal campaign finance, federal court records, and handle/username resolution for a name.
         </p>
 
         <form className={styles.form} onSubmit={runSearch}>
@@ -106,7 +116,7 @@ export default function PersonResearchModal({ onClose }: Props) {
         </form>
 
         {error && <div className={styles.error}>{error}</div>}
-        {loading && <div className={styles.loading}>Querying OpenCorporates, FEC, and CourtListener…</div>}
+        {loading && <div className={styles.loading}>Querying OpenCorporates, FEC, CourtListener, and handle resolution…</div>}
 
         {result && (
           <>
@@ -164,6 +174,33 @@ export default function PersonResearchModal({ onClose }: Props) {
                   <a href={r.url} target="_blank" rel="noopener noreferrer" className={styles.entryLink}>{r.caseName}</a>
                   <div className={styles.entryMeta}>
                     {[r.court, r.docketNumber, r.dateFiled].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <span className={styles.sectionTitle}>Handle Resolution — Name Candidates</span>
+                <span className={`${styles.sectionStatus} ${styles.live}`}>live</span>
+              </div>
+              {result.handleResolution.candidates.length === 0 && (
+                <div className={styles.empty}>No name candidates resolved from a handle for this query.</div>
+              )}
+              {result.handleResolution.candidates.map((c, i) => (
+                <div key={i} className={styles.entry}>
+                  {c.name}
+                  <span className={`${styles.confidence} ${styles[c.confidence]}`}>{c.confidence}</span>
+                  <div className={styles.entryMeta}>{c.evidence}</div>
+                  <div className={styles.entryMeta}>
+                    {c.sourceUrls.map((url, j) => (
+                      <span key={url}>
+                        {j > 0 && " · "}
+                        <a href={url} target="_blank" rel="noopener noreferrer" className={styles.entryLink}>
+                          {new URL(url).hostname.replace(/^www\./, "")}
+                        </a>
+                      </span>
+                    ))}
                   </div>
                 </div>
               ))}

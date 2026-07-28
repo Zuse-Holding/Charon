@@ -173,3 +173,28 @@
   color: var(--muted);
   font-style: italic;
 }
+
+.confidence {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 6px;
+}
+.confidence.high {
+  color: #34D399;
+  background: #34D39922;
+  border: 1px solid #34D39944;
+}
+.confidence.medium {
+  color: #FBBF24;
+  background: #FBBF2422;
+  border: 1px solid #FBBF2444;
+}
+.confidence.low {
+  color: #6B7A99;
+  background: #6B7A9922;
+  border: 1px solid #6B7A9944;
+}
