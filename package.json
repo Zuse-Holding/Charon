@@ -22,6 +22,7 @@
     "watchlist": "tsx src/cli.ts watchlist",
     "watchlist-refresh": "tsx src/cli.ts watchlist-refresh",
     "creator": "tsx run-creator.mjs",
+    "creator-snapshot": "tsx run-creator-snapshot.mjs",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],

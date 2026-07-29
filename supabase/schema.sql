@@ -293,3 +293,72 @@ CREATE POLICY "Users manage own identity verification audit rows"
 
 CREATE INDEX IF NOT EXISTS idx_identity_verification_audit_user_date
   ON identity_verification_audit (user_id, created_at DESC);
+
+-- ============================================================
+-- Creator snapshot tracking (creator-snapshot-agent)
+-- `creators` isn't captured elsewhere in this file either (see the
+-- "Auto-create profiles row on signup" block above for why that keeps
+-- happening) — it's the append-only GLP-1/weight-loss discovery-scan
+-- log written by src/agents/creator-agent, one row per scan run, no
+-- unique key per creator. It is NOT a stable per-creator registry, so
+-- it can't be FK'd against for a watchlist-driven daily tracker.
+--
+-- creator_snapshots.creator_id therefore points at watchlist.id
+-- instead — watchlist already assigns each tracked creator
+-- (type='creator') a stable id plus the handle/name in `subject`.
+-- The CREATE TABLE below documents creator_snapshots as originally
+-- shipped (creator_id UUID REFERENCES creators(id)); the ALTERs
+-- immediately after repoint it. Both are idempotent — safe to run
+-- against a fresh database or the one where creator_snapshots was
+-- already created with the original FK.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS creators (
+  id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                   TEXT,
+  platform               TEXT,
+  handle                 TEXT,
+  follower_count         INTEGER,
+  engagement_rate        NUMERIC,
+  posting_frequency_30d  INTEGER,
+  disclosure_flag        BOOLEAN,
+  category               TEXT,
+  snapshot_date          TIMESTAMPTZ,
+  raw_json               JSONB,
+  created_at             TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS creator_snapshots (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id          UUID REFERENCES creators(id),
+  platform            TEXT NOT NULL DEFAULT 'tiktok',
+  snapshot_date       DATE NOT NULL DEFAULT CURRENT_DATE,
+  follower_count      INTEGER,
+  following_count     INTEGER,
+  post_count          INTEGER,
+  total_likes         BIGINT,
+  avg_engagement_rate NUMERIC,
+  bio_complete        BOOLEAN,
+  raw_payload         JSONB,
+  created_at          TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (creator_id, platform, snapshot_date)
+);
+CREATE INDEX IF NOT EXISTS idx_creator_snapshots_creator_date
+  ON creator_snapshots (creator_id, snapshot_date);
+
+-- Repoint creator_id at watchlist.id (text) instead of creators.id (uuid).
+ALTER TABLE creator_snapshots DROP CONSTRAINT IF EXISTS creator_snapshots_creator_id_fkey;
+ALTER TABLE creator_snapshots ALTER COLUMN creator_id TYPE TEXT USING creator_id::text;
+ALTER TABLE creator_snapshots ADD CONSTRAINT creator_snapshots_creator_id_fkey
+  FOREIGN KEY (creator_id) REFERENCES watchlist(id) ON DELETE CASCADE;
+
+-- Bot/authenticity score — computed per snapshot from that snapshot's
+-- own data, no history required (src/lib/bot-score.ts).
+ALTER TABLE creator_snapshots ADD COLUMN IF NOT EXISTS bot_score INTEGER;
+ALTER TABLE creator_snapshots ADD COLUMN IF NOT EXISTS bot_score_flags JSONB;
+
+-- Growth trajectory score — needs snapshot history (src/lib/trajectory-
+-- score.ts), so it's computed after the fact and denormalized onto the
+-- watchlist row it ranks, rather than living on creator_snapshots.
+ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS trajectory_score NUMERIC;
+ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS trajectory_label TEXT;
