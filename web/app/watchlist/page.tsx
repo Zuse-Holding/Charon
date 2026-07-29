@@ -9,13 +9,39 @@ import styles from "./page.module.css";
 
 interface WatchEntry {
   id: string;
-  type: "company" | "person" | "product";
+  type: "company" | "person" | "product" | "creator";
   subject: string;
   addedAt: string;
   lastRefreshedAt?: string;
   refreshIntervalDays: number;
   ageDays: number;
   isStale: boolean;
+  // Creator-only signal, from creator-snapshot-agent — null/0 for every
+  // other type, and for a creator with no snapshots run yet.
+  botScore: number | null;
+  followerCount: number | null;
+  lastSnapshotDate: string | null;
+  snapshotCount: number;
+  trajectoryScore: number | null;
+  trajectoryLabel: string | null;
+}
+
+// Must match MIN_DATA_POINTS in src/lib/trajectory-score.ts — the point
+// at which creator-snapshot-agent starts computing a trajectory instead
+// of leaving it null.
+const TRAJECTORY_MIN_DAYS = 7;
+
+const TRAJECTORY_COPY: Record<string, { label: string; tone: "good" | "bad" | "warn" | "neutral" }> = {
+  organic_growth: { label: "Organic growth", tone: "good" },
+  staircase: { label: "Staircase pattern", tone: "bad" },
+  declining: { label: "Declining", tone: "warn" },
+  flat: { label: "Flat", tone: "neutral" },
+};
+
+function botScoreTone(score: number): "good" | "warn" | "bad" {
+  if (score >= 80) return "good";
+  if (score >= 50) return "warn";
+  return "bad";
 }
 
 export default function Watchlist() {
@@ -124,6 +150,34 @@ export default function Watchlist() {
                         : "Never"}
                       &nbsp;·&nbsp; Interval: {entry.refreshIntervalDays}d
                     </div>
+
+                    {entry.type === "creator" && (
+                      <div className={styles.signalRow}>
+                        {entry.snapshotCount === 0 ? (
+                          <span className={styles.signalPending}>
+                            No snapshot yet — run creator-snapshot
+                          </span>
+                        ) : (
+                          <>
+                            {entry.botScore !== null && (
+                              <span className={`${styles.badge} ${styles[botScoreTone(entry.botScore)]}`}>
+                                Bot score {entry.botScore}
+                              </span>
+                            )}
+                            {entry.trajectoryLabel && TRAJECTORY_COPY[entry.trajectoryLabel] ? (
+                              <span className={`${styles.badge} ${styles[TRAJECTORY_COPY[entry.trajectoryLabel].tone]}`}>
+                                {TRAJECTORY_COPY[entry.trajectoryLabel].label}
+                                {entry.trajectoryScore !== null ? ` · ${entry.trajectoryScore}` : ""}
+                              </span>
+                            ) : (
+                              <span className={styles.signalPending}>
+                                Gathering trajectory — {entry.snapshotCount}/{TRAJECTORY_MIN_DAYS} days
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
 
                     <div className={styles.cardFooter}>
                       <button
