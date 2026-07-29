@@ -24,6 +24,32 @@
   letter-spacing: 0.08em;
 }
 
+.snapshotBtn {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 12px;
+  transition: all 0.12s;
+}
+.snapshotBtn:hover:not(:disabled) { color: var(--text); border-color: var(--text); }
+.snapshotBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.snapshotErrorBanner {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--red);
+  background: rgba(255,68,85,0.08);
+  border: 1px solid rgba(255,68,85,0.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+}
+
 .empty {
   display: flex;
   flex-direction: column;

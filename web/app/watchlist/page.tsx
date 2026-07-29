@@ -48,6 +48,8 @@ export default function Watchlist() {
   const router = useRouter();
   const [entries, setEntries] = useState<WatchEntry[]>([]);
   const [refreshing, setRefreshing] = useState<string | null>(null);
+  const [snapshotting, setSnapshotting] = useState(false);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch("/api/watchlist");
@@ -55,6 +57,21 @@ export default function Watchlist() {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function runSnapshotNow() {
+    setSnapshotting(true);
+    setSnapshotError(null);
+    try {
+      const res = await fetch("/api/creator-snapshot", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? data.message ?? "Snapshot run failed");
+      await load();
+    } catch (err) {
+      setSnapshotError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSnapshotting(false);
+    }
+  }
 
   async function remove(id: string) {
     await fetch("/api/watchlist", {
@@ -88,6 +105,7 @@ export default function Watchlist() {
   }
 
   const staleCount = entries.filter((e) => e.isStale).length;
+  const hasCreators = entries.some((e) => e.type === "creator");
 
   function stalenessPercent(e: WatchEntry) {
     return Math.min(100, Math.round((e.ageDays / e.refreshIntervalDays) * 100));
@@ -105,7 +123,19 @@ export default function Watchlist() {
             {staleCount > 0 && (
               <span className={styles.staleAlert}>{staleCount} STALE</span>
             )}
+            {hasCreators && (
+              <button
+                className={styles.snapshotBtn}
+                onClick={runSnapshotNow}
+                disabled={snapshotting}
+              >
+                {snapshotting ? "Running snapshot..." : "↻ Run snapshot now"}
+              </button>
+            )}
           </div>
+          {snapshotError && (
+            <div className={styles.snapshotErrorBanner}>{snapshotError}</div>
+          )}
 
           {entries.length === 0 ? (
             <EmptyState

@@ -18,6 +18,7 @@ import { HandleResolverAgent } from "../src/agents/handle-resolver-agent/index.j
 import { FaceVerifyAgent } from "../src/agents/face-verify-agent/index.js";
 import { LittleSisRelationshipEntry } from "../src/agents/littlesis-agent/index.js";
 import { MuckRockAgent } from "../src/agents/muckrock-agent/index.js";
+import { runCreatorSnapshotAgent } from "../src/agents/creator-snapshot-agent/index.js";
 import { findEasterEgg } from "../src/easter-eggs/index.js";
 import { saveEntityExtraction, saveLittleSisRelationships } from "../src/database/knowledge-graph.js";
 import { upsertStatewideExecutives } from "../src/database/statewide-executives.js";
@@ -643,6 +644,58 @@ app.post("/muckrock/search", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err);
     console.error("[muckrock/search] Error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * Creator Snapshot trigger (Charon) — lets a user manually run
+ * creator-snapshot-agent for their own tracked creators on demand
+ * (the Watchlist page's "Run snapshot now" button), instead of only
+ * ever waiting for whatever external cron calls runCreatorSnapshotAgent
+ * on a schedule. Gated the same way creator research itself is gated
+ * (config.creatorAccess) — this burns the same RapidAPI quota.
+ *
+ * Scoped to the caller's own watchlist rows only: runCreatorSnapshotAgent
+ * has no per-user concept on its own (the scheduled/CLI call processes
+ * every type='creator' row across all users), so this looks up the
+ * caller's own rows first and passes those ids in — one user's click
+ * shouldn't also re-snapshot every other user's tracked creators.
+ */
+app.post("/creator-snapshot", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const { userId } = req.body;
+  if (!userId) {
+    res.status(400).json({ error: "userId required" });
+    return;
+  }
+
+  const tier = await getUserTier(userId);
+  const config = getTierConfig(tier);
+  if (!config.creatorAccess) {
+    return tierDenied(res, "Creator tracking is a Charon-tier feature.");
+  }
+
+  try {
+    const { data: ownWatchlist, error } = await supabase
+      .from("watchlist")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("type", "creator");
+    if (error) throw new Error(error.message);
+
+    const watchlistIds = (ownWatchlist ?? []).map((r) => r.id as string);
+    if (watchlistIds.length === 0) {
+      res.json({ ok: true, outcomes: [] });
+      return;
+    }
+
+    const outcomes = await runCreatorSnapshotAgent(watchlistIds);
+    res.json({ ok: true, outcomes });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[creator-snapshot] Error:", message);
     res.status(500).json({ error: message });
   }
 });
