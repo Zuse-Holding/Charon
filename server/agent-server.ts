@@ -753,14 +753,18 @@ app.post("/creator-discovery/run", async (req, res) => {
     return tierDenied(res, "Creator discovery is a Charon-tier feature.");
   }
 
-  try {
-    const outcomes = await runCreatorDiscoveryAgent();
-    res.json({ ok: true, outcomes });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[creator-discovery/run] Error:", message);
-    res.status(500).json({ error: message });
-  }
+  // Fire-and-forget: 9 sequential Serper queries with pacing delays takes
+  // 15-45+ seconds in practice, well past Vercel's serverless function
+  // timeout on the Next.js proxy route sitting in front of this. Railway
+  // (this process) is a persistent server with no such limit, so the
+  // actual scrape keeps running fine after the response goes out — the
+  // Next.js route just can't sit around waiting for it. Candidates land
+  // in creator_discovery_candidates progressively; the client re-fetches
+  // the list to see them rather than getting them in this response.
+  res.json({ ok: true, status: "started" });
+  runCreatorDiscoveryAgent().catch((err) => {
+    console.error("[creator-discovery/run] Background run failed:", err instanceof Error ? err.message : err);
+  });
 });
 
 app.post("/creator-discovery/review", async (req, res) => {

@@ -6,6 +6,26 @@ import { createServerSupabaseClient, createServiceClient } from "../../../lib/su
 
 const execFileAsync = promisify(execFile);
 
+// A non-2xx or unexpected response from the Railway agent server (a stale
+// deploy missing a route, a proxy/edge error page, a timeout) comes back
+// as an HTML error page, not JSON — calling res.json() directly on that
+// throws a raw "Unexpected token '<'" SyntaxError in the browser with no
+// indication of what actually went wrong. Read the body as text first and
+// only parse it as JSON if it looks like JSON, so a bad upstream response
+// surfaces as a real, readable error instead of a cryptic parse crash.
+async function safeJson(res: Response): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const text = await res.text();
+  try {
+    return { ok: res.ok, status: res.status, data: JSON.parse(text) };
+  } catch {
+    return {
+      ok: false,
+      status: res.status,
+      data: { error: `Agent server returned a non-JSON response (HTTP ${res.status}). It may need to be redeployed with the latest code. First 200 chars: ${text.slice(0, 200)}` },
+    };
+  }
+}
+
 /**
  * GET lists the discovery review queue. Originally tried importing
  * listCandidates directly from src/agents/creator-discovery-agent via
@@ -33,8 +53,8 @@ export async function GET(req: NextRequest) {
     const res = await fetch(url.toString(), {
       headers: { "x-agent-secret": process.env.AGENT_SECRET ?? "" },
     });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    const { status, data } = await safeJson(res);
+    return NextResponse.json(data, { status });
   }
 
   const validStatus = statusParam === "pending" || statusParam === "promoted" || statusParam === "rejected" ? statusParam : undefined;
@@ -62,8 +82,8 @@ export async function POST() {
       headers: { "Content-Type": "application/json", "x-agent-secret": process.env.AGENT_SECRET ?? "" },
       body: JSON.stringify({ userId: user.id }),
     });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    const { status, data } = await safeJson(res);
+    return NextResponse.json(data, { status });
   }
 
   const PROJECT_ROOT = join(process.cwd(), "..");
