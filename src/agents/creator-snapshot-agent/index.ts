@@ -23,9 +23,15 @@
  * Usage:
  *   tsx src/agents/creator-snapshot-agent/index.ts
  *   or call runCreatorSnapshotAgent() from a scheduled job
+ *
+ * No `dotenv/config` import here deliberately — this module is also
+ * imported directly into the Next.js app (web/app/api/creator-snapshot)
+ * via the @src/* path alias, where env vars are already loaded by Next
+ * itself and `dotenv` isn't a dependency of web/'s own package.json.
+ * CLI callers (run-creator-snapshot.mjs) load dotenv themselves before
+ * calling in.
  */
 
-import "dotenv/config";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { fetchTikTokProfile, fetchTikTokRecentPosts, normalizeHandle } from "../../lib/tiktok.js";
 import { computeBotScore } from "../../lib/bot-score.js";
@@ -62,17 +68,20 @@ function computeAvgEngagementRate(posts: { playCount: number; diggCount: number;
   return Math.round((totalEngagement / totalPlays) * 10000) / 10000;
 }
 
-export async function runCreatorSnapshotAgent(): Promise<SnapshotOutcome[]> {
+// watchlistIds: when omitted, processes every tracked creator across all
+// users (the cron/CLI case). Pass a specific set of watchlist ids to
+// scope a run to one user's own creators — e.g. a "run now" button on
+// their Watchlist page shouldn't also burn RapidAPI quota re-snapshotting
+// every other user's tracked creators.
+export async function runCreatorSnapshotAgent(watchlistIds?: string[]): Promise<SnapshotOutcome[]> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data: tracked, error: watchlistError } = await supabase
-    .from("watchlist")
-    .select("id, subject")
-    .eq("type", "creator")
-    .returns<WatchlistCreator[]>();
+  let query = supabase.from("watchlist").select("id, subject").eq("type", "creator");
+  if (watchlistIds) query = query.in("id", watchlistIds);
+  const { data: tracked, error: watchlistError } = await query.returns<WatchlistCreator[]>();
 
   if (watchlistError) {
     throw new Error(`[creator-snapshot-agent] Failed to load watchlist: ${watchlistError.message}`);

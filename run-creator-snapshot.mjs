@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { runCreatorSnapshotAgent } from "./src/agents/creator-snapshot-agent/index.js";
 
 runCreatorSnapshotAgent()
