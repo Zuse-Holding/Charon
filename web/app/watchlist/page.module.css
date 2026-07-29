@@ -198,3 +198,89 @@
 .staleBtn { border-color: var(--red); color: var(--red); }
 .staleBtn:hover { background: rgba(255,68,85,0.08); }
 .removeBtn { flex: 0; padding: 7px 12px; }
+
+.discoveryPanel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.discoveryToggle {
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+}
+.discoveryToggle:hover { background: var(--surface2); }
+.discoveryBody {
+  padding: 14px;
+  border-top: 1px solid var(--border);
+}
+.discoveryControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.discoveryTabs { display: flex; gap: 6px; }
+.discoveryTab {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+}
+.discoveryTab:hover { color: var(--text); }
+.discoveryTabActive { color: var(--text); border-color: var(--text); background: var(--surface2); }
+
+.discoveryList { display: flex; flex-direction: column; gap: 8px; }
+.discoveryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.discoveryRowInfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.discoveryCandidateName {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 500;
+}
+.discoveryMeta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.discoveryActions { display: flex; gap: 6px; flex-shrink: 0; }
+.discoveryPromoteBtn, .discoveryRejectBtn {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  transition: all 0.12s;
+}
+.discoveryPromoteBtn { color: var(--green); border-color: rgba(0,255,148,0.3); }
+.discoveryPromoteBtn:hover:not(:disabled) { background: rgba(0,255,148,0.08); }
+.discoveryRejectBtn { color: var(--red); border-color: rgba(255,68,85,0.3); }
+.discoveryRejectBtn:hover:not(:disabled) { background: rgba(255,68,85,0.08); }
+.discoveryPromoteBtn:disabled, .discoveryRejectBtn:disabled { opacity: 0.5; cursor: not-allowed; }

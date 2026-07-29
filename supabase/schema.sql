@@ -362,3 +362,41 @@ ALTER TABLE creator_snapshots ADD COLUMN IF NOT EXISTS bot_score_flags JSONB;
 -- watchlist row it ranks, rather than living on creator_snapshots.
 ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS trajectory_score NUMERIC;
 ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS trajectory_label TEXT;
+
+-- ============================================================
+-- Creator discovery candidates (creator-discovery-agent)
+-- Serper-sourced trend scraping surfaces raw candidate strings (a name or
+-- @handle) — this table is the queue between "we saw this mentioned" and
+-- "this is an actual tracked creator." No user_id column: discovery is a
+-- system-wide background process, not a per-user action (gated at the
+-- application layer to Charon/internal tier, same as the rest of the
+-- creator vertical — see server/agent-server.ts's config.creatorAccess),
+-- unlike watchlist/research_runs which are genuinely per-user data.
+--
+-- Re-discovering the same candidate on a later run updates last_seen_at
+-- rather than inserting a duplicate row or resetting an already-reviewed
+-- status back to pending — a candidate someone already rejected once
+-- shouldn't reappear in the review queue just because Serper served the
+-- same snippet again next week.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS creator_discovery_candidates (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  raw_candidate   TEXT        NOT NULL,   -- extracted string as found, e.g. "@handle" or "Jane Doe"
+  platform        TEXT        NOT NULL DEFAULT 'tiktok',
+  niche           TEXT        NOT NULL,   -- which query bucket surfaced it (business/finance/tech/...)
+  source_query    TEXT        NOT NULL,   -- the exact Serper query that found it
+  source_url      TEXT,
+  source_snippet  TEXT,
+  status          TEXT        NOT NULL DEFAULT 'pending'
+                              CHECK (status IN ('pending', 'promoted', 'rejected')),
+  notes           TEXT,                    -- auto-reject reason, or a manual reviewer's note
+  watchlist_id    TEXT        REFERENCES watchlist(id) ON DELETE SET NULL, -- set once promoted
+  discovered_at   TIMESTAMPTZ DEFAULT NOW(),
+  last_seen_at    TIMESTAMPTZ DEFAULT NOW(),
+  reviewed_at     TIMESTAMPTZ,
+  UNIQUE (raw_candidate, platform)
+);
+
+CREATE INDEX IF NOT EXISTS idx_creator_discovery_status
+  ON creator_discovery_candidates (status, last_seen_at DESC);
