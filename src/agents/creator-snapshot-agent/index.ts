@@ -33,9 +33,10 @@
  */
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { fetchTikTokProfile, fetchTikTokRecentPosts, normalizeHandle } from "../../lib/tiktok.js";
+import { fetchTikTokProfile, fetchTikTokRecentPosts, normalizeHandle, resolveTikTokHandle } from "../../lib/tiktok.js";
 import { computeBotScore } from "../../lib/bot-score.js";
 import { computeTrajectoryScore, SnapshotPoint } from "../../lib/trajectory-score.js";
+import { SerperSearchProvider } from "../../lib/providers.js";
 
 const PLATFORM = "tiktok";
 const RECENT_POST_COUNT = 10;
@@ -94,11 +95,42 @@ export async function runCreatorSnapshotAgent(watchlistIds?: string[]): Promise<
   console.log(`[creator-snapshot-agent] Tracking ${tracked.length} creator(s)`);
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   const outcomes: SnapshotOutcome[] = [];
+  const searcher = new SerperSearchProvider();
 
   for (const entry of tracked) {
-    const handle = normalizeHandle(entry.subject);
+    let handle = normalizeHandle(entry.subject);
     try {
-      const profile = await fetchTikTokProfile(handle);
+      let profile = await fetchTikTokProfile(handle);
+
+      // A watchlist subject isn't always a real handle — added via the
+      // "Watch" button on a real-name search result, or promoted from a
+      // discovery candidate that was a name rather than a handle ("Mr
+      // Beast"), fetchTikTokProfile can never resolve it since RapidAPI
+      // needs the actual unique_id. Try resolving it via search once
+      // (skip entirely if the subject already looks like a handle — no
+      // point re-searching a handle that's simply wrong/deleted), and
+      // persist the resolved handle back onto the row so this only costs
+      // a search on the first run, not every run.
+      if (!profile && !entry.subject.trim().startsWith("@")) {
+        const resolved = await resolveTikTokHandle(entry.subject, searcher);
+        if (resolved) {
+          const resolvedProfile = await fetchTikTokProfile(resolved);
+          if (resolvedProfile) {
+            profile = resolvedProfile;
+            handle = resolved;
+            const { error: subjectUpdateError } = await supabase
+              .from("watchlist")
+              .update({ subject: `@${resolved}` })
+              .eq("id", entry.id);
+            if (subjectUpdateError) {
+              console.warn(`[creator-snapshot-agent] Resolved @${resolved} for "${entry.subject}" but failed to persist it: ${subjectUpdateError.message}`);
+            } else {
+              console.log(`[creator-snapshot-agent] Resolved "${entry.subject}" -> @${resolved}`);
+            }
+          }
+        }
+      }
+
       if (!profile) {
         console.warn(`[creator-snapshot-agent] Skipping ${entry.subject} — no TikTok profile found for @${handle}`);
         outcomes.push({ watchlistId: entry.id, handle, status: "skipped", reason: "profile_not_found" });

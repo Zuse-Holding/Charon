@@ -10,6 +10,8 @@
 // failure or unexpected response shape returns null/[] rather than
 // throwing, so one bad lookup doesn't take down a whole snapshot run.
 
+import type { SearchProvider } from "./providers.js";
+
 const RAPIDAPI_HOST = "tiktok-scraper7.p.rapidapi.com";
 
 function rapidApiHeaders(): Record<string, string> {
@@ -105,4 +107,31 @@ export async function fetchTikTokRecentPosts(handle: string, count = 10): Promis
 // strip the "@" so it matches RapidAPI's unique_id param either way.
 export function normalizeHandle(subject: string): string {
   return subject.trim().replace(/^@/, "");
+}
+
+const TIKTOK_PROFILE_URL_PATTERN = /tiktok\.com\/@([a-zA-Z0-9_.]+)/;
+
+// A watchlist subject isn't always a handle — a creator added via the
+// "Watch" button on a research report (or promoted from a discovery
+// candidate) is often stored as a real name ("Mr Beast"), which
+// fetchTikTokProfile can never resolve since RapidAPI's unique_id param
+// needs an actual handle. Rather than fixing every place a creator
+// watchlist row can be created, this resolves a bare name to a handle
+// on demand, using the same site:tiktok.com search pattern already
+// proven in creator-signal-agent's short-form-mentions search — no new
+// API dependency, just reusing the existing Serper-backed search.
+// Picks the first tiktok.com/@handle URL out of the results; best-effort,
+// same fail-soft contract as the rest of this module.
+export async function resolveTikTokHandle(name: string, searcher: SearchProvider): Promise<string | null> {
+  try {
+    const results = await searcher.search(`site:tiktok.com "${name}"`, 5);
+    for (const result of results) {
+      const match = result.url.match(TIKTOK_PROFILE_URL_PATTERN);
+      if (match) return match[1];
+    }
+    return null;
+  } catch (err) {
+    console.warn(`[tiktok] handle resolution failed for "${name}":`, err instanceof Error ? err.message : err);
+    return null;
+  }
 }
