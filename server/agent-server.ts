@@ -19,6 +19,7 @@ import { FaceVerifyAgent } from "../src/agents/face-verify-agent/index.js";
 import { LittleSisRelationshipEntry } from "../src/agents/littlesis-agent/index.js";
 import { MuckRockAgent } from "../src/agents/muckrock-agent/index.js";
 import { runCreatorSnapshotAgent } from "../src/agents/creator-snapshot-agent/index.js";
+import { runCreatorDiscoveryAgent, listCandidates, promoteCandidate, rejectCandidate } from "../src/agents/creator-discovery-agent/index.js";
 import { findEasterEgg } from "../src/easter-eggs/index.js";
 import { saveEntityExtraction, saveLittleSisRelationships } from "../src/database/knowledge-graph.js";
 import { upsertStatewideExecutives } from "../src/database/statewide-executives.js";
@@ -696,6 +697,97 @@ app.post("/creator-snapshot", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[creator-snapshot] Error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * Creator Discovery (Charon) — Serper-based trend scraping that surfaces
+ * candidates not yet on anyone's watchlist. Same creatorAccess gate as
+ * /creator-snapshot: this burns Serper quota, a shared external API.
+ *
+ * Three endpoints, matching the run/review split described in
+ * src/agents/creator-discovery-agent: GET lists the review queue (any
+ * status, default pending), /run kicks off a discovery cycle manually
+ * (until real scheduling exists), /review promotes or rejects one
+ * candidate — promote is scoped to the calling user (they become the
+ * watchlist owner), matching how a manually-searched-and-Watched creator
+ * already works.
+ */
+app.get("/creator-discovery/candidates", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const { userId, status } = req.query;
+  if (!userId || typeof userId !== "string") {
+    res.status(400).json({ error: "userId required" });
+    return;
+  }
+
+  const tier = await getUserTier(userId);
+  if (!getTierConfig(tier).creatorAccess) {
+    return tierDenied(res, "Creator discovery is a Charon-tier feature.");
+  }
+
+  try {
+    const validStatus = status === "pending" || status === "promoted" || status === "rejected" ? status : undefined;
+    const candidates = await listCandidates(validStatus);
+    res.json({ candidates });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[creator-discovery/candidates] Error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+app.post("/creator-discovery/run", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const { userId } = req.body;
+  if (!userId) {
+    res.status(400).json({ error: "userId required" });
+    return;
+  }
+
+  const tier = await getUserTier(userId);
+  if (!getTierConfig(tier).creatorAccess) {
+    return tierDenied(res, "Creator discovery is a Charon-tier feature.");
+  }
+
+  try {
+    const outcomes = await runCreatorDiscoveryAgent();
+    res.json({ ok: true, outcomes });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[creator-discovery/run] Error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+app.post("/creator-discovery/review", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const { userId, candidateId, action, reason } = req.body;
+  if (!userId || !candidateId || (action !== "promote" && action !== "reject")) {
+    res.status(400).json({ error: "userId, candidateId, and action ('promote'|'reject') required" });
+    return;
+  }
+
+  const tier = await getUserTier(userId);
+  if (!getTierConfig(tier).creatorAccess) {
+    return tierDenied(res, "Creator discovery is a Charon-tier feature.");
+  }
+
+  try {
+    if (action === "promote") {
+      const result = await promoteCandidate(candidateId, userId);
+      res.json({ ok: true, watchlistId: result.watchlistId });
+    } else {
+      await rejectCandidate(candidateId, reason ?? "Rejected by reviewer — no reason given");
+      res.json({ ok: true });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[creator-discovery/review] Error:", message);
     res.status(500).json({ error: message });
   }
 });
