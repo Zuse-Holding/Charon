@@ -107,6 +107,49 @@
   line-height: 1.6;
 }
 
+.signalRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.signalPending {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  font-style: italic;
+}
+.badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.good {
+  color: var(--green);
+  background: rgba(0,255,148,0.08);
+  border-color: rgba(0,255,148,0.3);
+}
+.warn {
+  color: var(--yellow);
+  background: rgba(255,212,71,0.08);
+  border-color: rgba(255,212,71,0.3);
+}
+.bad {
+  color: var(--red);
+  background: rgba(255,68,85,0.08);
+  border-color: rgba(255,68,85,0.3);
+}
+.neutral {
+  color: var(--muted);
+  background: var(--surface2);
+  border-color: var(--border);
+}
+
 .cardFooter {
   display: flex;
   gap: 8px;

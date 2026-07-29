@@ -117,13 +117,46 @@ export async function getWatchlistForUser() {
     .order("added_at", { ascending: false });
   if (error) throw error;
 
+  const rows = data ?? [];
+
+  // Creator rows get a bot/trajectory signal, sourced from
+  // creator_snapshots (creator-snapshot-agent) — everything else (company/
+  // person/product) has no such pipeline, so this is skipped entirely
+  // unless there's at least one tracked creator.
+  const creatorIds = rows.filter((r) => r.type === "creator").map((r) => r.id as string);
+  const latestByCreator = new Map<string, { botScore: number | null; followerCount: number | null; snapshotDate: string }>();
+  const snapshotCountByCreator = new Map<string, number>();
+
+  if (creatorIds.length > 0) {
+    const { data: snapshots } = await supabase
+      .from("creator_snapshots")
+      .select("creator_id, snapshot_date, bot_score, follower_count")
+      .in("creator_id", creatorIds)
+      .order("snapshot_date", { ascending: false });
+
+    for (const s of snapshots ?? []) {
+      const creatorId = s.creator_id as string;
+      snapshotCountByCreator.set(creatorId, (snapshotCountByCreator.get(creatorId) ?? 0) + 1);
+      // Rows arrive newest-first, so the first one seen per creator is its latest.
+      if (!latestByCreator.has(creatorId)) {
+        latestByCreator.set(creatorId, {
+          botScore: s.bot_score as number | null,
+          followerCount: s.follower_count as number | null,
+          snapshotDate: s.snapshot_date as string,
+        });
+      }
+    }
+  }
+
   const now = Date.now();
-  return (data ?? []).map((row) => {
+  return rows.map((row) => {
     const last = (row.last_refreshed_at ?? row.added_at) as string;
     const ageDays = Math.floor((now - new Date(last).getTime()) / 86_400_000);
     const isStale = ageDays >= (row.refresh_interval_days as number);
+    const id = row.id as string;
+    const latest = latestByCreator.get(id);
     return {
-      id: row.id as string,
+      id,
       type: row.type as string,
       subject: row.subject as string,
       addedAt: row.added_at as string,
@@ -131,6 +164,12 @@ export async function getWatchlistForUser() {
       refreshIntervalDays: row.refresh_interval_days as number,
       ageDays,
       isStale,
+      botScore: latest?.botScore ?? null,
+      followerCount: latest?.followerCount ?? null,
+      lastSnapshotDate: latest?.snapshotDate ?? null,
+      snapshotCount: snapshotCountByCreator.get(id) ?? 0,
+      trajectoryScore: row.trajectory_score as number | null,
+      trajectoryLabel: row.trajectory_label as string | null,
     };
   });
 }
