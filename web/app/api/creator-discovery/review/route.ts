@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient, createServiceClient } from "../../../../lib/supabase/server";
 
+// See ../route.ts's safeJson for why this exists — an agent-server error
+// page (stale deploy, proxy failure) isn't JSON, and calling res.json()
+// directly on it throws a raw parse error with no useful message.
+async function safeJson(res: Response): Promise<{ status: number; data: unknown }> {
+  const text = await res.text();
+  try {
+    return { status: res.status, data: JSON.parse(text) };
+  } catch {
+    return {
+      status: res.status,
+      data: { error: `Agent server returned a non-JSON response (HTTP ${res.status}). It may need to be redeployed with the latest code. First 200 chars: ${text.slice(0, 200)}` },
+    };
+  }
+}
+
 /**
  * Promote/reject a single discovery candidate. Dev-fallback branch below
  * duplicates promoteCandidate/rejectCandidate's logic from
@@ -27,8 +42,8 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json", "x-agent-secret": process.env.AGENT_SECRET ?? "" },
       body: JSON.stringify({ userId: user.id, candidateId, action, reason }),
     });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    const { status, data } = await safeJson(res);
+    return NextResponse.json(data, { status });
   }
 
   const supabaseAdmin = createServiceClient();

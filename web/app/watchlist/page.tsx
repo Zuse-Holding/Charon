@@ -70,6 +70,7 @@ export default function Watchlist() {
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
   const [discoveryRunning, setDiscoveryRunning] = useState(false);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+  const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   async function load() {
@@ -97,11 +98,17 @@ export default function Watchlist() {
   async function runDiscoveryNow() {
     setDiscoveryRunning(true);
     setDiscoveryError(null);
+    setDiscoveryMessage(null);
     try {
       const res = await fetch("/api/creator-discovery", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? data.message ?? "Discovery run failed");
-      await loadCandidates(discoveryStatus);
+      // The run kicks off in the background on the agent server (9
+      // sequential Serper queries takes 15-45s+, too slow to wait on
+      // directly) — candidates land progressively, not by the time this
+      // response comes back. Reloading immediately would just show "0
+      // new," which reads as broken rather than "still working."
+      setDiscoveryMessage("Discovery started — new candidates will appear here over the next minute or so. Switch tabs and back, or reopen this panel, to refresh the list.");
     } catch (err) {
       setDiscoveryError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -238,6 +245,7 @@ export default function Watchlist() {
                   </div>
 
                   {discoveryError && <div className={styles.snapshotErrorBanner}>{discoveryError}</div>}
+                  {discoveryMessage && <div className={styles.signalPending}>{discoveryMessage}</div>}
 
                   {discoveryLoading ? (
                     <div className={styles.signalPending}>Loading…</div>
