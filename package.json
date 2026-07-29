@@ -24,6 +24,7 @@
     "creator": "tsx run-creator.mjs",
     "creator-snapshot": "tsx run-creator-snapshot.mjs",
     "creator-discovery": "tsx run-creator-discovery.mjs",
+    "daily-creator-jobs": "tsx run-daily-creator-jobs.mjs",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
