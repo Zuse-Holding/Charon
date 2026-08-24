@@ -148,9 +148,29 @@ export interface AgentRunRow {
 // table. We don't have a generated schema, so Insert/Update are a relaxed
 // Partial<Row> — good enough for the dashboard's own writes (approvals,
 // manual ledger, deadline/lead status per schema.sql's RLS policies).
-type Table<Row> = { Row: Row; Insert: Partial<Row>; Update: Partial<Row>; Relationships: [] };
+type Table<Row> = {
+  Row: Row;
+  Insert: Partial<Row> & Record<string, unknown>;
+  Update: Partial<Row> & Record<string, unknown>;
+  Relationships: [];
+};
+
+// postgrest-js's `Schema extends GenericSchema` check requires `Tables` to
+// structurally satisfy `Record<string, GenericTable>` — a plain object type
+// with fixed keys doesn't count (TS only grants that leniency to direct
+// assignment, not `extends` conditional checks), so it silently degrades
+// every query to `never` without this intersection.
+type AnyTable = {
+  Row: Record<string, unknown>;
+  Insert: Record<string, unknown>;
+  Update: Record<string, unknown>;
+  Relationships: { foreignKeyName: string; columns: string[]; isOneToOne?: boolean; referencedRelation: string; referencedColumns: string[] }[];
+};
 
 export interface Database {
+  __InternalSupabase: {
+    PostgrestVersion: "12";
+  };
   public: {
     Tables: {
       approval_queue: Table<ApprovalQueueRow>;
@@ -164,7 +184,7 @@ export interface Database {
       briefs: Table<BriefRow>;
       selene_facts: Table<SeleneFactRow>;
       agent_runs: Table<AgentRunRow>;
-    };
+    } & Record<string, AnyTable>;
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: Record<string, never>;
