@@ -1,6 +1,8 @@
 "use client";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useRef } from "react";
+import { MarketingShell } from "../components/marketing/MarketingShell";
 import styles from "./landing.module.css";
 
 // Hook for scroll-triggered fade-in animations
@@ -91,27 +93,7 @@ export default function Landing() {
   useScrollFade();
 
   return (
-    <div className={styles.page}>
-      <div className={styles.gridBg} />
-      <div className={styles.scanline} />
-      <div className={styles.orbTop} />
-      <div className={styles.orbBottom} />
-
-      {/* NAV */}
-      <nav className={styles.nav}>
-        <div className={styles.navLogo}>
-          <div className={styles.logoIcon} />
-          <div>
-            <div className={styles.logoMark}>METIS</div>
-            <div className={styles.logoSub}>ZUSE HOLDINGS · SELENE</div>
-          </div>
-        </div>
-        <div className={styles.navRight}>
-          <button className={styles.btnGhost} onClick={() => router.push("/login")}>Sign In</button>
-          <button className={styles.ctaPrimary} onClick={() => router.push("/login")}>Get Started</button>
-        </div>
-      </nav>
-
+    <MarketingShell>
       {/* HERO */}
       <section className={styles.hero}>
         <svg className={styles.heroNodes} viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
@@ -145,7 +127,7 @@ export default function Landing() {
         </p>
 
         <div className={styles.heroCtas}>
-          <button className={styles.btnHeroPrimary} onClick={() => router.push("/login")}>
+          <button className={styles.btnHeroPrimary} onClick={() => router.push("/login?mode=signup")}>
             Get Started Free →
           </button>
           <button className={styles.btnHeroSecondary} onClick={() => {
@@ -167,7 +149,7 @@ export default function Landing() {
               <span className={styles.dotYellow} />
               <span className={styles.dotGreen} />
             </div>
-            <div className={styles.terminalTitle}>SELENE INTELLIGENCE ENGINE · v0.1</div>
+            <div className={styles.terminalTitle}>METIS INTELLIGENCE ENGINE · v0.1</div>
           </div>
           <div className={styles.terminalBody}>
             <div className={styles.termLine}>
@@ -260,7 +242,7 @@ export default function Landing() {
                   if (plan.isEnterprise) {
                     window.location.href = "mailto:support@metisanalytic.com?subject=Metis Enterprise";
                   } else {
-                    router.push("/login");
+                    router.push("/login?mode=signup");
                   }
                 }}
               >
@@ -269,22 +251,17 @@ export default function Landing() {
             </div>
           ))}
         </div>
+        <Link href="/pricing" className={styles.pricingDetailLink}>See full pricing details →</Link>
       </section>
 
       {/* FINAL CTA */}
       <section className={`${styles.finalCta} ${styles.fadeIn}`}>
         <h2 className={styles.finalCtaTitle}>Start researching in under a minute.</h2>
         <p className={styles.finalCtaSub}>No credit card. No sales call. Just answers.</p>
-        <button className={styles.btnHeroPrimary} onClick={() => router.push("/login")}>
+        <button className={styles.btnHeroPrimary} onClick={() => router.push("/login?mode=signup")}>
           Create Free Account →
         </button>
       </section>
-
-      <footer className={styles.footer}>
-        <span>© 2026 ZUSE HOLDINGS</span>
-        <a href="mailto:support@metisanalytic.com" className={styles.footerLink}>support@metisanalytic.com</a>
-        <span>POWERED BY SELENE</span>
-      </footer>
-    </div>
+    </MarketingShell>
   );
 }

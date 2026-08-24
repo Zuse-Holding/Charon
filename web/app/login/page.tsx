@@ -70,6 +70,10 @@ function LoginPage() {
   const { refresh: refreshTier } = useTier();
 
   useEffect(() => {
+    if (params.get("mode") === "signup") setMode("signup");
+  }, [params]);
+
+  useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") setRecoveryMode(true);
     });
@@ -173,7 +177,7 @@ function LoginPage() {
         <div className={styles.card}>
           <div className={styles.logo}>
             <div className={styles.logoMark}>METIS</div>
-            <div className={styles.logoSub}>ZUSE HOLDINGS // INTELLIGENCE PLATFORM</div>
+            <div className={styles.logoSub}>BUSINESS INTELLIGENCE PLATFORM</div>
           </div>
 
           <div className={styles.fields}>
@@ -222,7 +226,7 @@ function LoginPage() {
       <div className={styles.card}>
         <div className={styles.logo}>
           <div className={styles.logoMark}>METIS</div>
-          <div className={styles.logoSub}>ZUSE HOLDINGS // INTELLIGENCE PLATFORM</div>
+          <div className={styles.logoSub}>BUSINESS INTELLIGENCE PLATFORM</div>
         </div>
 
         <div className={styles.tabRow}>
