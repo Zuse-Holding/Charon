@@ -1,0 +1,103 @@
+.hero {
+  padding: 90px 48px 50px;
+  text-align: center; position: relative; z-index: 2;
+  max-width: 780px; margin: 0 auto;
+}
+.badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.14em; color: #ff6b2b;
+  background: rgba(255,107,43,0.08);
+  border: 1px solid rgba(255,107,43,0.25);
+  padding: 6px 14px; border-radius: 20px; margin-bottom: 28px;
+}
+.title {
+  font-family: var(--font-display);
+  font-size: 44px; font-weight: 700;
+  letter-spacing: -0.03em; line-height: 1.15;
+  margin-bottom: 20px;
+}
+.titleAccent { color: #ff6b2b; }
+.sub {
+  font-size: 16px; color: #6b6b80; line-height: 1.7;
+  max-width: 560px; margin: 0 auto 36px;
+}
+.heroCtas { display: flex; gap: 12px; justify-content: center; }
+
+/* TABLE */
+.tableSection {
+  max-width: 900px; margin: 0 auto; padding: 20px 48px 70px;
+  position: relative; z-index: 2;
+}
+.tableWrap {
+  border: 1px solid rgba(255,107,43,0.15); border-radius: 10px;
+  overflow: hidden; background: #0a0a14;
+}
+.table { width: 100%; border-collapse: collapse; }
+.table th {
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: #4a4a60; text-align: left; padding: 14px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.table th.metisCol { color: #ff6b2b; }
+.table td {
+  padding: 16px 18px; font-size: 13px; line-height: 1.55;
+  color: #a0a0b0; vertical-align: top;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.table tr:last-child td { border-bottom: none; }
+.rowLabel {
+  font-family: var(--font-mono); font-size: 11px;
+  color: #6b6b80; letter-spacing: 0.02em; white-space: nowrap;
+}
+.metisCell {
+  color: #e8e8f0; background: rgba(255,107,43,0.04);
+  border-left: 2px solid rgba(255,107,43,0.4);
+}
+
+/* NARRATIVE */
+.narrative {
+  max-width: 760px; margin: 0 auto; padding: 0 48px 70px;
+  position: relative; z-index: 2;
+}
+.narrativeGrid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+}
+.narrativeCard {
+  background: #0a0a14; border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; padding: 24px;
+}
+.narrativeCard h3 {
+  font-family: var(--font-display); font-size: 16px; font-weight: 600;
+  margin-bottom: 10px; color: #e8e8f0;
+}
+.narrativeCard p {
+  font-size: 13px; color: #6b6b80; line-height: 1.65;
+}
+
+/* FINAL CTA */
+.finalCta {
+  max-width: 600px; margin: 0 auto; padding: 20px 32px 90px;
+  text-align: center; position: relative; z-index: 2;
+}
+.finalCtaTitle {
+  font-family: var(--font-display); font-size: 26px; font-weight: 700;
+  margin-bottom: 12px;
+}
+.finalCtaSub { font-size: 14px; color: #4a4a60; margin-bottom: 28px; }
+.finalCtaNote {
+  font-family: var(--font-mono); font-size: 10px;
+  color: #2a2a3a; letter-spacing: 0.1em; margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .hero { padding: 60px 20px 40px; }
+  .title { font-size: 30px; }
+  .tableSection { padding: 20px 20px 50px; }
+  .table th, .table td { padding: 10px 12px; font-size: 12px; }
+  .narrative { padding: 0 20px 50px; }
+  .narrativeGrid { grid-template-columns: 1fr; }
+  .finalCta { padding: 20px 20px 70px; }
+  .heroCtas { flex-direction: column; }
+}

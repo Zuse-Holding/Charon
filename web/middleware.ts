@@ -32,7 +32,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/auth") ||
     pathname.startsWith("/print") ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon");
+    pathname.startsWith("/favicon") ||
+    pathname.startsWith("/vs/") ||
+    pathname.startsWith("/pricing") ||
+    pathname.startsWith("/case-studies") ||
+    pathname.startsWith("/resources");
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
