@@ -43,6 +43,7 @@ export function SiteFooter() {
         <Link href="/case-studies" className={styles.footerLink}>Case Studies</Link>
         <Link href="/privacy" className={styles.footerLink}>Privacy</Link>
         <Link href="/terms" className={styles.footerLink}>Terms</Link>
+        <a href="mailto:info@metisanalytic.com" className={styles.footerLink}>info@metisanalytic.com</a>
         <a href="mailto:support@metisanalytic.com" className={styles.footerLink}>support@metisanalytic.com</a>
       </div>
     </footer>
