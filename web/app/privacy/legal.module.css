@@ -1,0 +1,40 @@
+.header {
+  max-width: 760px; margin: 0 auto; padding: 80px 48px 20px;
+  position: relative; z-index: 2;
+}
+.draftBadge {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.12em; color: #ffd447;
+  background: rgba(255,212,71,0.08);
+  border: 1px solid rgba(255,212,71,0.3);
+  padding: 6px 14px; border-radius: 20px; margin-bottom: 24px;
+}
+.title {
+  font-family: var(--font-display); font-size: 34px; font-weight: 700;
+  letter-spacing: -0.02em; margin-bottom: 10px;
+}
+.updated {
+  font-family: var(--font-mono); font-size: 11px; color: #4a4a60;
+}
+
+.body {
+  max-width: 760px; margin: 0 auto; padding: 20px 48px 90px;
+  position: relative; z-index: 2;
+  font-size: 14.5px; line-height: 1.75; color: #a0a0b0;
+}
+.body h2 {
+  font-family: var(--font-display); font-size: 19px; font-weight: 600;
+  color: #e8e8f0; margin: 32px 0 12px;
+}
+.body p { margin-bottom: 14px; }
+.body ul { margin: 0 0 14px 20px; }
+.body li { margin-bottom: 6px; }
+.body a { color: #ff6b2b; text-decoration: underline; }
+.body strong { color: #e8e8f0; }
+
+@media (max-width: 768px) {
+  .header { padding: 60px 20px 10px; }
+  .title { font-size: 26px; }
+  .body { padding: 20px 20px 60px; }
+}

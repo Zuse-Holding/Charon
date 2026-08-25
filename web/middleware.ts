@@ -25,20 +25,25 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const { pathname } = request.nextUrl;
 
-  const isPublicRoute =
-    pathname === "/" ||
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/logout") ||
-    pathname.startsWith("/auth") ||
-    pathname.startsWith("/print") ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon") ||
-    pathname.startsWith("/vs/") ||
-    pathname.startsWith("/pricing") ||
-    pathname.startsWith("/case-studies") ||
-    pathname.startsWith("/resources");
+  // Gated by exception: only these need a session. Everything else (the
+  // public marketing site, and any unrecognized/typo'd path) falls through
+  // to Next's normal routing — including its 404 — instead of being forced
+  // through a login redirect.
+  const PRIVATE_PREFIXES = [
+    "/app",
+    "/dashboard",
+    "/settings",
+    "/watchlist",
+    "/intel-feed",
+    "/knowledge-graph",
+    "/reports",
+    "/api",
+  ];
+  const isPrivateRoute = PRIVATE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
 
-  if (!user && !isPublicRoute) {
+  if (!user && isPrivateRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
