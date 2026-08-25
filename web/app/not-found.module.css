@@ -1,0 +1,19 @@
+.hero {
+  padding: 140px 48px; text-align: center; position: relative; z-index: 2;
+  max-width: 600px; margin: 0 auto;
+}
+.code {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 600;
+  letter-spacing: 0.2em; color: rgba(255,107,43,0.5); margin-bottom: 20px;
+}
+.title {
+  font-family: var(--font-display); font-size: 32px; font-weight: 700;
+  letter-spacing: -0.02em; margin-bottom: 14px;
+}
+.sub { font-size: 15px; color: #6b6b80; line-height: 1.6; margin-bottom: 32px; }
+.links { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+@media (max-width: 768px) {
+  .hero { padding: 90px 20px; }
+  .title { font-size: 24px; }
+}
