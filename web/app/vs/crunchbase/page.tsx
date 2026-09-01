@@ -42,7 +42,7 @@ const ROWS = [
   },
   {
     label: "GETTING STARTED",
-    metis: "Sign up, no credit card, first report in seconds",
+    metis: "Sign up, first report in seconds",
     competitor: "Free tier is heavily capped; full plans require a paid subscription",
   },
 ];
@@ -69,7 +69,7 @@ export default function CrunchbaseVsPage() {
       rows={ROWS}
       narrative={NARRATIVE}
       finalCtaTitle="Get the synthesis, not just the search results."
-      finalCtaSub="Start free — no credit card, no per-seat pricing."
+      finalCtaSub="Start free — no per-seat pricing."
     />
   );
 }

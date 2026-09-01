@@ -68,7 +68,7 @@ export default async function ResourcePostPage({
         <div className={styles.ctaInner}>
           <div className={styles.ctaText}>
             <strong>See it on a real company.</strong>
-            Start free — no credit card required.
+            Start free — no sales call required.
           </div>
           <Link href="/login?mode=signup" className={shellStyles.ctaPrimary}>Start Free →</Link>
         </div>

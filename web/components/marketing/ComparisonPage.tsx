@@ -93,7 +93,7 @@ export function ComparisonPage({
         <Link href="/login?mode=signup" className={shellStyles.btnHeroPrimary}>
           Create Free Account →
         </Link>
-        <div className={styles.finalCtaNote}>NO CREDIT CARD · NO SALES CALL · JUST ANSWERS</div>
+        <div className={styles.finalCtaNote}>NO SALES CALL · JUST ANSWERS</div>
       </section>
     </MarketingShell>
   );
