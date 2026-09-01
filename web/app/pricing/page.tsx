@@ -7,10 +7,10 @@ import styles from "./pricing.module.css";
 export const metadata: Metadata = {
   title: "Pricing — Metis",
   description:
-    "Simple, self-serve pricing. Basic at $19/mo, Pro at $49/mo, Team at $149/mo. Start free, no credit card required.",
+    "Simple, self-serve pricing. Basic at $19/mo, Pro at $49/mo, Team at $149/mo. No sales call required.",
   openGraph: {
     title: "Pricing — Metis",
-    description: "Simple, self-serve pricing starting at $19/mo. Start free, no credit card required.",
+    description: "Simple, self-serve pricing starting at $19/mo. No sales call required.",
     url: "https://metisanalytic.com/pricing",
     type: "website",
   },
@@ -79,10 +79,6 @@ const COMPARE_ROWS: [string, string, string, string][] = [
 ];
 
 const FAQS = [
-  {
-    q: "Do I need a credit card to start?",
-    a: "No. Sign up and start researching immediately — no card required for the trial.",
-  },
   {
     q: "What happens when I hit my Basic profile limit?",
     a: "You'll be prompted to upgrade to Pro for unlimited profiles, or wait until your monthly limit resets. Nothing runs automatically or bills you without confirmation.",
@@ -175,7 +171,7 @@ export default function PricingPage() {
 
       <section className={styles.finalCta}>
         <h2 className={styles.finalCtaTitle}>Start free today.</h2>
-        <p className={styles.finalCtaSub}>No credit card. No sales call. Just answers.</p>
+        <p className={styles.finalCtaSub}>No sales call. Just answers.</p>
         <Link href="/login?mode=signup" className={shellStyles.btnHeroPrimary}>
           Create Free Account →
         </Link>

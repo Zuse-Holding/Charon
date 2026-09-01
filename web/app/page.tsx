@@ -137,7 +137,7 @@ export default function Landing() {
           </button>
         </div>
 
-        <div className={styles.heroNote}>NO CREDIT CARD · NO SALES CALL · JUST ANSWERS</div>
+        <div className={styles.heroNote}>NO SALES CALL · JUST ANSWERS</div>
       </section>
 
       {/* TERMINAL PREVIEW */}
@@ -257,7 +257,7 @@ export default function Landing() {
       {/* FINAL CTA */}
       <section className={`${styles.finalCta} ${styles.fadeIn}`}>
         <h2 className={styles.finalCtaTitle}>Start researching in under a minute.</h2>
-        <p className={styles.finalCtaSub}>No credit card. No sales call. Just answers.</p>
+        <p className={styles.finalCtaSub}>No sales call. Just answers.</p>
         <button className={styles.btnHeroPrimary} onClick={() => router.push("/login?mode=signup")}>
           Create Free Account →
         </button>
