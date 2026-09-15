@@ -29,36 +29,6 @@ function getReportPath(subject: string, type: string): string {
   return join(root, "reports", `${slugify(subject)}.md`);
 }
 
-// Admin user IDs — these accounts bypass rate limiting entirely.
-// Add your Supabase user UUID here to get unlimited access.
-// Find your UUID at: Supabase Dashboard → Authentication → Users
-const ADMIN_USER_IDS = new Set<string>([
-  // "your-supabase-user-id-here",  ← replace with your actual UUID
-]);
-
-// In-memory rate limiter — per user, resets hourly
-// Simple enough for current scale; swap for Redis when needed
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_MAX     = 20;  // max runs per window
-const RATE_LIMIT_WINDOW  = 60 * 60 * 1000; // 1 hour in ms
-
-function checkRateLimit(userId: string): { allowed: boolean; remaining: number; resetIn: number } {
-  const now    = Date.now();
-  const record = rateLimitMap.get(userId);
-
-  if (!record || now > record.resetAt) {
-    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-    return { allowed: true, remaining: RATE_LIMIT_MAX - 1, resetIn: RATE_LIMIT_WINDOW };
-  }
-
-  if (record.count >= RATE_LIMIT_MAX) {
-    return { allowed: false, remaining: 0, resetIn: record.resetAt - now };
-  }
-
-  record.count += 1;
-  return { allowed: true, remaining: RATE_LIMIT_MAX - record.count, resetIn: record.resetAt - now };
-}
-
 export async function POST(req: NextRequest) {
   // Validate input
   const body = await req.json();
@@ -73,31 +43,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid subject" }, { status: 400 });
   }
 
-  // Production: proxy to Railway agent server
+  // Production: proxy to Railway agent server. Rate limiting (task 3.1)
+  // happens there now, not here — agent-server.ts is a persistent process
+  // that can hold the limiter state reliably and already knows the
+  // caller's tier, where this serverless layer would need an extra
+  // lookup for the same tier-aware check (see AUDIT.md on why an
+  // in-memory limiter in a Vercel serverless function isn't reliable
+  // across instances anyway).
   const agentUrl = process.env.AGENT_SERVER_URL;
   if (agentUrl) {
     const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-
-    // Rate limit check — admins bypass
-    if (!ADMIN_USER_IDS.has(user.id)) {
-      const limit = checkRateLimit(user.id);
-      if (!limit.allowed) {
-        const resetMinutes = Math.ceil(limit.resetIn / 60000);
-        return NextResponse.json(
-          { error: `Rate limit reached. You can run more research in ${resetMinutes} minutes.` },
-          {
-            status: 429,
-            headers: {
-              "X-RateLimit-Limit":     String(RATE_LIMIT_MAX),
-              "X-RateLimit-Remaining": "0",
-              "X-RateLimit-Reset":     String(Math.ceil((Date.now() + limit.resetIn) / 1000)),
-            },
-          }
-        );
-      }
-    }
 
     const res = await fetch(`${agentUrl}/research`, {
       method: "POST",
@@ -108,14 +65,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({ subject: sanitizedSubject, type, userId: user.id }),
     });
     const data = await res.json();
-    const remaining = ADMIN_USER_IDS.has(user.id) ? 999 : checkRateLimit(user.id).remaining;
-    return NextResponse.json(data, {
-      status: res.status,
-      headers: {
-        "X-RateLimit-Limit":     String(RATE_LIMIT_MAX),
-        "X-RateLimit-Remaining": String(remaining),
-      },
-    });
+    return NextResponse.json(data, { status: res.status });
   }
 
   // Development: spawn CLI (only reachable when AGENT_SERVER_URL isn't

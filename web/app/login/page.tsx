@@ -82,6 +82,12 @@ function LoginPage() {
     return () => listener.subscription.unsubscribe();
   }, [supabase]);
 
+  // Signup/signin go through our own API routes (task 3.1), not the
+  // browser Supabase client directly — lets the server rate-limit them by
+  // IP, which it can't do for a call it never sees. The session cookie
+  // Supabase sets is written by the API route's response and picked up
+  // automatically by the shared cookie-based session (@supabase/ssr) —
+  // no need to hand it back to the client SDK manually.
   async function handleEmail() {
     if (!email || !password) { setError("Email and password required."); return; }
     if (mode === "signup" && (!firstName.trim() || !lastName.trim())) {
@@ -91,19 +97,14 @@ function LoginPage() {
     setLoading(true); setError(null); setMessage(null);
     try {
       if (mode === "signup") {
-        const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              first_name: firstName.trim(),
-              last_name: lastName.trim(),
-              full_name: fullName,
-            },
-          },
+        const res = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, firstName: firstName.trim(), lastName: lastName.trim() }),
         });
-        if (error) throw error;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? "Signup failed.");
+
         // Supabase tells us definitively which state we're in — a session
         // coming back means confirmation wasn't required (or this address
         // was already confirmed), so log them straight in instead of
@@ -112,7 +113,7 @@ function LoginPage() {
         // plainly rather than hedging with "...or sign in directly if
         // confirmation is disabled," which left people unsure which case
         // they were actually in.
-        if (data.session) {
+        if (data.hasSession) {
           // TierProvider lives in the root layout and doesn't remount on
           // a client-side navigation, so its tier fetch (which ran once
           // on initial page load, before this session existed) never
@@ -127,8 +128,13 @@ function LoginPage() {
           setMessage("Check your email to confirm your account, then sign in.");
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        const res = await fetch("/api/auth/signin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, rememberMe }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? "Sign in failed.");
         refreshTier();
         router.push(postAuthDestination);
         router.refresh();
@@ -152,12 +158,20 @@ function LoginPage() {
   async function handleForgotPassword() {
     if (!email) { setError("Enter your email above first."); return; }
     setForgotLoading(true); setError(null);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login`,
-    });
-    setForgotLoading(false);
-    if (error) { setError(error.message); return; }
-    setForgotSent(true);
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not send reset email.");
+      setForgotSent(true);
+    } catch (err: unknown) {
+      setError((err as Error).message ?? "Could not send reset email.");
+    } finally {
+      setForgotLoading(false);
+    }
   }
 
   async function handleSetNewPassword() {

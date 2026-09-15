@@ -46,7 +46,15 @@ export async function middleware(request: NextRequest) {
   // auth, so excluding it here is safe.
   const isWebhook = pathname === "/api/stripe/webhook";
 
-  const isPrivateRoute = !isWebhook && PRIVATE_PREFIXES.some(
+  // Task 3.1 — signup/signin/reset-password are called by definition by
+  // someone who doesn't have a session yet (that's the whole point of
+  // these routes). Gating them behind the same /login redirect as
+  // everything else under /api would make it impossible to ever sign up
+  // or sign in through them — same bug class as the webhook above, caught
+  // the same way (by actually testing the flow, not just reading the code).
+  const isAuthRoute = pathname.startsWith("/api/auth/");
+
+  const isPrivateRoute = !isWebhook && !isAuthRoute && PRIVATE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
 
