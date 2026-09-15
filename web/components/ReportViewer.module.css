@@ -122,8 +122,20 @@
 .newsHeadline { font-size: 12px; font-weight: 500; color: var(--text); line-height: 1.4; }
 .newsSub { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
 
-/* Sources */
-.sourcesList { display: flex; flex-direction: column; gap: 4px; }
+/* Sources (task 3.3 — per-section, appended under every section's own content) */
+.unverifiedBadge {
+  display: inline-block;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--yellow, #FFD447);
+  border: 1px solid currentColor;
+  border-radius: 20px;
+  padding: 3px 9px;
+}
+.sourcesList { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .sourceItem {
   display: flex;
   align-items: center;

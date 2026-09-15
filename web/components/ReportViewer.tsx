@@ -57,6 +57,55 @@ function parseKeyValue(lines: string[]): { key: string; value: string }[] {
     .filter(kv => kv.key);
 }
 
+// Task 3.3 — report-agent now appends a "**Sources:**" numbered-link
+// block (or an "_Unverified..._" line when a section has none) right
+// after every section's own content, instead of one combined "## Sources"
+// heading at the end of the report. Split that sub-block off before
+// handing the rest to renderSection's per-title logic below, so it
+// doesn't get mangled by e.g. getPlainText() stripping/flattening it —
+// the numbered-link renderer already used for the old flat Sources
+// section is reused for this per-section version.
+function splitOutSources(content: string[]): { body: string[]; sourceLines: string[] | null; unverified: boolean } {
+  const markerIdx = content.findIndex(
+    (l) => l.trim() === "**Sources:**" || l.trim().startsWith("_Unverified")
+  );
+  if (markerIdx === -1) return { body: content, sourceLines: null, unverified: false };
+
+  const marker = content[markerIdx].trim();
+  if (marker.startsWith("_Unverified")) {
+    return { body: content.slice(0, markerIdx), sourceLines: null, unverified: true };
+  }
+  return { body: content.slice(0, markerIdx), sourceLines: content.slice(markerIdx + 1), unverified: false };
+}
+
+function renderSectionSources(sourceLines: string[] | null, unverified: boolean) {
+  if (unverified) {
+    return <div className={styles.unverifiedBadge}>Unverified — no source recorded for this section</div>;
+  }
+  if (!sourceLines) return null;
+
+  const links = sourceLines
+    .filter((l) => /^\d+\./.test(l.trim()))
+    .map((l) => {
+      const match = l.match(/\[(.+?)\]\((.+?)\)/);
+      return match ? { text: match[1], url: match[2] } : null;
+    })
+    .filter(Boolean) as { text: string; url: string }[];
+  if (links.length === 0) return null;
+
+  return (
+    <div className={styles.sourcesList}>
+      {links.map((s, i) => (
+        <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className={styles.sourceItem}>
+          <span className={styles.sourceNum}>{i + 1}</span>
+          <span className={styles.sourceText}>{s.text}</span>
+          <span className={styles.sourceArrow}>↗</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function isPlaceholder(content: string[]): boolean {
   const text = content.join(" ").trim();
   return text.startsWith("_") && text.endsWith("_");
@@ -197,28 +246,6 @@ function renderSection(section: Section) {
     );
   }
 
-  // Sources
-  if (title === "Sources") {
-    const links = content
-      .filter(l => /^\d+\./.test(l.trim()))
-      .map(l => {
-        const match = l.match(/\[(.+?)\]\((.+?)\)/);
-        return match ? { text: match[1], url: match[2] } : null;
-      })
-      .filter(Boolean) as { text: string; url: string }[];
-    return (
-      <div className={styles.sourcesList}>
-        {links.map((s, i) => (
-          <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className={styles.sourceItem}>
-            <span className={styles.sourceNum}>{i + 1}</span>
-            <span className={styles.sourceText}>{s.text}</span>
-            <span className={styles.sourceArrow}>↗</span>
-          </a>
-        ))}
-      </div>
-    );
-  }
-
   // Products / Specs — generic list
   if (title === "Products" || title === "Specs") {
     const items = parseListItems(content);
@@ -275,12 +302,16 @@ export default function ReportViewer({ markdown }: ReportViewerProps) {
 
   return (
     <div className={styles.viewer}>
-      {sections.map((section, i) => (
-        <div key={i} className={styles.section}>
-          <div className={styles.sectionLabel}>{section.title}</div>
-          {renderSection(section)}
-        </div>
-      ))}
+      {sections.map((section, i) => {
+        const { body, sourceLines, unverified } = splitOutSources(section.content);
+        return (
+          <div key={i} className={styles.section}>
+            <div className={styles.sectionLabel}>{section.title}</div>
+            {renderSection({ title: section.title, content: body })}
+            {renderSectionSources(sourceLines, unverified)}
+          </div>
+        );
+      })}
     </div>
   );
 }

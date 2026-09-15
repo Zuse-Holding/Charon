@@ -1,4 +1,4 @@
-import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle } from "../../types/research.js";
+import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle, Source } from "../../types/research.js";
 
 /**
  * Report Agent
@@ -8,6 +8,31 @@ import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, P
  * included as placeholders so the report shape is stable from day one.
  */
 export class ReportAgent {
+  /**
+   * Task 3.3 — per-section citations, replacing the single flat "## Sources"
+   * list every report type used to end with. Source.usedFor already tags
+   * each source with the section(s) it supports (see src/types/research.ts
+   * and every agent's own `sources.push({..., usedFor: [...]})` calls) and
+   * the orchestrator already preserves that tag when it flattens each
+   * agent's sources into bundle.sources — so this is purely a rendering
+   * change, not a data-model one. A section with zero matching sources
+   * renders "Unverified" rather than silently having no citation at all,
+   * which is what the flat end-of-report list let happen for e.g. Risks/
+   * Opportunities (LLM-synthesized commentary, never actually sourced).
+   */
+  private pushSectionSources(lines: string[], sources: Source[], tags: string[]) {
+    const matched = sources.filter((s) => s.usedFor.some((u) => tags.includes(u)));
+    if (matched.length === 0) {
+      lines.push(`_Unverified — no sources recorded for this section._`);
+    } else {
+      lines.push(`**Sources:**`);
+      matched.forEach((s, i) => {
+        lines.push(`${i + 1}. [${s.title ?? s.url}](${s.url})`);
+      });
+    }
+    lines.push(``);
+  }
+
   generate(bundle: ResearchBundle): string {
     const lines: string[] = [];
 
@@ -23,6 +48,7 @@ export class ReportAgent {
         : `_No summary data found for ${bundle.company.name}. Try refining the company name or check network/source access._`
     );
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["overview"]);
 
     lines.push(`## Company Overview`);
     lines.push(`- **Website:** ${bundle.company.website ?? "Unknown"}`);
@@ -32,6 +58,7 @@ export class ReportAgent {
     );
     lines.push(`- **Industry:** ${bundle.company.industry ?? "Unknown"}`);
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["overview"]);
 
     lines.push(`## Leadership`);
     if (bundle.leadership.length === 0) {
@@ -42,6 +69,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["leadership"]);
 
     lines.push(`## Products`);
     if (bundle.products.length === 0) {
@@ -56,6 +84,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["products"]);
 
     // Competitors and Risks/Opportunities moved here (right after Products,
     // before Funding/News) per the 7/17 weekend list — previously these
@@ -72,7 +101,12 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["competitors"]);
 
+    // Risks/Opportunities are LLM-synthesized commentary across the whole
+    // bundle, not their own separately-sourced section — no usedFor tag
+    // maps to these, so they correctly render "Unverified" below, which
+    // is accurate: they're analysis, not a sourced claim.
     lines.push(`## Risks`);
     if (bundle.risks && bundle.risks.length > 0) {
       for (const risk of bundle.risks) {
@@ -82,6 +116,7 @@ export class ReportAgent {
       lines.push(`_Insufficient data for risk analysis on this run._`);
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["risks"]);
 
     lines.push(`## Opportunities`);
     if (bundle.opportunities && bundle.opportunities.length > 0) {
@@ -92,6 +127,7 @@ export class ReportAgent {
       lines.push(`_Insufficient data for opportunity analysis on this run._`);
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["opportunities"]);
 
     lines.push(`## Funding`);
     if (bundle.ownership) {
@@ -110,6 +146,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["funding"]);
 
     if (bundle.federalSpending && bundle.federalSpending.length > 0) {
       lines.push(`## Federal Spending`);
@@ -121,6 +158,7 @@ export class ReportAgent {
         );
       }
       lines.push(``);
+      this.pushSectionSources(lines, bundle.sources, ["federal-spending"]);
     }
 
     if (bundle.insiderActivity && bundle.insiderActivity.length > 0) {
@@ -135,6 +173,7 @@ export class ReportAgent {
         );
       }
       lines.push(``);
+      this.pushSectionSources(lines, bundle.sources, ["insider-activity"]);
     }
 
     lines.push(`## Recent News`);
@@ -150,17 +189,13 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["news"]);
 
+    // Public Records already cites its own source inline per item (every
+    // bullet is itself a link) — it doesn't suffer from the flat-list
+    // problem this task is fixing, so it's left as-is rather than also
+    // getting a redundant Sources sub-list.
     this.pushPublicRecordsSection(lines, bundle);
-
-    lines.push(`## Sources`);
-    if (bundle.sources.length === 0) {
-      lines.push(`_No sources recorded._`);
-    } else {
-      bundle.sources.forEach((s, i) => {
-        lines.push(`${i + 1}. [${s.title ?? s.url}](${s.url})`);
-      });
-    }
 
     return lines.join("\n");
   }
@@ -267,6 +302,7 @@ export class ReportAgent {
         : `_No summary data found for ${bundle.person.name}._`
     );
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["bio"]);
 
     // Quick facts row
     const facts: string[] = [];
@@ -289,6 +325,7 @@ export class ReportAgent {
       lines.push(`_No current role data collected in this pass._`);
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["bio", "background"]);
 
     lines.push(`## Career History`);
     if (bundle.careerHistory.length === 0) {
@@ -299,6 +336,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["bio", "background"]);
 
     // Charon Person Research (Round 3) — only present on deep/internal-tier
     // runs, so this section is omitted entirely rather than shown empty
@@ -316,6 +354,7 @@ export class ReportAgent {
         );
       }
       lines.push(``);
+      this.pushSectionSources(lines, bundle.sources, ["corporate-affiliations"]);
     }
 
     if (bundle.foiaRequests && bundle.foiaRequests.length > 0) {
@@ -326,6 +365,7 @@ export class ReportAgent {
         );
       }
       lines.push(``);
+      this.pushSectionSources(lines, bundle.sources, ["foia-requests"]);
     }
 
     lines.push(`## Recent News`);
@@ -341,17 +381,9 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["news"]);
 
     this.pushPublicRecordsSection(lines, bundle);
-
-    lines.push(`## Sources`);
-    if (bundle.sources.length === 0) {
-      lines.push(`_No sources recorded._`);
-    } else {
-      bundle.sources.forEach((s, i) => {
-        lines.push(`${i + 1}. [${s.title ?? s.url}](${s.url})`);
-      });
-    }
 
     return lines.join("\n");
   }
@@ -366,12 +398,21 @@ export class ReportAgent {
     lines.push(`## Overview`);
     lines.push(bundle.product.description ?? `_No description collected._`);
     lines.push(``);
+    // product-agent tags everything it collects "product" — a single tag
+    // for overview/details/specs/competitors alike, so these four
+    // sections share the same Sources list rather than each getting a
+    // finer-grained one. Distinguishing which specific finding backs
+    // which sub-section would need product-agent itself to tag more
+    // granularly, which is out of this task's scope (rendering what's
+    // already there, not re-instrumenting every agent).
+    this.pushSectionSources(lines, bundle.sources, ["product"]);
 
     lines.push(`## Product Details`);
     lines.push(`- **Brand / Manufacturer:** ${bundle.product.brand ?? "Unknown"}`);
     lines.push(`- **Category:** ${bundle.product.category ?? "Unknown"}`);
     lines.push(`- **Price:** ${bundle.product.price ?? "Unknown"}`);
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["product"]);
 
     lines.push(`## Specs`);
     if (bundle.specs.length === 0) {
@@ -382,6 +423,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["product"]);
 
     lines.push(`## Competing Products`);
     if (bundle.competitors.length === 0) {
@@ -392,6 +434,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["product"]);
 
     lines.push(`## Recent News`);
     if (bundle.news.length === 0) {
@@ -402,7 +445,10 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["news"]);
 
+    // Pros/Cons/Verdict are LLM-synthesized across the whole bundle, not
+    // their own sourced section — correctly render "Unverified" below.
     lines.push(`## Pros`);
     if (bundle.pros && bundle.pros.length > 0) {
       for (const p of bundle.pros) lines.push(`- ${p}`);
@@ -410,6 +456,7 @@ export class ReportAgent {
       lines.push(`_Insufficient review data for this run._`);
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["pros-cons"]);
 
     lines.push(`## Cons`);
     if (bundle.cons && bundle.cons.length > 0) {
@@ -418,6 +465,7 @@ export class ReportAgent {
       lines.push(`_Insufficient review data for this run._`);
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["pros-cons"]);
 
     lines.push(`## Verdict`);
     if (bundle.verdict) {
@@ -426,11 +474,7 @@ export class ReportAgent {
       lines.push(`_Insufficient data for a verdict on this run._`);
     }
     lines.push(``);
-
-    lines.push(`## Sources`);
-    bundle.sources.forEach((s, i) => {
-      lines.push(`${i + 1}. [${s.title ?? s.url}](${s.url})`);
-    });
+    this.pushSectionSources(lines, bundle.sources, ["verdict"]);
 
     return lines.join("\n");
   }
@@ -463,6 +507,7 @@ export class ReportAgent {
         : `_No summary data found for ${bundle.profile.name}._`
     );
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["profile"]);
 
     // Senators represent an entire state, not a numbered district — show
     // that plainly instead of "Unknown", which reads like missing data
@@ -479,6 +524,7 @@ export class ReportAgent {
     lines.push(`- **District:** ${districtDisplay}`);
     if (bundle.profile.education) lines.push(`- **Education:** ${bundle.profile.education}`);
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["profile"]);
 
     // District Makeup / Approval Rating / (roll-call) Voting Record /
     // Campaign Finance below are search-synthesized, not pulled from a
@@ -498,6 +544,7 @@ export class ReportAgent {
       lines.push(`_Best-effort from open sources — no specific district partisan-lean or demographic data surfaced for this pass. Not every district has this level of public detail readily available._`);
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["district"]);
 
     lines.push(`## Approval Rating`);
     if (bundle.approvalRating?.value) {
@@ -510,6 +557,7 @@ export class ReportAgent {
       lines.push(`_Best-effort from open sources — most individual members of Congress don't have recent, publicly available polling to draw from. This section only populates when a specific poll surfaces._`);
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["approval"]);
 
     lines.push(`## Voting Record`);
     if (bundle.votingRecord.length === 0) {
@@ -520,6 +568,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["voting-record"]);
 
     lines.push(`## Campaign Finance`);
     if (bundle.campaignFinance.length === 0) {
@@ -534,6 +583,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["campaign-finance"]);
 
     // Real FEC data (federal candidates only) — separate from the
     // search-synthesized Campaign Finance section above since this is
@@ -555,6 +605,10 @@ export class ReportAgent {
         }
       }
       lines.push(``);
+      // Real FEC data is tagged "campaign-finance" too, same as the
+      // search-synthesized section above — both genuinely draw from that
+      // tag, so they legitimately share the same Sources list here.
+      this.pushSectionSources(lines, bundle.sources, ["campaign-finance"]);
     }
 
     if (bundle.sponsoredLegislation && bundle.sponsoredLegislation.length > 0) {
@@ -570,6 +624,7 @@ export class ReportAgent {
         );
       }
       lines.push(``);
+      this.pushSectionSources(lines, bundle.sources, ["voting-record"]);
     }
 
     if (bundle.foiaRequests && bundle.foiaRequests.length > 0) {
@@ -580,6 +635,7 @@ export class ReportAgent {
         );
       }
       lines.push(``);
+      this.pushSectionSources(lines, bundle.sources, ["foia-requests"]);
     }
 
     lines.push(`## Opposition Research`);
@@ -592,6 +648,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["opposition-research"]);
 
     lines.push(`## Recent News`);
     if (bundle.news.length === 0) {
@@ -602,15 +659,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
-
-    lines.push(`## Sources`);
-    if (bundle.sources.length === 0) {
-      lines.push(`_No sources recorded._`);
-    } else {
-      bundle.sources.forEach((s, i) => {
-        lines.push(`${i + 1}. [${s.title ?? s.url}](${s.url})`);
-      });
-    }
+    this.pushSectionSources(lines, bundle.sources, ["news"]);
 
     return lines.join("\n");
   }
@@ -646,6 +695,7 @@ export class ReportAgent {
       for (const f of facts) lines.push(`- ${f}`);
       lines.push(``);
     }
+    this.pushSectionSources(lines, bundle.sources, ["profile"]);
 
     lines.push(`## YouTube Stats`);
     if (bundle.youtubeStats) {
@@ -659,6 +709,7 @@ export class ReportAgent {
       lines.push(`_No matching YouTube channel found, or YOUTUBE_API_KEY isn't configured._`);
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["youtube-stats"]);
 
     lines.push(`## Interest Trend`);
     if (bundle.trend && bundle.trend.points.length > 0) {
@@ -671,6 +722,7 @@ export class ReportAgent {
       lines.push(`_No Google Trends data available for this name — either search interest is too low to chart, or the lookup failed._`);
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["trend"]);
 
     lines.push(`## Short-Form Mentions (TikTok / Instagram)`);
     if (bundle.shortFormMentions.length === 0) {
@@ -688,6 +740,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["short-form-mentions"]);
 
     lines.push(`## What People Are Saying`);
     if (bundle.signals.length === 0) {
@@ -699,6 +752,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["signals"]);
 
     lines.push(`## Recent News`);
     if (bundle.news.length === 0) {
@@ -709,15 +763,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
-
-    lines.push(`## Sources`);
-    if (bundle.sources.length === 0) {
-      lines.push(`_No sources recorded._`);
-    } else {
-      bundle.sources.forEach((s, i) => {
-        lines.push(`${i + 1}. [${s.title ?? s.url}](${s.url})`);
-      });
-    }
+    this.pushSectionSources(lines, bundle.sources, ["news"]);
 
     return lines.join("\n");
   }
