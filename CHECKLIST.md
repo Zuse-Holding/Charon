@@ -47,6 +47,10 @@ tracked here as they come up rather than left buried in commit messages.
   "Legacy-account Pro grace period." Needed before `grant-legacy-pro-grace.mjs`
   can run at all (it also depends on the Phase 1 `stripe_customer_id` column).
 
+- [ ] **Run the report_issues migration too** (task 3.4) — same file, under
+  "Report issue reports." Needed before the "Something wrong in this report?"
+  form can save anything; it'll 500 until this runs.
+
 ## Verify before trusting cost_usd numbers
 
 - [ ] **Groq pricing in `src/lib/model-pricing.ts` is a best-effort guess,
@@ -58,10 +62,60 @@ tracked here as they come up rather than left buried in commit messages.
   cost_usd as accurate for anything real (budgets, margin analysis, etc.).
   OpenRouter's three models are genuinely $0 (they're all `:free`-suffixed)
   and Ollama is genuinely $0 (local) — those two aren't guesses.
-- [ ] **Untrack `.env.local`** — flagged in `AUDIT.md`: a real (likely expired)
-  Vercel OIDC token is currently committed and tracked in this public repo.
-  `git rm --cached .env.local` (already gitignored, just never actually removed
-  from the index).
+
+## Security — finish the secret-history cleanup (task A)
+
+You rotated the leaked Vercel OIDC token — thank you. The rest of task A is
+done except the part that has to be your call:
+
+- [x] Scrubbed `.env.local` out of every commit in history with
+  `git-filter-repo --path .env.local --invert-paths --force`, after backing
+  up `.git` first. Verified: `git log --all -- .env.local` now returns
+  nothing, all 208 commits are still present (just rewritten), working tree
+  is unchanged, `origin` re-added.
+- [x] Re-scanned all of history for anything else secret (Stripe/AWS/Google
+  key patterns, PEM blocks, a real non-default `AGENT_SECRET`, root `.env`,
+  `web/.env*`) — all clean, nothing else found.
+- [x] `AGENT_SECRET` now has no insecure fallback anywhere — `server/agent-server.ts`
+  refuses to start without it; every route that calls the agent server throws
+  instead of silently using a default (task A, separate commit).
+- [ ] **Force-push the rewritten history, then get everyone else to re-clone.**
+  I did not do this myself — rewriting a shared branch's history and telling
+  collaborators to discard their clones is exactly the kind of action that
+  should be your call, not something to happen as a side effect of a security
+  fix. Exact commands:
+
+  ```
+  git push origin main --force-with-lease
+  ```
+
+  `--force-with-lease` (not plain `--force`) refuses the push if anyone else
+  pushed to `origin/main` since your last fetch, so it can't silently clobber
+  work you don't know about. If it's refused for that reason, `git fetch` and
+  look at what's there before deciding how to proceed — don't just retry with
+  plain `--force`.
+
+  Anyone else with a clone (or a fork) needs to **re-clone from scratch**,
+  not pull — their local history now diverges from the rewritten one and a
+  normal `git pull` will conflict or silently create a mess:
+
+  ```
+  cd ..
+  rm -rf seline-intel-old   # or wherever their old clone lived — back it up
+                             # first if they have uncommitted work in it
+  git clone https://github.com/Zuse-Holding/Charon.git
+  ```
+
+  If this repo is deployed via a Vercel/Railway integration that tracks a
+  specific commit SHA, double-check the deploy still points at a real branch
+  ref (`main`) and not a pinned SHA that no longer exists post-rewrite.
+
+  Safety net if anything about the rewrite looks wrong before you force-push:
+  a full pre-rewrite backup is sitting at
+  `C:\Users\PC\Downloads\seline-intel-git-backup-20260915-053154` (just the
+  `.git` folder) and `C:\Users\PC\Downloads\seline-intel-backup-pre-filter-repo-20260915-052944`
+  (the whole working copy) — both untouched, neither pushed anywhere. Safe to
+  delete once you've confirmed the force-push worked as expected.
 
 ## Hosting / infra
 
