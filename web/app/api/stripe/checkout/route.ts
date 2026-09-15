@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient, createServiceClient } from "../../../../lib/supabase/server";
 import { getStripe, priceIdForPlan, type PlanKey } from "../../../../lib/stripe";
 
-const PLAN_KEYS: PlanKey[] = ["basic", "pro", "team"];
+const PLAN_KEYS: PlanKey[] = ["basic", "pro"];
 
 /**
  * Creates a Stripe Checkout Session for the logged-in user and returns the
- * redirect URL. Enterprise isn't here — it's mailto/custom, not self-serve.
+ * redirect URL. Only Basic and Pro are sellable — Enterprise is mailto/custom,
+ * and Team is deliberately not offered here (see docs/stripe-integration-plan.md's
+ * Team seat-billing gap; the plan enum/tier config still exists for accounts
+ * assigned to it by hand).
  *
  * If the user already has a Stripe customer (profiles.stripe_customer_id),
  * reuse it so their payment history and any existing subscription stay

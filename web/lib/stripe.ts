@@ -22,7 +22,10 @@ export function getStripe(): Stripe {
   return _stripe;
 }
 
-export type PlanKey = "basic" | "pro" | "team";
+// Team is intentionally not sellable — TIER_CONFIG.team still exists
+// server-side (server/agent-server.ts) for accounts assigned to it by hand,
+// but Checkout only ever offers Basic and Pro. See docs/stripe-integration-plan.md.
+export type PlanKey = "basic" | "pro";
 
 /**
  * Maps our plan names to Stripe Price IDs via env vars, not a hardcoded
@@ -32,21 +35,20 @@ export type PlanKey = "basic" | "pro" | "team";
  */
 export function priceIdForPlan(plan: PlanKey): string {
   const map: Record<PlanKey, string | undefined> = {
-    basic: process.env.STRIPE_PRICE_ID_BASIC,
-    pro: process.env.STRIPE_PRICE_ID_PRO,
-    team: process.env.STRIPE_PRICE_ID_TEAM,
+    basic: process.env.STRIPE_PRICE_BASIC_MONTHLY,
+    pro: process.env.STRIPE_PRICE_PRO_MONTHLY,
   };
 
   const priceId = map[plan];
   if (!priceId) {
-    throw new Error(`No Stripe price configured for plan "${plan}" — set STRIPE_PRICE_ID_${plan.toUpperCase()}`);
+    const envVar = plan === "basic" ? "STRIPE_PRICE_BASIC_MONTHLY" : "STRIPE_PRICE_PRO_MONTHLY";
+    throw new Error(`No Stripe price configured for plan "${plan}" — set ${envVar}`);
   }
   return priceId;
 }
 
 export function planForPriceId(priceId: string): PlanKey | null {
-  if (priceId === process.env.STRIPE_PRICE_ID_BASIC) return "basic";
-  if (priceId === process.env.STRIPE_PRICE_ID_PRO) return "pro";
-  if (priceId === process.env.STRIPE_PRICE_ID_TEAM) return "team";
+  if (priceId === process.env.STRIPE_PRICE_BASIC_MONTHLY) return "basic";
+  if (priceId === process.env.STRIPE_PRICE_PRO_MONTHLY) return "pro";
   return null;
 }
