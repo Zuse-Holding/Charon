@@ -77,6 +77,9 @@ export default function Settings() {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportError, setExportError]     = useState<string | null>(null);
 
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError]     = useState<string | null>(null);
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
@@ -162,6 +165,29 @@ export default function Settings() {
       setExportError("Export failed — please try again.");
     } finally {
       setExportLoading(false);
+    }
+  }
+
+  // Opens Stripe's hosted Billing Portal — update card, view invoices, or
+  // cancel (cancellation takes effect at the end of the current billing
+  // period; see the Stripe Dashboard portal configuration checklist item).
+  // 400 with no billing account yet (Free/never checked out) is expected,
+  // not a bug — shown inline rather than as a generic failure.
+  async function handleManageBilling() {
+    setBillingError(null);
+    setBillingLoading(true);
+    try {
+      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBillingError(data.error ?? "Could not open billing portal — please try again.");
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setBillingError("Could not open billing portal — please try again.");
+    } finally {
+      setBillingLoading(false);
     }
   }
 
@@ -332,6 +358,24 @@ export default function Settings() {
               </div>
             ))}
             {notifError && <div className={styles.fieldError}>{notifError}</div>}
+          </div>
+
+          <div className={styles.group}>
+            <div className={styles.groupLabel}>BILLING</div>
+            <div className={styles.row}>
+              <span className={styles.rowLabel}>Manage subscription</span>
+              <span className={styles.rowDescription}>
+                Update your card, view invoices, or cancel your plan.
+              </span>
+              <button
+                className={styles.resetBtn}
+                onClick={handleManageBilling}
+                disabled={billingLoading}
+              >
+                {billingLoading ? "Opening..." : "Manage billing →"}
+              </button>
+            </div>
+            {billingError && <div className={styles.fieldError}>{billingError}</div>}
           </div>
 
           <div className={styles.group}>
