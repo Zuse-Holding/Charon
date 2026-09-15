@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "./server";
+import { getAgentSecret } from "../agent-secret";
 
 /**
  * Supabase-backed data layer for the web app.
@@ -189,7 +190,7 @@ async function getWatchlistLimit(userId: string): Promise<number> {
   if (!agentUrl) return -1;
   try {
     const res = await fetch(`${agentUrl}/tier/${userId}`, {
-      headers: { "x-agent-secret": process.env.AGENT_SECRET ?? "" },
+      headers: { "x-agent-secret": getAgentSecret() },
       cache: "no-store",
     });
     if (!res.ok) return -1;

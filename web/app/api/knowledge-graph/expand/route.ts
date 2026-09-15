@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../../../lib/supabase/server";
+import { getAgentSecret } from "../../../../lib/agent-secret";
 
 /**
  * Click-to-expand: given an entity name that exists in the graph but was
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-agent-secret": process.env.AGENT_SECRET ?? "",
+        "x-agent-secret": getAgentSecret(),
       },
       body: JSON.stringify({ subject: entityName, type: researchType, userId: user.id }),
     });

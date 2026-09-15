@@ -39,7 +39,20 @@ app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
 // large; this is a safe app-wide cap, not a route-specific carve-out.
 app.use(express.json({ limit: "12mb" }));
 
-const AGENT_SECRET = process.env.AGENT_SECRET ?? "change-me-in-production";
+// Refuses to start rather than silently falling back to the well-known
+// default that used to live here — that default was committed in this
+// repo, which is public, so an unconfigured deploy meant anyone who found
+// the agent server's URL could call it directly with no real auth (see
+// AUDIT.md's top-flagged finding). This is the ONLY thing gating every
+// route below (authCheck), so a missing secret is worth crashing loudly
+// over rather than degrading into "everyone's in".
+if (!process.env.AGENT_SECRET) {
+  throw new Error(
+    "AGENT_SECRET is not set. Refusing to start with a missing/default shared secret — " +
+    "set a real random value for AGENT_SECRET before running this server."
+  );
+}
+const AGENT_SECRET = process.env.AGENT_SECRET;
 
 function authCheck(req: express.Request, res: express.Response): boolean {
   const secret = req.headers["x-agent-secret"];

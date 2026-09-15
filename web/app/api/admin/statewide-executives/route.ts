@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../../../lib/supabase/server";
+import { getAgentSecret } from "../../../../lib/agent-secret";
 
-const AGENT_URL    = process.env.AGENT_SERVER_URL ?? "http://localhost:4000";
-const AGENT_SECRET = process.env.AGENT_SECRET ?? "change-me-in-production";
+const AGENT_URL = process.env.AGENT_SERVER_URL ?? "http://localhost:4000";
 
 /**
  * Admin-only quarterly refresh trigger for statewide_executives. Not a
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-agent-secret": AGENT_SECRET,
+        "x-agent-secret": getAgentSecret(),
       },
       body: JSON.stringify({ userId: user.id, updates }),
     });

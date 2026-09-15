@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import { getAgentSecret } from "../../../lib/agent-secret";
 
 const execFileAsync = promisify(execFile);
 
@@ -25,7 +26,7 @@ export async function POST() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-agent-secret": process.env.AGENT_SECRET ?? "",
+        "x-agent-secret": getAgentSecret(),
       },
       body: JSON.stringify({ userId: user.id }),
     });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient, createServiceClient } from "../../../../lib/supabase/server";
+import { getAgentSecret } from "../../../../lib/agent-secret";
 
 // See ../route.ts's safeJson for why this exists — an agent-server error
 // page (stale deploy, proxy failure) isn't JSON, and calling res.json()
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
   if (agentUrl) {
     const res = await fetch(`${agentUrl}/creator-discovery/review`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-agent-secret": process.env.AGENT_SECRET ?? "" },
+      headers: { "Content-Type": "application/json", "x-agent-secret": getAgentSecret() },
       body: JSON.stringify({ userId: user.id, candidateId, action, reason }),
     });
     const { status, data } = await safeJson(res);

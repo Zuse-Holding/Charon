@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { createServerSupabaseClient, createServiceClient } from "../../../lib/supabase/server";
+import { getAgentSecret } from "../../../lib/agent-secret";
 
 const execFileAsync = promisify(execFile);
 
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
     url.searchParams.set("userId", user.id);
     if (statusParam) url.searchParams.set("status", statusParam);
     const res = await fetch(url.toString(), {
-      headers: { "x-agent-secret": process.env.AGENT_SECRET ?? "" },
+      headers: { "x-agent-secret": getAgentSecret() },
     });
     const { status, data } = await safeJson(res);
     return NextResponse.json(data, { status });
@@ -79,7 +80,7 @@ export async function POST() {
   if (agentUrl) {
     const res = await fetch(`${agentUrl}/creator-discovery/run`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-agent-secret": process.env.AGENT_SECRET ?? "" },
+      headers: { "Content-Type": "application/json", "x-agent-secret": getAgentSecret() },
       body: JSON.stringify({ userId: user.id }),
     });
     const { status, data } = await safeJson(res);

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import { getAgentSecret } from "../../../lib/agent-secret";
 
-const AGENT_URL    = process.env.AGENT_SERVER_URL ?? "http://localhost:4000";
-const AGENT_SECRET = process.env.AGENT_SECRET ?? "change-me-in-production";
+const AGENT_URL = process.env.AGENT_SERVER_URL ?? "http://localhost:4000";
 
 /**
  * Proxies a profile update (display name and/or notification
@@ -38,7 +38,7 @@ export async function PATCH(req: NextRequest) {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "x-agent-secret": AGENT_SECRET,
+        "x-agent-secret": getAgentSecret(),
       },
       body: JSON.stringify(forwarded),
     });

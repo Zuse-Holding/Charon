@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import { getAgentSecret } from "../../../lib/agent-secret";
 
-const AGENT_URL    = process.env.AGENT_SERVER_URL ?? "http://localhost:4000";
-const AGENT_SECRET = process.env.AGENT_SECRET ?? "change-me-in-production";
+const AGENT_URL = process.env.AGENT_SERVER_URL ?? "http://localhost:4000";
 
 /**
  * Proxies a data-export request to the agent server, which holds the
@@ -21,7 +21,7 @@ export async function GET() {
     }
 
     const res = await fetch(`${AGENT_URL}/export/${user.id}`, {
-      headers: { "x-agent-secret": AGENT_SECRET },
+      headers: { "x-agent-secret": getAgentSecret() },
     });
 
     const data = await res.json().catch(() => ({}));

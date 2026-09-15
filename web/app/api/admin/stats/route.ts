@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../../../lib/supabase/server";
+import { getAgentSecret } from "../../../../lib/agent-secret";
 
-const AGENT_URL    = process.env.AGENT_SERVER_URL ?? "http://localhost:4000";
-const AGENT_SECRET = process.env.AGENT_SECRET ?? "change-me-in-production";
+const AGENT_URL = process.env.AGENT_SERVER_URL ?? "http://localhost:4000";
 
 export async function GET() {
   try {
@@ -14,7 +14,7 @@ export async function GET() {
     }
 
     const res = await fetch(`${AGENT_URL}/admin/stats/${user.id}`, {
-      headers: { "x-agent-secret": AGENT_SECRET },
+      headers: { "x-agent-secret": getAgentSecret() },
       cache: "no-store",
     });
 
