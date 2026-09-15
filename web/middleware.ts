@@ -39,7 +39,14 @@ export async function middleware(request: NextRequest) {
     "/reports",
     "/api",
   ];
-  const isPrivateRoute = PRIVATE_PREFIXES.some(
+  // Stripe calls this directly with its own signature, not a session
+  // cookie — gating it behind /login would make Stripe receive a 307
+  // instead of our handler ever running. Verified by request signature
+  // inside the route itself (web/app/api/stripe/webhook/route.ts), not by
+  // auth, so excluding it here is safe.
+  const isWebhook = pathname === "/api/stripe/webhook";
+
+  const isPrivateRoute = !isWebhook && PRIVATE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
 
