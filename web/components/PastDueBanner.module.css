@@ -1,0 +1,15 @@
+.banner {
+  background: rgba(255, 212, 71, 0.12);
+  border-bottom: 1px solid rgba(255, 212, 71, 0.35);
+  color: var(--text, #E8E8F0);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  padding: 10px 20px;
+}
+
+.link {
+  color: var(--yellow, #FFD447);
+  font-weight: 600;
+  text-decoration: underline;
+}

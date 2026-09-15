@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ResearchProvider } from "../lib/research-context";
 import { TierProvider } from "../lib/tier-context";
+import { PastDueBanner } from "../components/PastDueBanner";
 
 export const metadata: Metadata = {
   title: "Metis — Business Intelligence",
@@ -35,6 +36,7 @@ export default function RootLayout({
       <body>
         <ResearchProvider>
           <TierProvider>
+            <PastDueBanner />
             {children}
           </TierProvider>
         </ResearchProvider>

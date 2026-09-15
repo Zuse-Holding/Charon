@@ -931,12 +931,16 @@ app.get("/tier/:userId", async (req, res) => {
   const tier = await getUserTier(req.params.userId);
   const config = getTierConfig(tier);
 
-  // Two independent queries, not one — a missing/broken column on either
-  // side (e.g. notification_preferences not yet migrated in some
-  // environment) must not silently null out the other, working field.
-  const [displayNameResult, notifPrefsResult] = await Promise.all([
+  // Independent queries, not one — a missing/broken column on any one side
+  // (e.g. notification_preferences not yet migrated in some environment)
+  // must not silently null out the others, working fields.
+  const [displayNameResult, notifPrefsResult, billingResult] = await Promise.all([
     supabase.from("profiles").select("display_name").eq("id", req.params.userId).single(),
     supabase.from("profiles").select("notification_preferences").eq("id", req.params.userId).single(),
+    // subscription_status/cancel_at_period_end don't exist until the Phase 1
+    // migration runs (supabase/schema.sql) — a missing-column error here is
+    // expected pre-migration and just means no banner shows, not a crash.
+    supabase.from("profiles").select("subscription_status, cancel_at_period_end").eq("id", req.params.userId).single(),
   ]);
   if (displayNameResult.error) {
     console.error("[tier] display_name fetch failed:", JSON.stringify(displayNameResult.error));
@@ -944,9 +948,14 @@ app.get("/tier/:userId", async (req, res) => {
   if (notifPrefsResult.error) {
     console.error("[tier] notification_preferences fetch failed:", JSON.stringify(notifPrefsResult.error));
   }
+  if (billingResult.error) {
+    console.error("[tier] billing status fetch failed:", JSON.stringify(billingResult.error));
+  }
   const profile = {
     display_name: displayNameResult.data?.display_name ?? null,
     notification_preferences: notifPrefsResult.data?.notification_preferences ?? null,
+    subscription_status: billingResult.data?.subscription_status ?? null,
+    cancel_at_period_end: billingResult.data?.cancel_at_period_end ?? false,
   };
 
   // Reflect the real, allowlist-aware political access here too — not
@@ -975,6 +984,8 @@ app.get("/tier/:userId", async (req, res) => {
     displayName: profile?.display_name ?? null,
     monthlyUsage,
     notificationPreferences: profile?.notification_preferences ?? DEFAULT_NOTIFICATION_PREFERENCES,
+    subscriptionStatus: profile?.subscription_status ?? null,
+    cancelAtPeriodEnd: profile?.cancel_at_period_end ?? false,
   });
 });
 

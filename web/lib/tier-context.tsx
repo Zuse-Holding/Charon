@@ -71,6 +71,11 @@ interface TierContextValue {
   email: string | null;
   monthlyUsage: MonthlyUsage | null;
   notificationPreferences: NotificationPreferences;
+  /** profiles.subscription_status, mirrored from Stripe by the webhook —
+   *  null for accounts that have never checked out (Free, or hand-assigned
+   *  Team/trial/internal). Used to show the past_due billing banner. */
+  subscriptionStatus: string | null;
+  cancelAtPeriodEnd: boolean;
   can: (feature: keyof TierConfig) => boolean;
   refresh: () => void;
   /** Sets the user's preferred display name (profiles.display_name).
@@ -113,6 +118,8 @@ const TierContext = createContext<TierContextValue>({
   email: null,
   monthlyUsage: null,
   notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
+  subscriptionStatus: null,
+  cancelAtPeriodEnd: false,
   can: () => false,
   refresh: () => {},
   updateDisplayName: async () => ({ ok: false }),
@@ -150,6 +157,8 @@ export function TierProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
   const [monthlyUsage, setMonthlyUsage] = useState<MonthlyUsage | null>(null);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -179,12 +188,16 @@ export function TierProvider({ children }: { children: ReactNode }) {
           // Prefer the user's own saved preference over the email guess.
           if (data.displayName) setDisplayName(data.displayName);
           setNotificationPreferences({ ...DEFAULT_NOTIFICATION_PREFERENCES, ...(data.notificationPreferences ?? {}) });
+          setSubscriptionStatus(data.subscriptionStatus ?? null);
+          setCancelAtPeriodEnd(data.cancelAtPeriodEnd ?? false);
         }
       } catch {
         if (!cancelled) {
-          setTier("basic");
+          setTier("free");
           setConfig(DEFAULT_CONFIG);
           setMonthlyUsage(null);
+          setSubscriptionStatus(null);
+          setCancelAtPeriodEnd(false);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -279,7 +292,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, monthlyUsage, notificationPreferences, can, refresh, updateDisplayName, updateNotificationPreferences }}>
+    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, monthlyUsage, notificationPreferences, subscriptionStatus, cancelAtPeriodEnd, can, refresh, updateDisplayName, updateNotificationPreferences }}>
       {children}
     </TierContext.Provider>
   );
