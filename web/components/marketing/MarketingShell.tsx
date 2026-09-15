@@ -5,7 +5,6 @@ const NAV_LINKS = [
   { href: "/pricing", label: "Pricing" },
   { href: "/vs/crunchbase", label: "Compare" },
   { href: "/resources", label: "Resources" },
-  { href: "/case-studies", label: "Case Studies" },
 ];
 
 export function SiteNav() {
@@ -40,7 +39,6 @@ export function SiteFooter() {
       <div className={styles.footerLinks}>
         <Link href="/pricing" className={styles.footerLink}>Pricing</Link>
         <Link href="/resources" className={styles.footerLink}>Resources</Link>
-        <Link href="/case-studies" className={styles.footerLink}>Case Studies</Link>
         <Link href="/privacy" className={styles.footerLink}>Privacy</Link>
         <Link href="/terms" className={styles.footerLink}>Terms</Link>
         <a href="mailto:support@metisanalytic.com" className={styles.footerLink}>support@metisanalytic.com</a>
