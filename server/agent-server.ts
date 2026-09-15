@@ -326,6 +326,27 @@ async function logIdentityVerification(
 }
 
 /**
+ * Task 3.2 — true regardless of the Supabase project's own "confirm
+ * email" auth setting (can't be read from the repo — see AUDIT.md), so
+ * this enforces verification at the app level unconditionally rather
+ * than assuming that dashboard toggle is on. A user who signed up before
+ * this check existed and never verifies simply can't run research until
+ * they do — no grandfathering, since an unverified address is the same
+ * risk regardless of when the account was created.
+ */
+async function hasVerifiedEmail(userId: string): Promise<boolean> {
+  const { data, error } = await supabase.auth.admin.getUserById(userId);
+  if (error || !data?.user) {
+    // Fail closed here (block research) rather than open (as
+    // getBillingPeriodStart's lookup failure does) — a lookup failure
+    // for a security gate should never silently grant access.
+    console.error("[email-verification] getUserById failed:", JSON.stringify(error));
+    return false;
+  }
+  return !!data.user.email_confirmed_at;
+}
+
+/**
  * 7/17 weekend list #1 — Basic-tier hard cap of 25 "quick profiles" per
  * month (now also Pro's monthly fair-use caps, Phase 1), across ALL
  * research types, distinct from PERSON_SEARCH_MONTHLY_LIMIT above (which
@@ -542,6 +563,14 @@ app.post("/research", async (req, res) => {
   const ipLimit = checkHourlyBucket(`research:ip:${ip}`, RATE_LIMIT_PER_IP_PER_HOUR);
   if (!ipLimit.allowed) {
     return rateLimited(res, `Too many requests from this network. Try again in ${Math.ceil(ipLimit.resetInMs / 60000)} minutes.`);
+  }
+
+  // Task 3.2 — email verification enforced at the app level regardless of
+  // whatever the Supabase project's own "confirm email" toggle is set to
+  // (a dashboard setting AUDIT.md flagged as unverifiable from the repo).
+  // Internal bypasses, same as every other limit in this file.
+  if (tier !== "internal" && !(await hasVerifiedEmail(userId))) {
+    return tierDenied(res, "Please verify your email address before running research — check your inbox for the confirmation link.");
   }
 
   if (type === "political" && !hasPoliticalAccess(userId, config)) {
