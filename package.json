@@ -28,6 +28,7 @@
     "duration-stats": "node duration-stats.mjs",
     "grant-legacy-pro-grace": "node grant-legacy-pro-grace.mjs",
     "day7-email-job": "tsx run-day7-email-job.mjs",
+    "restore-test": "node restore-test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],

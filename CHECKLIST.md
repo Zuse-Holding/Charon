@@ -196,9 +196,33 @@ done except the part that has to be your call:
 - [ ] **Verify production env vars.** Confirm Vercel and Railway/VPS both have
   a real (non-default) `AGENT_SECRET`, and once ready, the real Stripe keys —
   none of this can be checked from the repo.
-- [ ] **DB backups** — confirm Supabase project backup settings (Settings →
-  Database → Backups). Not visible from the repo; see Phase 4.5 for a local
-  restore-test script once this is confirmed configured.
+- [ ] **DB backups (task 4.5)** — not visible from the repo at all; needs
+  checking directly in Supabase Dashboard → Settings → Database → Backups:
+    - Confirm daily backups are actually enabled (they're on by default on
+      paid Supabase plans, but this project's plan tier isn't visible from
+      the repo either — verify, don't assume).
+    - Point-in-Time Recovery (PITR) needs its own opt-in and a paid add-on
+      — worth turning on given this app holds paying customers' billing
+      state (`profiles.stripe_*`) and research history; a once-a-day
+      backup means up to 24 hours of data loss on a bad day, PITR narrows
+      that to minutes.
+    - Note the retention window (how many days of backups are kept) —
+      that's a real number to know before you need it, not after.
+  - [x] **Local restore-test script written** — `restore-test.mjs`
+    (`npm run restore-test`), takes `BACKUP_FILE` (a pg_dump export from
+    the dashboard) and `RESTORE_TARGET_DATABASE_URL` (a disposable scratch
+    Postgres — never point this at anything real), restores it via
+    `pg_restore`/`psql`, and checks that the core tables actually came
+    back with rows in them. Two safety guards, both live-tested: refuses
+    to run if the target host matches this project's real Supabase URL,
+    and refuses to restore on top of a database that already has this
+    app's tables in it.
+  - Couldn't fully verify: no real backup file exists to test the restore
+    path itself against (only the argument-validation and safety-guard
+    paths, which I did run — both behave correctly). Get an actual backup
+    export from the Supabase dashboard and a throwaway Postgres instance
+    (a local `docker run postgres`, or a second scratch Supabase project)
+    to run this for real before trusting it as a verified recovery path.
 - [ ] **Legal review flag** — `LEGAL_PAGES_FINAL` (Phase 2.5) stays `false`
   until an attorney has actually reviewed Terms/Privacy. Flipping it is a
   business decision, not a code change.
