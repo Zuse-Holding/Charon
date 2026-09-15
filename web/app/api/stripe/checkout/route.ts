@@ -49,6 +49,10 @@ export async function POST(req: NextRequest) {
       customer_email: profile?.stripe_customer_id ? undefined : user.email,
       client_reference_id: user.id,
       line_items: [{ price: priceId, quantity: 1 }],
+      // Lets a customer enter a promo code (e.g. the founding-member
+      // coupon) on Stripe's own Checkout page — the coupon itself is
+      // created in the Stripe Dashboard, not by this app. See CHECKLIST.md.
+      allow_promotion_codes: true,
       success_url: `${siteUrl}/settings?checkout=success`,
       cancel_url: `${siteUrl}/pricing?checkout=cancelled`,
       // Lets the webhook resolve a brand-new customer back to this
