@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceClient } from "../../../../lib/supabase/server";
 import { getStripe, planForPriceId } from "../../../../lib/stripe";
+import { trackEvent } from "../../../../lib/analytics";
 
 /**
  * Single source of truth that keeps profiles.tier honest. Every tier-gated
@@ -81,6 +82,10 @@ export async function POST(req: NextRequest) {
           subscription_status: "active",
           tier: plan,
         });
+        // Most authoritative point for this event — payment has actually
+        // succeeded here, unlike checkout_started which just means a
+        // session was created (could still be abandoned).
+        trackEvent(userId, "checkout_completed", { plan });
         break;
       }
 
@@ -132,6 +137,7 @@ export async function POST(req: NextRequest) {
           subscription_status: "canceled",
           tier: "free",
         });
+        trackEvent(userId, "subscription_canceled");
         break;
       }
 

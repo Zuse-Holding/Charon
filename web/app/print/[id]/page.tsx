@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
 import { notFound } from "next/navigation";
 import ReportIssueForm from "../../../components/ReportIssueForm";
+import PrintButton from "./PrintButton";
 
 interface Section {
   title: string;
@@ -83,9 +84,7 @@ export default async function PrintPage({ params }: { params: Promise<{ id: stri
         `}</style>
       </head>
       <body>
-        <button className="print-btn no-print" onClick={() => window.print()}>
-          Export PDF
-        </button>
+        <PrintButton />
 
         <div className="doc">
           <div className="cover">

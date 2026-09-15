@@ -128,6 +128,29 @@ done except the part that has to be your call:
   (the whole working copy) — both untouched, neither pushed anywhere. Safe to
   delete once you've confirmed the force-push worked as expected.
 
+## Analytics (task 4.1)
+
+- [ ] **Create a PostHog project and set `POSTHOG_KEY`** (server: agent-server.ts
+  and Next.js API routes) **and `NEXT_PUBLIC_POSTHOG_KEY`** (browser — only
+  used for `pdf_export`, the one event with no server-side hook since
+  `window.print()` runs entirely client-side). Everything no-ops until these
+  are set — nothing will break, but nothing will show up in PostHog either.
+- [x] Nine events wired: `signup`, `first_research_run`, `research_run`,
+  `deep_dive_run`, `watchlist_add`, `pdf_export`, `paywall_hit` (tagged with
+  a `cap` slug — 22 call sites across `tierDenied`/`rateLimited` in
+  `server/agent-server.ts`, everything from hourly rate limits to Charon-tier
+  feature gates), `checkout_started`, `checkout_completed`,
+  `subscription_canceled`. All fire server-side except `pdf_export`.
+- Found and fixed in passing: `web/app/print/[id]/page.tsx`'s "Export PDF"
+  button was an `onClick` handler on a plain element inside an async Server
+  Component — not valid in the App Router (event handlers need a Client
+  Component boundary). Extracted into `web/app/print/[id]/PrintButton.tsx`
+  (`"use client"`), same pattern as the existing `ReportIssueForm` import in
+  that file. Couldn't fully exercise this live end-to-end (needs a real
+  logged-in session against a real `deep_dives` row — inserted and deleted a
+  throwaway test row to confirm the route itself compiles and serves
+  correctly; RLS correctly 404s it without a session, as expected).
+
 ## Hosting / infra
 
 - [ ] **Verify production env vars.** Confirm Vercel and Railway/VPS both have

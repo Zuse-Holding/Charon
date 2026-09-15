@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from "./server";
 import { getAgentSecret } from "../agent-secret";
+import { trackEvent } from "../analytics";
 
 /**
  * Supabase-backed data layer for the web app.
@@ -243,6 +244,7 @@ export async function addToWatchlistForUser(
     refresh_interval_days: refreshIntervalDays,
   });
   if (error) throw error;
+  trackEvent(user.id, "watchlist_add", { entity_type: type });
   return { id };
 }
 

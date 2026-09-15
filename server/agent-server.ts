@@ -26,6 +26,7 @@ import { upsertStatewideExecutives } from "../src/database/statewide-executives.
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { parsePersonQuery } from "../src/lib/nlp.js";
 import { withCostTracking } from "../src/lib/cost-tracking.js";
+import { trackEvent } from "../src/lib/analytics.js";
 import { createClient } from "@supabase/supabase-js";
 
 const app  = express();
@@ -465,8 +466,14 @@ async function getMonthlyDeepDiveUsage(userId: string, periodStart: Date): Promi
   return count ?? 0;
 }
 
-function tierDenied(res: express.Response, message: string, upgradeHint?: string) {
+// Task 4.1 — every denial is a paywall_hit in PostHog, tagged with which
+// cap/gate was hit (`cap`) so the funnel is queryable by cause, not just
+// volume. userId is optional only because a couple of call sites (none
+// currently) might deny before a userId is known; trackEvent no-ops
+// without one anyway.
+function tierDenied(res: express.Response, message: string, upgradeHint?: string, analytics?: { userId?: string; cap: string }) {
   res.status(403).json({ error: "tier_limit", message, upgradeHint: upgradeHint ?? "Upgrade your plan at metisanalytic.com/pricing" });
+  if (analytics?.userId) trackEvent(analytics.userId, "paywall_hit", { cap: analytics.cap });
 }
 
 /**
@@ -479,8 +486,9 @@ function tierDenied(res: express.Response, message: string, upgradeHint?: string
  * reliably for a single-instance deployment — see AUDIT.md's note on why
  * the old location couldn't guarantee that.
  */
-function rateLimited(res: express.Response, message: string) {
+function rateLimited(res: express.Response, message: string, analytics?: { userId?: string; cap: string }) {
   res.status(429).json({ error: "rate_limited", message });
+  if (analytics?.userId) trackEvent(analytics.userId, "paywall_hit", { cap: analytics.cap });
 }
 
 const RATE_LIMIT_PER_IP_PER_HOUR = Number(process.env.RATE_LIMIT_PER_IP_PER_HOUR ?? 20);
@@ -547,7 +555,7 @@ app.post("/research", async (req, res) => {
   const config = getTierConfig(tier);
 
   if (tier === "expired") {
-    return tierDenied(res, "Your trial has ended. Contact us to continue using Metis.", "Contact support@metisanalytic.com to discuss plans.");
+    return tierDenied(res, "Your trial has ended. Contact us to continue using Metis.", "Contact support@metisanalytic.com to discuss plans.", { userId, cap: "trial_expired" });
   }
 
   // Task 3.1 — hourly burst throttle, checked before any entitlement
@@ -557,12 +565,12 @@ app.post("/research", async (req, res) => {
   // through many accounts to route around the per-account limit.
   const accountLimit = checkHourlyBucket(`research:user:${userId}`, config.hourlyResearchLimit);
   if (!accountLimit.allowed) {
-    return rateLimited(res, `You're researching faster than your plan allows. Try again in ${Math.ceil(accountLimit.resetInMs / 60000)} minutes.`);
+    return rateLimited(res, `You're researching faster than your plan allows. Try again in ${Math.ceil(accountLimit.resetInMs / 60000)} minutes.`, { userId, cap: "hourly_research_account" });
   }
   const ip = clientIp(req);
   const ipLimit = checkHourlyBucket(`research:ip:${ip}`, RATE_LIMIT_PER_IP_PER_HOUR);
   if (!ipLimit.allowed) {
-    return rateLimited(res, `Too many requests from this network. Try again in ${Math.ceil(ipLimit.resetInMs / 60000)} minutes.`);
+    return rateLimited(res, `Too many requests from this network. Try again in ${Math.ceil(ipLimit.resetInMs / 60000)} minutes.`, { userId, cap: "hourly_research_ip" });
   }
 
   // Task 3.2 — email verification enforced at the app level regardless of
@@ -570,27 +578,27 @@ app.post("/research", async (req, res) => {
   // (a dashboard setting AUDIT.md flagged as unverifiable from the repo).
   // Internal bypasses, same as every other limit in this file.
   if (tier !== "internal" && !(await hasVerifiedEmail(userId))) {
-    return tierDenied(res, "Please verify your email address before running research — check your inbox for the confirmation link.");
+    return tierDenied(res, "Please verify your email address before running research — check your inbox for the confirmation link.", undefined, { userId, cap: "email_unverified" });
   }
 
   if (type === "political" && !hasPoliticalAccess(userId, config)) {
     // Generic message on purpose — if the allowlist is what's blocking
     // this (not tier), "requires Pro or higher" would be misleading for
     // an account that's actually already on Pro/Team.
-    return tierDenied(res, "Political research is not enabled for this account.");
+    return tierDenied(res, "Political research is not enabled for this account.", undefined, { userId, cap: "political_access" });
   }
 
   if (type === "creator" && !config.creatorAccess) {
     // Charon-only for now (see creatorAccess doc comment on TierConfig) —
     // no upgradeHint pointing at a paid tier, since paying for Pro/Team
     // wouldn't actually unlock this yet.
-    return tierDenied(res, "Creator research is a Charon-tier feature.");
+    return tierDenied(res, "Creator research is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_research" });
   }
 
   if (config.dailyResearchLimit !== -1) {
     const usage = await getDailyUsage(userId, "research_runs");
     if (usage >= config.dailyResearchLimit) {
-      return tierDenied(res, `Daily research limit of ${config.dailyResearchLimit} reached.`);
+      return tierDenied(res, `Daily research limit of ${config.dailyResearchLimit} reached.`, undefined, { userId, cap: "daily_research_limit" });
     }
   }
 
@@ -599,7 +607,7 @@ app.post("/research", async (req, res) => {
   if (type === "person" && tier !== "internal") {
     const monthlyCount = await getMonthlyPersonSearchCount(userId);
     if (monthlyCount >= PERSON_SEARCH_MONTHLY_LIMIT) {
-      return tierDenied(res, `Monthly person-research limit of ${PERSON_SEARCH_MONTHLY_LIMIT} reached.`);
+      return tierDenied(res, `Monthly person-research limit of ${PERSON_SEARCH_MONTHLY_LIMIT} reached.`, undefined, { userId, cap: "monthly_person_search_limit" });
     }
   }
 
@@ -609,14 +617,18 @@ app.post("/research", async (req, res) => {
   // with, the person-only cap above — a Basic user doing person research
   // can still be blocked by whichever limit they hit first.
   // Free tier's one-time lifetime cap (task 1.6) — checked before the
-  // monthly cap below since it's a harder, non-recurring ceiling.
+  // monthly cap below since it's a harder, non-recurring ceiling. Also
+  // used by task 4.1's first_research_run event below regardless of tier,
+  // so this is computed unconditionally rather than only when the free
+  // tier's cap applies.
+  const priorLifetimeUsage = await getLifetimeResearchUsage(userId);
   if (config.lifetimeResearchLimit !== -1) {
-    const usage = await getLifetimeResearchUsage(userId);
-    if (usage >= config.lifetimeResearchLimit) {
+    if (priorLifetimeUsage >= config.lifetimeResearchLimit) {
       return tierDenied(
         res,
         `You've used all ${config.lifetimeResearchLimit} free research profiles.`,
-        "Upgrade to Basic or Pro to keep researching — see metisanalytic.com/pricing."
+        "Upgrade to Basic or Pro to keep researching — see metisanalytic.com/pricing.",
+        { userId, cap: "lifetime_research_limit" }
       );
     }
   }
@@ -630,7 +642,8 @@ app.post("/research", async (req, res) => {
         `Monthly limit of ${config.monthlyResearchLimit} quick profiles reached. Resets ${new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toLocaleDateString()}.`,
         tier === "basic"
           ? `Upgrade to Pro for up to ${PRO_MONTHLY_RESEARCH_LIMIT} quick profiles a month.`
-          : "Contact support@metisanalytic.com if you need a higher limit."
+          : "Contact support@metisanalytic.com if you need a higher limit.",
+        { userId, cap: "monthly_research_limit" }
       );
     }
   }
@@ -754,6 +767,14 @@ app.post("/research", async (req, res) => {
 
     res.json({ ok: true, runId, reportPath: outPath, tier, charon: config.charonProtocol });
 
+    // Task 4.1 — priorLifetimeUsage was read before this run's row existed,
+    // so 0 here means this run is the account's first ever (not just first
+    // today/this month).
+    trackEvent(userId, "research_run", { entity_type: type });
+    if (priorLifetimeUsage === 0) {
+      trackEvent(userId, "first_research_run", { entity_type: type });
+    }
+
     if (type === "company" || type === "person" || type === "product" || type === "political" || type === "creator") {
       const entityAgent = new EntityExtractionAgent();
       setTimeout(() => {
@@ -827,7 +848,7 @@ app.post("/person-research/deep", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (tier !== "internal") {
-    return tierDenied(res, "Person Research is a Charon-tier feature.");
+    return tierDenied(res, "Person Research is a Charon-tier feature.", undefined, { userId, cap: "charon_person_research" });
   }
 
   try {
@@ -879,7 +900,7 @@ app.post("/muckrock/search", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (tier !== "internal") {
-    return tierDenied(res, "MuckRock FOIA Search is a Charon-tier feature.");
+    return tierDenied(res, "MuckRock FOIA Search is a Charon-tier feature.", undefined, { userId, cap: "charon_muckrock_search" });
   }
 
   try {
@@ -918,7 +939,7 @@ app.post("/creator-snapshot", async (req, res) => {
   const tier = await getUserTier(userId);
   const config = getTierConfig(tier);
   if (!config.creatorAccess) {
-    return tierDenied(res, "Creator tracking is a Charon-tier feature.");
+    return tierDenied(res, "Creator tracking is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_tracking" });
   }
 
   try {
@@ -968,7 +989,7 @@ app.get("/creator-discovery/candidates", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (!getTierConfig(tier).creatorAccess) {
-    return tierDenied(res, "Creator discovery is a Charon-tier feature.");
+    return tierDenied(res, "Creator discovery is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_discovery" });
   }
 
   try {
@@ -993,7 +1014,7 @@ app.post("/creator-discovery/run", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (!getTierConfig(tier).creatorAccess) {
-    return tierDenied(res, "Creator discovery is a Charon-tier feature.");
+    return tierDenied(res, "Creator discovery is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_discovery" });
   }
 
   // Fire-and-forget: 9 sequential Serper queries with pacing delays takes
@@ -1021,7 +1042,7 @@ app.post("/creator-discovery/review", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (!getTierConfig(tier).creatorAccess) {
-    return tierDenied(res, "Creator discovery is a Charon-tier feature.");
+    return tierDenied(res, "Creator discovery is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_discovery" });
   }
 
   try {
@@ -1081,7 +1102,7 @@ app.post("/person-research/verify-photo", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (tier !== "internal") {
-    return tierDenied(res, "Photo Identity Verification is a Charon-tier feature.");
+    return tierDenied(res, "Photo Identity Verification is a Charon-tier feature.", undefined, { userId, cap: "charon_identity_verification" });
   }
 
   const bytesA = decodeUploadedImage(imageA);
@@ -1125,17 +1146,17 @@ app.post("/deep-dive", async (req, res) => {
   const config = getTierConfig(tier);
 
   if (tier === "expired") {
-    return tierDenied(res, "Your trial has ended. Contact us to continue using Metis.");
+    return tierDenied(res, "Your trial has ended. Contact us to continue using Metis.", undefined, { userId, cap: "trial_expired" });
   }
 
   if (!config.deepDiveAccess) {
-    return tierDenied(res, "Deep Dive requires Pro or higher.");
+    return tierDenied(res, "Deep Dive requires Pro or higher.", undefined, { userId, cap: "deep_dive_access" });
   }
 
   if (config.dailyDeepDiveLimit !== -1) {
     const usage = await getDailyUsage(userId, "deep_dives");
     if (usage >= config.dailyDeepDiveLimit) {
-      return tierDenied(res, `Daily Deep Dive limit of ${config.dailyDeepDiveLimit} reached.`);
+      return tierDenied(res, `Daily Deep Dive limit of ${config.dailyDeepDiveLimit} reached.`, undefined, { userId, cap: "daily_deep_dive_limit" });
     }
   }
 
@@ -1149,7 +1170,8 @@ app.post("/deep-dive", async (req, res) => {
       return tierDenied(
         res,
         `Monthly Deep Dive limit of ${config.monthlyDeepDiveLimit} reached. Resets ${new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toLocaleDateString()}.`,
-        "Contact support@metisanalytic.com if you need a higher limit."
+        "Contact support@metisanalytic.com if you need a higher limit.",
+        { userId, cap: "monthly_deep_dive_limit" }
       );
     }
   }
@@ -1178,6 +1200,7 @@ app.post("/deep-dive", async (req, res) => {
       cost_usd: totalCostUsd,
     });
 
+    trackEvent(userId, "deep_dive_run", { entity_type: "company" });
     res.end();
   } catch (err) {
     send({ type: "error", error: String(err), totalSections: 10 });
@@ -1362,7 +1385,7 @@ app.get("/export/:userId", async (req, res) => {
   const config = getTierConfig(tier);
 
   if (!config.exportAccess) {
-    tierDenied(res, "Data export is not available on your current plan.", "Upgrade to Pro for data export.");
+    tierDenied(res, "Data export is not available on your current plan.", "Upgrade to Pro for data export.", { userId, cap: "export_access" });
     return;
   }
 

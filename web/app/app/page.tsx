@@ -11,6 +11,7 @@ import ReportIssueForm from "../../components/ReportIssueForm";
 import ErrorBoundary from "../../components/ErrorBoundary";
 import ResearchSkeleton from "../../components/ResearchSkeleton";
 import EmptyState from "../../components/EmptyState";
+import { trackClientEvent } from "../../lib/analytics-client";
 import styles from "./page.module.css";
 
 interface Run {
@@ -369,6 +370,7 @@ function Dashboard() {
                     <button
                       className={`${styles.actionBtn} ${styles.primary}`}
                       onClick={() => {
+  trackClientEvent("pdf_export", { source: "summary_view" });
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
   const content = document.querySelector('[class*="reportBody"]');

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../../../lib/supabase/server";
 import { checkRateLimit, clientIp } from "../../../../lib/rate-limit";
+import { trackEvent } from "../../../../lib/analytics";
 
 // Task 3.1 — account-farming resistance. Deliberately the tightest of the
 // three auth limits (signup creates a new, permanent resource; sign-in and
@@ -41,5 +42,6 @@ export async function POST(req: NextRequest) {
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (data.user) trackEvent(data.user.id, "signup");
   return NextResponse.json({ hasSession: !!data.session });
 }

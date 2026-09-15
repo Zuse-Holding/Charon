@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient, createServiceClient } from "../../../../lib/supabase/server";
 import { getStripe, priceIdForPlan, type PlanKey } from "../../../../lib/stripe";
+import { trackEvent } from "../../../../lib/analytics";
 
 const PLAN_KEYS: PlanKey[] = ["basic", "pro"];
 
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Stripe did not return a checkout URL" }, { status: 502 });
     }
 
+    trackEvent(user.id, "checkout_started", { plan });
     return NextResponse.json({ url: session.url });
   } catch (err) {
     console.error("[stripe/checkout]", err);
