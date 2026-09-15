@@ -66,6 +66,8 @@ function LoginPage() {
   const router   = useRouter();
   const params   = useSearchParams();
   const next     = params.get("next") ?? "/app";
+  const plan     = params.get("plan"); // "basic" | "pro" from a pricing-page CTA — see web/lib/checkout.ts
+  const postAuthDestination = plan === "basic" || plan === "pro" ? `/checkout-redirect?plan=${plan}` : next;
   const supabase = useMemo(() => createClient({ rememberMe }), [rememberMe]);
   const { refresh: refreshTier } = useTier();
 
@@ -119,7 +121,7 @@ function LoginPage() {
           // kicking its refresh() here closes that gap without needing
           // a full reload.
           refreshTier();
-          router.push(next);
+          router.push(postAuthDestination);
           router.refresh();
         } else {
           setMessage("Check your email to confirm your account, then sign in.");
@@ -128,7 +130,7 @@ function LoginPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         refreshTier();
-        router.push(next);
+        router.push(postAuthDestination);
         router.refresh();
       }
     } catch (err: unknown) {
@@ -142,7 +144,7 @@ function LoginPage() {
     setLoading(true); setError(null);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=${next}` },
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(postAuthDestination)}` },
     });
     if (error) { setError(error.message); setLoading(false); }
   }

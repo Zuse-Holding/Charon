@@ -1,8 +1,9 @@
 "use client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MarketingShell } from "../components/marketing/MarketingShell";
+import { startCheckout, type SellablePlan } from "../lib/checkout";
 import styles from "./landing.module.css";
 
 // Hook for scroll-triggered fade-in animations
@@ -91,6 +92,21 @@ const PRICING = [
 export default function Landing() {
   const router = useRouter();
   useScrollFade();
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  async function handlePlanClick(plan: (typeof PRICING)[number]) {
+    if (plan.isEnterprise) {
+      window.location.href = "mailto:support@metisanalytic.com?subject=Metis Enterprise";
+      return;
+    }
+    if (plan.tier === "BASIC" || plan.tier === "PRO") {
+      setCheckoutError(null);
+      const result = await startCheckout(plan.tier.toLowerCase() as SellablePlan, router);
+      if (result.error) setCheckoutError(result.error);
+      return;
+    }
+    router.push("/login?mode=signup");
+  }
 
   return (
     <MarketingShell>
@@ -238,19 +254,14 @@ export default function Landing() {
               </ul>
               <button
                 className={`${styles.planCta} ${plan.highlight ? styles.planCtaFeatured : ""} ${plan.isEnterprise ? styles.planCtaEnterprise : ""}`}
-                onClick={() => {
-                  if (plan.isEnterprise) {
-                    window.location.href = "mailto:support@metisanalytic.com?subject=Metis Enterprise";
-                  } else {
-                    router.push("/login?mode=signup");
-                  }
-                }}
+                onClick={() => handlePlanClick(plan)}
               >
                 {plan.cta}
               </button>
             </div>
           ))}
         </div>
+        {checkoutError && <p className={styles.checkoutError}>{checkoutError}</p>}
         <Link href="/pricing" className={styles.pricingDetailLink}>See full pricing details →</Link>
       </section>
 

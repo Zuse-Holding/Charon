@@ -198,6 +198,10 @@
   color: #ff6b2b; text-decoration: none; letter-spacing: 0.04em;
 }
 .pricingDetailLink:hover { text-decoration: underline; }
+.checkoutError {
+  display: block; margin-top: 16px; text-align: center;
+  font-family: var(--font-mono); font-size: 12px; color: #ff4455;
+}
 .pricingGrid {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; text-align: left;
 }

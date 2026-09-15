@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingShell } from "../../components/marketing/MarketingShell";
 import shellStyles from "../../components/marketing/MarketingShell.module.css";
+import { PlanCheckoutButton } from "../../components/marketing/PlanCheckoutButton";
 import styles from "./pricing.module.css";
 
 export const metadata: Metadata = {
@@ -122,12 +123,20 @@ export default function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <Link
-                href="/login?mode=signup"
-                className={`${styles.planCta} ${plan.highlight ? styles.planCtaFeatured : ""}`}
-              >
-                {plan.cta}
-              </Link>
+              {plan.tier === "BASIC" || plan.tier === "PRO" ? (
+                <PlanCheckoutButton
+                  plan={plan.tier === "BASIC" ? "basic" : "pro"}
+                  label={plan.cta}
+                  className={`${styles.planCta} ${plan.highlight ? styles.planCtaFeatured : ""}`}
+                />
+              ) : (
+                <Link
+                  href="/login?mode=signup"
+                  className={`${styles.planCta} ${plan.highlight ? styles.planCtaFeatured : ""}`}
+                >
+                  {plan.cta}
+                </Link>
+              )}
             </div>
           ))}
         </div>
