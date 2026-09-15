@@ -139,3 +139,68 @@ trigger again with the same event (or use the Dashboard to resend the same
 webhook delivery). Confirm the second delivery gets `{"received": true,
 "deduped": true}` and does **not** create a second row / re-run any side
 effects — check `stripe_webhook_events` has exactly one row for that event id.
+
+---
+
+# Phases 2–4 — what was verified, and how
+
+This file stayed Phase-1-specific above because Stripe is the one thing in
+this project that genuinely needs a scripted manual walkthrough (real
+money, real webhooks, an external dashboard). Everything from Phase 2 on
+was verified inline as each task shipped — live browser testing via a
+running dev server, direct database queries, curl against a running
+agent-server, and `npm run typecheck` (root) + `npx tsc --noEmit` (web/)
+after every change — with the specific method noted in that task's commit
+message rather than repeated here. This section is the index.
+
+## Phase 2 — Truthful public surface
+Verified live in-browser: pricing/landing page copy changes, case-studies
+page correctly 404s, legal-page draft badges. No backend behavior to test.
+
+## Phase 3 — Abuse controls & accuracy
+- **3.1 (auth rate limits):** curl loops against a local dev server
+  confirmed the 6th signup/signin/reset attempt in an hour gets a 429; the
+  middleware exclusion for `/api/auth/*` was found broken and fixed this way
+  (same "unauthenticated request redirected to /login" bug as Stripe's
+  webhook route in Phase 1).
+- **3.2 (email verification):** confirmed server-side via `hasVerifiedEmail()`
+  gating `/research`, not just a UI check.
+- **3.3 (per-section sources):** verified against a **real** research run
+  (`npm run research -- "Notion"`), not a fixture — inspected the generated
+  `reports/notion.md` directly and confirmed per-section Sources lists and
+  "Unverified" tags landed on the right sections.
+- **3.4 (report issue form):** typecheck + live in-browser only — the
+  actual DB write is untested beyond that because the migration
+  (`report_issues` table) hadn't been run against the live database at the
+  time; see CHECKLIST.md.
+- **3.5 (branding sweep):** grepped for every remaining "Zuse Holdings" /
+  "Powered by Selene" string after the fact to confirm none were missed.
+
+## Phase 4 — Analytics, email, security
+- **4.1 (PostHog):** typecheck both packages; booted `agent-server.ts`
+  directly (`AGENT_SECRET=... npx tsx server/agent-server.ts`) to confirm
+  the new `analytics.ts` import and all 22 `tierDenied`/`rateLimited` call
+  sites still start cleanly; live browser check of the homepage (no
+  console errors) after the client-side `pdf_export` wiring. Could not
+  verify events actually arrive in PostHog — no `POSTHOG_KEY` exists to
+  send against.
+- **4.2 (transactional email):** same boot-check as above after adding the
+  `/email/welcome` endpoint; live curl against a running instance confirmed
+  `POST /email/welcome` returns `{ ok: true, sent: false }` when
+  `RESEND_API_KEY` is unset — the no-op path works. `npm run day7-email-job`
+  run directly, confirmed it exits cleanly with the same no-op message.
+  Could not verify an actual email arrives anywhere — no Resend account
+  exists to send against.
+- **4.4 (security headers):** `curl -I` against a running dev server
+  confirmed every header (HSTS, CSP, X-Content-Type-Options, X-Frame-Options,
+  Referrer-Policy) is present with the expected values, including the
+  Supabase origin correctly interpolated into `connect-src`; live browser
+  navigation (homepage + login) confirmed zero console/CSP errors and no
+  visual breakage.
+- **4.5 (restore-test script):** ran `restore-test.mjs` directly to confirm
+  the argument-validation path and both safety guards (refuses a target
+  matching the real Supabase host; refuses to restore onto a non-empty
+  database) — both fire correctly. The actual restore path is **unverified**
+  — no real backup file or scratch Postgres instance exists to test it
+  against. Don't treat this script as a proven recovery path until someone
+  runs it for real.
