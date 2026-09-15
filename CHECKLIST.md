@@ -23,6 +23,14 @@ tracked here as they come up rather than left buried in commit messages.
   real Dashboard webhook endpoint (`https://metisanalytic.com/api/stripe/webhook`)
   when actually deploying live keys.
 
+- [ ] **Resolve the Stripe CLI account mismatch.** This machine's `stripe`
+  CLI is already authenticated — but to an account called "Vitale health
+  sandbox" (`acct_1Thxjz3rFpMM3SH9`), which is almost certainly unrelated
+  to Metis. Found via `stripe config --list` while writing TESTING.md; I
+  did not run any triggers or create any test data against it. Run
+  `stripe login` to point it at Metis's actual account before following
+  TESTING.md.
+
 ## Database (Supabase)
 
 - [ ] **Run the Phase 1 schema migration** in the Supabase SQL editor before
