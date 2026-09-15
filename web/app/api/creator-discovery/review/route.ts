@@ -67,6 +67,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, watchlistId: candidate.watchlist_id });
   }
 
+  // Dedup only — no name->handle resolution here (that needs a Serper
+  // search, which needs src/lib/tiktok.ts, which hits the same webpack
+  // cross-import wall documented in ../route.ts). Production always goes
+  // through agent-server.ts's promoteCandidate instead, which does the
+  // full resolve-then-dedup. This dev-only fallback still catches the
+  // common case of a candidate that's already an @handle matching an
+  // existing tracked one.
+  const normalizedNew = (candidate.raw_candidate as string).trim().replace(/^@/, "").toLowerCase();
+  const { data: existingCreators } = await supabaseAdmin.from("watchlist").select("id, subject").eq("type", "creator");
+  const existingMatch = (existingCreators ?? []).find(
+    (w: { id: string; subject: string }) => w.subject.trim().replace(/^@/, "").toLowerCase() === normalizedNew
+  );
+  if (existingMatch) {
+    const watchlistId = existingMatch.id as string;
+    await supabaseAdmin
+      .from("creator_discovery_candidates")
+      .update({
+        status: "promoted",
+        watchlist_id: watchlistId,
+        reviewed_at: new Date().toISOString(),
+        notes: "Already tracked — linked to the existing watchlist entry instead of creating a duplicate.",
+      })
+      .eq("id", candidateId);
+    return NextResponse.json({ ok: true, watchlistId, deduped: true });
+  }
+
   const watchlistId = `watch-${Date.now()}`;
   const { error: insertError } = await supabaseAdmin.from("watchlist").insert({
     id: watchlistId,

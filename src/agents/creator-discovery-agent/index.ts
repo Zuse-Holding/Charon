@@ -30,6 +30,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { SerperSearchProvider } from "../../lib/providers.js";
 import { extractCandidates } from "../../lib/candidate-extraction.js";
+import { normalizeHandle, resolveTikTokHandle } from "../../lib/tiktok.js";
 
 const PLATFORM = "tiktok";
 const DELAY_BETWEEN_QUERIES_MS = 600;
@@ -167,7 +168,19 @@ export async function listCandidates(status?: "pending" | "promoted" | "rejected
 // enter the normal creator-snapshot pipeline — same table/shape a
 // manually-searched-and-Watched creator lands in, so creator-snapshot-
 // agent picks it up on its next run with no special-casing.
-export async function promoteCandidate(candidateId: string, userId: string): Promise<{ watchlistId: string }> {
+//
+// Two things happen before that insert:
+// 1. Resolve a bare-name candidate ("Dhar Mann") to a real @handle via
+//    the same search creator-snapshot-agent uses for self-healing — so
+//    a duplicate check below is comparing handles, not a name against a
+//    handle that happen to be the same account.
+// 2. Check every existing creator watchlist row (any user — a duplicate
+//    wastes RapidAPI quota re-snapshotting the same TikTok account under
+//    two different watchlist_ids regardless of who owns which row; this
+//    app is single-tenant in practice today, revisit if that changes)
+//    for a normalized match. A hit links this candidate to the existing
+//    row instead of creating a second one for the same creator.
+export async function promoteCandidate(candidateId: string, userId: string): Promise<{ watchlistId: string; deduped?: boolean }> {
   const supabase = supabaseClient();
   const { data: candidate, error: fetchError } = await supabase
     .from("creator_discovery_candidates")
@@ -180,12 +193,39 @@ export async function promoteCandidate(candidateId: string, userId: string): Pro
     return { watchlistId: candidate.watchlist_id };
   }
 
+  let resolvedSubject = candidate.raw_candidate;
+  if (!resolvedSubject.trim().startsWith("@")) {
+    const resolved = await resolveTikTokHandle(candidate.raw_candidate, new SerperSearchProvider());
+    if (resolved) resolvedSubject = `@${resolved}`;
+  }
+
+  const normalizedNew = normalizeHandle(resolvedSubject).toLowerCase();
+  const { data: existingCreators } = await supabase.from("watchlist").select("id, subject").eq("type", "creator");
+  const existingMatch = (existingCreators ?? []).find(
+    (w) => normalizeHandle(w.subject as string).toLowerCase() === normalizedNew
+  );
+
+  if (existingMatch) {
+    const watchlistId = existingMatch.id as string;
+    const { error: updateError } = await supabase
+      .from("creator_discovery_candidates")
+      .update({
+        status: "promoted",
+        watchlist_id: watchlistId,
+        reviewed_at: new Date().toISOString(),
+        notes: "Already tracked — linked to the existing watchlist entry instead of creating a duplicate.",
+      })
+      .eq("id", candidateId);
+    if (updateError) throw new Error(`Failed to mark candidate promoted: ${updateError.message}`);
+    return { watchlistId, deduped: true };
+  }
+
   const watchlistId = `watch-${Date.now()}`;
   const { error: insertError } = await supabase.from("watchlist").insert({
     id: watchlistId,
     user_id: userId,
     type: "creator",
-    subject: candidate.raw_candidate,
+    subject: resolvedSubject,
     added_at: new Date().toISOString(),
   });
   if (insertError) throw new Error(`Failed to create watchlist row: ${insertError.message}`);
