@@ -441,3 +441,31 @@ CREATE TABLE IF NOT EXISTS stripe_webhook_events (
 );
 
 ALTER TABLE stripe_webhook_events ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+-- Run duration / cost logging (Phase 2 task 2.3)
+-- research_runs never recorded how long a run took or what it cost —
+-- the "~30s average" on the homepage (removed in Phase 2 task 2.2) was
+-- never backed by real data. duration_ms is populated by
+-- server/agent-server.ts's /research handler (wall-clock time from
+-- research start to the row's completed/failed update). cost_usd is
+-- added now but NOT populated yet — none of the LLM providers this app
+-- calls (Groq, OpenRouter, Ollama) have their token usage captured
+-- anywhere in src/lib/llm.ts today, so there is no real number to write.
+-- Wiring that up is a larger, separate piece of work (capturing
+-- prompt/completion tokens per call across every agent and provider,
+-- then pricing them) than "add a column" — flagged in CHECKLIST.md
+-- rather than filled with a made-up estimate.
+-- tier records what the user was on AT THE TIME of the run (not a live
+-- join to profiles.tier, which can change later) so duration-by-plan
+-- analysis stays accurate even after someone upgrades/downgrades.
+-- ============================================================
+
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS duration_ms INTEGER;
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS tier TEXT;
+
+ALTER TABLE deep_dives ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
+
+CREATE INDEX IF NOT EXISTS idx_research_runs_duration
+  ON research_runs (generated_at DESC) WHERE duration_ms IS NOT NULL;

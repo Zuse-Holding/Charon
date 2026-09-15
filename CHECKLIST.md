@@ -38,6 +38,20 @@ tracked here as they come up rather than left buried in commit messages.
   `supabase/schema.sql` under "Stripe / billing (Phase 1)". Nothing in the
   webhook can persist state until this runs; every write will fail against the
   live database until it does.
+- [ ] **Run the Phase 2 duration/cost migration too** — the block under
+  "Run duration / cost logging (Phase 2 task 2.3)" in the same file. Confirmed
+  via `npm run duration-stats` that `research_runs.duration_ms` doesn't exist
+  in production yet.
+
+## Product decision needed
+
+- [ ] **Real cost-per-run tracking isn't built.** `research_runs.cost_usd` /
+  `deep_dives.cost_usd` exist as columns now but are never populated — none
+  of Groq/OpenRouter/Ollama's token usage is captured anywhere in
+  `src/lib/llm.ts` today. Wiring this up for real (capture tokens per call
+  across every agent and provider, price them, sum per run) is a genuinely
+  separate piece of work from "log run duration," not something to fake with
+  an estimate. Decide if/when this is worth prioritizing.
 - [ ] **Untrack `.env.local`** — flagged in `AUDIT.md`: a real (likely expired)
   Vercel OIDC token is currently committed and tracked in this public repo.
   `git rm --cached .env.local` (already gitignored, just never actually removed

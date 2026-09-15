@@ -525,6 +525,7 @@ app.post("/research", async (req, res) => {
   // progress after a reload instead of losing track of it. Best-effort —
   // a failed insert here shouldn't block the actual research request.
   const runId = randomUUID();
+  const startedAt = Date.now();
   const { error: pendingError } = await supabase.from("research_runs").insert({
     id: runId,
     user_id: userId,
@@ -532,6 +533,10 @@ app.post("/research", async (req, res) => {
     subject,
     generated_at: new Date().toISOString(),
     status: "pending",
+    // Tier at the time of the run, not a live join to profiles.tier —
+    // stays accurate for duration-by-plan analysis even after an
+    // upgrade/downgrade (task 2.3).
+    tier,
   });
   if (pendingError) {
     console.error("[research] Failed to insert pending run:", JSON.stringify(pendingError));
@@ -602,6 +607,7 @@ app.post("/research", async (req, res) => {
         report_path: outPath,
         bundle: { ...(bundle as object), reportMarkdown: report },
         status: "completed",
+        duration_ms: Date.now() - startedAt,
       })
       .eq("id", runId);
 
@@ -643,7 +649,7 @@ app.post("/research", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err);
     console.error("[research] Error:", message);
-    await supabase.from("research_runs").update({ status: "failed", error: message }).eq("id", runId);
+    await supabase.from("research_runs").update({ status: "failed", error: message, duration_ms: Date.now() - startedAt }).eq("id", runId);
     res.status(500).json({ error: message });
   }
 });
