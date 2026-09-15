@@ -36,6 +36,27 @@ export async function POST(req: NextRequest) {
 
   const service = createServiceClient();
 
+  // Idempotency: claim this event id before doing any work. A duplicate
+  // delivery (Stripe retries routinely — a slow 200, a flaky network) hits
+  // the primary-key conflict on stripe_webhook_events and is skipped
+  // rather than reprocessed. Claiming via insert-first (not check-then-act)
+  // avoids a race between two near-simultaneous deliveries of the same event.
+  const { error: claimError } = await service
+    .from("stripe_webhook_events")
+    .insert({ id: event.id, type: event.type });
+
+  if (claimError) {
+    if (claimError.code === "23505") {
+      // Unique-violation — already processed (or a concurrent request is
+      // processing it right now). Either way, don't do it again.
+      return NextResponse.json({ received: true, deduped: true });
+    }
+    // Any other DB error: log and process anyway rather than silently
+    // dropping a real event because the ledger write itself failed
+    // (e.g. the migration in supabase/schema.sql hasn't been run yet).
+    console.error("[stripe/webhook] idempotency claim failed, processing anyway:", claimError);
+  }
+
   try {
     switch (event.type) {
       // First payment succeeds — attach the Stripe customer to the
@@ -74,24 +95,34 @@ export async function POST(req: NextRequest) {
         const priceId = sub.items.data[0]?.price.id ?? null;
         const plan = priceId ? planForPriceId(priceId) : null;
 
+        // past_due: leave tier untouched — access continues while Stripe's
+        // Smart Retries work through it (web/app/layout.tsx's banner is
+        // what surfaces this to the user, not an access change here).
+        // canceled/unpaid: enforce the downgrade immediately rather than
+        // waiting for the separate subscription.deleted event, per task 1.4.
+        // Any other transient status (incomplete, incomplete_expired):
+        // leave tier untouched — an in-progress first payment shouldn't
+        // yank access that was never granted in the first place.
+        let tier: string | undefined;
+        if (sub.status === "active" || sub.status === "trialing") tier = plan ?? undefined;
+        else if (sub.status === "canceled" || sub.status === "unpaid") tier = "free";
+
         await writeSubscriptionState(service, userId, {
           stripe_subscription_id: sub.id,
           stripe_price_id: priceId,
           subscription_status: sub.status,
           current_period_end: new Date(sub.items.data[0]?.current_period_end * 1000).toISOString(),
           cancel_at_period_end: sub.cancel_at_period_end,
-          // Only demote/promote tier on a status that actually reflects
-          // paid access — a transient "incomplete" during retries
-          // shouldn't yank access on its own.
-          tier: sub.status === "active" || sub.status === "trialing" ? plan : undefined,
+          tier,
         });
         break;
       }
 
       // Subscription fully ends (period elapsed after cancellation, or
-      // Stripe gave up on a failed payment). Downgrade to basic — never
-      // to "free", which is a different, more restricted tier that
-      // nothing in the pricing page maps to.
+      // Stripe gave up on a failed payment after unpaid). Downgrade to
+      // free — matches the canceled/unpaid handling in subscription.updated
+      // above; this event is the guaranteed final confirmation in case that
+      // one was somehow missed.
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
         const userId = await resolveUserIdByCustomer(service, sub.customer);
@@ -99,8 +130,35 @@ export async function POST(req: NextRequest) {
 
         await writeSubscriptionState(service, userId, {
           subscription_status: "canceled",
-          tier: "basic",
+          tier: "free",
         });
+        break;
+      }
+
+      // Renewal or recovery payment succeeded. Mostly a defensive re-sync
+      // (customer.subscription.updated already flips status back to
+      // "active" on recovery) — cheap insurance against acting on stale
+      // subscription_status if these two events ever arrive out of order.
+      case "invoice.payment_succeeded": {
+        const invoice = event.data.object as Stripe.Invoice;
+        if (!invoice.customer) break;
+        const userId = await resolveUserIdByCustomer(service, invoice.customer);
+        if (!userId) break;
+
+        await writeSubscriptionState(service, userId, { subscription_status: "active" });
+        break;
+      }
+
+      // A charge failed. Deliberately no state write here — the
+      // accompanying customer.subscription.updated event (status flips to
+      // past_due) is what actually drives the banner and any eventual
+      // downgrade; writing subscription_status from both events risks one
+      // overwriting the other with stale data if they arrive out of order.
+      // Handled explicitly (not falling through to default) so it's clear
+      // this is a deliberate no-op, not a gap.
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        console.warn("[stripe/webhook] payment failed for invoice", invoice.id, "customer", invoice.customer);
         break;
       }
 

@@ -400,3 +400,44 @@ CREATE TABLE IF NOT EXISTS creator_discovery_candidates (
 
 CREATE INDEX IF NOT EXISTS idx_creator_discovery_status
   ON creator_discovery_candidates (status, last_seen_at DESC);
+
+-- ============================================================
+-- Stripe / billing (Phase 1 — commercial launch)
+-- Run this in the Supabase SQL Editor before testing anything Stripe-
+-- related end to end (web/app/api/stripe/webhook/route.ts writes to
+-- these columns and will fail until they exist). See CHECKLIST.md.
+--
+-- profiles.tier remains the single source of truth every tier-gated
+-- route reads (server/agent-server.ts getUserTier()) — these columns
+-- are Stripe's own state, kept in sync onto the same row by the
+-- webhook, not a second source of truth for entitlements.
+-- ============================================================
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS stripe_price_id TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subscription_status TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN NOT NULL DEFAULT false;
+
+-- Webhook writes resolve renewal/cancellation events by stripe_customer_id
+-- (checkout.session.completed is the only event carrying the Supabase
+-- user id directly, via client_reference_id) — this needs to be a fast,
+-- guaranteed-unique lookup.
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_stripe_customer_id_idx
+  ON profiles (stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+
+-- Idempotency ledger — every processed Stripe event's id gets inserted
+-- here before its handler runs; a duplicate delivery (Stripe retries
+-- routinely) hits the primary-key conflict and is skipped rather than
+-- reprocessed. No user_id: this is a global webhook-delivery record, not
+-- per-user data, so RLS is enabled with no policy at all rather than a
+-- user-scoped one — locked to the service-role key the webhook route
+-- already uses, same as every other write in that file.
+CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+  id           TEXT        PRIMARY KEY, -- Stripe event id (evt_...)
+  type         TEXT        NOT NULL,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE stripe_webhook_events ENABLE ROW LEVEL SECURITY;
