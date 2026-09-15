@@ -3,6 +3,17 @@
 Things I found that need a decision, a dashboard click, or access I don't have —
 tracked here as they come up rather than left buried in commit messages.
 
+## Task 4.3 — already satisfied, confirmed not just assumed
+
+- [x] **Secret found in git history, listed exactly.** One: a Vercel OIDC
+  token, in root `.env.local`, committed in `fd66d38` and still tracked at
+  HEAD as of the Phase 0 audit. You rotated it; I purged it from all 208
+  commits (task A, this session) and re-scanned the rest of history —
+  nothing else found.
+- [x] **`.env` is gitignored** — confirmed directly in `.gitignore` (line 3).
+- [x] **`.env.example` exists** — comprehensive, updated throughout this
+  session as new env vars were added (Stripe, rate limits, cost tracking).
+
 ## Stripe Dashboard
 
 - [ ] **Set Customer Portal cancellation to "at period end."** Task 1.2 requires
