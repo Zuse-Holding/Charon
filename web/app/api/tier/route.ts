@@ -23,26 +23,34 @@ export async function GET() {
     const data = await res.json();
     return NextResponse.json(data);
   } catch {
+    // Phase 1: matches TIER_CONFIG.free in server/agent-server.ts — this
+    // fallback only fires when the agent server itself is unreachable, so
+    // it should degrade to the real default tier, not the pre-launch
+    // "basic" assumption.
     return NextResponse.json({
-      tier: "basic",
+      tier: "free",
       config: {
-        dailyResearchLimit: 10,
+        dailyResearchLimit: -1,
         dailyDeepDiveLimit: 0,
         deepDiveAccess: false,
         politicalAccess: false,
-        watchlistLimit: 5,
+        watchlistLimit: 1,
         knowledgeGraphAccess: false,
         exportAccess: false,
         charonProtocol: false,
         personResearchAccess: false,
         muckrockAccess: false,
         adminAccess: false,
-        monthlyResearchLimit: 25,
+        monthlyResearchLimit: -1,
+        lifetimeResearchLimit: 3,
+        monthlyDeepDiveLimit: -1,
         publicRecordsAccess: false,
         creatorAccess: false,
       },
       displayName: null,
       monthlyUsage: null,
+      subscriptionStatus: null,
+      cancelAtPeriodEnd: false,
     });
   }
 }

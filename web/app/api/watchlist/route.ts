@@ -22,7 +22,14 @@ export async function POST(req: NextRequest) {
     const entry = await addToWatchlistForUser(subject, type, refreshIntervalDays ?? 3);
     return NextResponse.json(entry);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    // A plan-limit denial is a deliberate policy decision, not a server
+    // malfunction — 403 with the same clear-message-plus-upgrade-path
+    // convention as server/agent-server.ts's tierDenied(), never a bare 500.
+    if (message.startsWith("Watchlist limit")) {
+      return NextResponse.json({ error: message }, { status: 403 });
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

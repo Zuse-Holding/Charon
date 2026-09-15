@@ -21,8 +21,13 @@ export interface TierConfig {
   muckrockAccess: boolean;
   adminAccess: boolean;
   // 7/17 weekend list #1 — hard monthly cap on quick profiles (all research
-  // types), scoped to Basic. -1 = unlimited.
+  // types), scoped to Basic. -1 = unlimited. Phase 1: also Pro's fair-use
+  // soft cap.
   monthlyResearchLimit: number;
+  // Phase 1 — Free tier's one-time lifetime allowance (not recurring).
+  lifetimeResearchLimit: number;
+  // Phase 1 — Pro's monthly Deep Dive fair-use soft cap.
+  monthlyDeepDiveLimit: number;
   // 7/20 public-record fusion sources (sanctions screening, Wayback
   // archive history, ProPublica nonprofit lookup, LittleSis power-
   // mapping) — Pro/Team+ only, surfaces as a "Public Records" section on
@@ -92,11 +97,11 @@ interface TierContextValue {
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: TierConfig = {
-  dailyResearchLimit: 3,
+  dailyResearchLimit: -1,
   dailyDeepDiveLimit: 0,
   deepDiveAccess: false,
   politicalAccess: false,
-  watchlistLimit: 2,
+  watchlistLimit: 1,
   knowledgeGraphAccess: false,
   exportAccess: false,
   charonProtocol: false,
@@ -104,6 +109,8 @@ const DEFAULT_CONFIG: TierConfig = {
   muckrockAccess: false,
   adminAccess: false,
   monthlyResearchLimit: -1,
+  lifetimeResearchLimit: 3,
+  monthlyDeepDiveLimit: -1,
   publicRecordsAccess: false,
   creatorAccess: false,
   identityVerificationAccess: false,

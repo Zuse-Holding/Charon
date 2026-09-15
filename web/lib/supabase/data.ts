@@ -174,6 +174,33 @@ export async function getWatchlistForUser() {
   });
 }
 
+/**
+ * Server-side watchlist-entitlement check (task 1.6). Fetches the same
+ * config server/agent-server.ts's /tier route already computes, rather
+ * than duplicating TIER_CONFIG's numbers here as a second source of
+ * truth — a fair trade against one extra request on this low-frequency
+ * write path. Fails OPEN (allows the add) if the tier fetch itself fails
+ * for any reason — e.g. AGENT_SERVER_URL unset in local dev — so a config
+ * problem degrades to "no limit enforced" rather than "watchlist is
+ * broken," matching this codebase's general missing-config posture.
+ */
+async function getWatchlistLimit(userId: string): Promise<number> {
+  const agentUrl = process.env.AGENT_SERVER_URL;
+  if (!agentUrl) return -1;
+  try {
+    const res = await fetch(`${agentUrl}/tier/${userId}`, {
+      headers: { "x-agent-secret": process.env.AGENT_SECRET ?? "" },
+      cache: "no-store",
+    });
+    if (!res.ok) return -1;
+    const data = await res.json();
+    return typeof data?.config?.watchlistLimit === "number" ? data.config.watchlistLimit : -1;
+  } catch (err) {
+    console.error("[watchlist] tier fetch failed, not enforcing a limit:", err);
+    return -1;
+  }
+}
+
 export async function addToWatchlistForUser(
   subject: string,
   type: string,
@@ -193,6 +220,17 @@ export async function addToWatchlistForUser(
     .single();
 
   if (existing) return existing;
+
+  const limit = await getWatchlistLimit(user.id);
+  if (limit !== -1) {
+    const { count } = await supabase
+      .from("watchlist")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id);
+    if ((count ?? 0) >= limit) {
+      throw new Error(`Watchlist limit of ${limit} reached — upgrade for more at metisanalytic.com/pricing.`);
+    }
+  }
 
   const id = `watch-${Date.now()}`;
   const { error } = await supabase.from("watchlist").insert({

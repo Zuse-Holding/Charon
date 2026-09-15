@@ -96,9 +96,22 @@ interface TierConfig {
   // 7/17 weekend list #1: hard monthly cap on quick profiles (company/
   // person/product/political — anything in research_runs, separate from
   // the existing person-specific 25/month limit below), scoped to Basic
-  // only. -1 = unlimited. Resets on the account's billing anniversary,
-  // not the calendar month — see getBillingPeriodStart.
+  // only. -1 = unlimited. Resets on the account's real Stripe billing
+  // period once one exists, else the account-creation-anniversary proxy —
+  // see getBillingPeriodStart. Phase 1: also used for Pro's fair-use
+  // soft cap (env-configurable, PRO_MONTHLY_RESEARCH_LIMIT).
   monthlyResearchLimit: number;
+  // Phase 1 (commercial launch): Free tier's cap is a one-time lifetime
+  // allowance, not a recurring one — deliberately a separate field from
+  // monthlyResearchLimit/dailyResearchLimit rather than overloading either,
+  // since "3 ever" and "3 per period" are different semantics that would
+  // otherwise be indistinguishable at the call site. -1 = not applicable.
+  lifetimeResearchLimit: number;
+  // Phase 1: Pro's Deep Dive fair-use soft cap is monthly (env-configurable,
+  // PRO_MONTHLY_DEEP_DIVE_LIMIT), replacing the old daily-only model for
+  // Pro specifically — dailyDeepDiveLimit stays as-is for tiers that still
+  // use a daily model (Team/internal/trial). -1 = not applicable.
+  monthlyDeepDiveLimit: number;
   // 7/20 public-record fusion sources (sanctions screening, Wayback
   // archive history, ProPublica nonprofit lookup, LittleSis power-
   // mapping) — Pro/Team+ per the roadmap ask; Basic/Free don't get
@@ -122,12 +135,29 @@ interface TierConfig {
   identityVerificationAccess: boolean;
 }
 
+// Phase 1 fair-use soft caps — env-configurable per the spec, rather than
+// hardcoded, so they can be tuned post-launch without a code change.
+const PRO_MONTHLY_RESEARCH_LIMIT  = Number(process.env.PRO_MONTHLY_RESEARCH_LIMIT  ?? 300);
+const PRO_MONTHLY_DEEP_DIVE_LIMIT = Number(process.env.PRO_MONTHLY_DEEP_DIVE_LIMIT ?? 50);
+
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true, identityVerificationAccess: true },
-  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false, identityVerificationAccess: false },
-  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: 5, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 20, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false, identityVerificationAccess: false },
-  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, publicRecordsAccess: false, creatorAccess: false, identityVerificationAccess: false },
-  free:     { dailyResearchLimit: 3, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 2, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: false, creatorAccess: false, identityVerificationAccess: false },
+  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, publicRecordsAccess: true, creatorAccess: true, identityVerificationAccess: true },
+  // Team is not sold (Phase 1 task 1.6) — left exactly as-is otherwise;
+  // may be relabeled/reworked once the multi-seat workspace feature
+  // (docs/team-features-scoping.md) actually exists.
+  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, publicRecordsAccess: true, creatorAccess: false, identityVerificationAccess: false },
+  // Pro: quick-profile and Deep Dive caps are both monthly fair-use soft
+  // caps now, not unlimited/daily — dailyDeepDiveLimit set to -1 since
+  // monthlyDeepDiveLimit replaces it for this tier specifically.
+  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: PRO_MONTHLY_RESEARCH_LIMIT, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: PRO_MONTHLY_DEEP_DIVE_LIMIT, publicRecordsAccess: true, creatorAccess: false, identityVerificationAccess: false },
+  // Basic: PDF export added (Phase 1 task 1.6 — was withheld before).
+  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: true, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, publicRecordsAccess: false, creatorAccess: false, identityVerificationAccess: false },
+  // Free (Phase 1): the real default for new signups now (see getUserTier
+  // below) — 3 quick profiles LIFETIME, not recurring, hence
+  // dailyResearchLimit/monthlyResearchLimit both -1 here and the cap
+  // living entirely in lifetimeResearchLimit. 1 watchlist entity, no
+  // Deep Dive, no export.
+  free:     { dailyResearchLimit: -1, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 1, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: 3, monthlyDeepDiveLimit: -1, publicRecordsAccess: false, creatorAccess: false, identityVerificationAccess: false },
   // Time-boxed tier for external demo/partner accounts (limited partners,
   // investor trials, etc). Deliberately mirrors "team" limits and features
   // so the demo shows the platform at full strength — the ONLY things it
@@ -135,7 +165,7 @@ const TIER_CONFIG: Record<Tier, TierConfig> = {
   // identityVerificationAccess, which stay off regardless of what tier
   // gets requested for these accounts. Expiry enforced via
   // profiles.trial_expires_at, checked in getUserTier below.
-  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false, identityVerificationAccess: false },
+  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, publicRecordsAccess: true, creatorAccess: false, identityVerificationAccess: false },
 };
 
 /**
@@ -143,6 +173,14 @@ const TIER_CONFIG: Record<Tier, TierConfig> = {
  * has passed, returns "expired" — a dead state with zero access — rather
  * than continuing to honor trial privileges. Every route that calls
  * getUserTier automatically respects expiry with no extra wiring.
+ *
+ * Phase 1 (commercial launch): defaults to "free", not "basic". The
+ * `profiles` row a new signup gets has no tier set at all (the auto-create
+ * trigger in supabase/schema.sql doesn't set one), so this fallback is the
+ * actual default tier for every new account — it was "basic" pre-launch,
+ * meaning every signup silently got full Basic-tier access for free
+ * forever (see AUDIT.md). Free is the real floor now; Basic/Pro only ever
+ * apply once the Stripe webhook has written them.
  */
 async function getUserTier(userId: string): Promise<Tier | "expired"> {
   const { data, error } = await supabase
@@ -151,9 +189,9 @@ async function getUserTier(userId: string): Promise<Tier | "expired"> {
     .eq("id", userId)
     .single();
 
-  if (error || !data?.tier) return "basic";
+  if (error || !data?.tier) return "free";
 
-  const tier = (data.tier as Tier) ?? "basic";
+  const tier = (data.tier as Tier) ?? "free";
 
   if (tier === "trial" && data.trial_expires_at) {
     const expired = new Date() > new Date(data.trial_expires_at);
@@ -168,13 +206,14 @@ const EXPIRED_CONFIG: TierConfig = {
   politicalAccess: false, watchlistLimit: 0, knowledgeGraphAccess: false,
   exportAccess: false, charonProtocol: false, chatWidgetAccess: false,
   personResearchAccess: false, muckrockAccess: false, adminAccess: false,
-  monthlyResearchLimit: 0, publicRecordsAccess: false, creatorAccess: false,
+  monthlyResearchLimit: 0, lifetimeResearchLimit: 0, monthlyDeepDiveLimit: 0,
+  publicRecordsAccess: false, creatorAccess: false,
   identityVerificationAccess: false,
 };
 
 function getTierConfig(tier: Tier | "expired"): TierConfig {
   if (tier === "expired") return EXPIRED_CONFIG;
-  return TIER_CONFIG[tier] ?? TIER_CONFIG.basic;
+  return TIER_CONFIG[tier] ?? TIER_CONFIG.free;
 }
 
 async function getDailyUsage(userId: string, table: "research_runs" | "deep_dives"): Promise<number> {
@@ -253,17 +292,44 @@ async function logIdentityVerification(
 
 /**
  * 7/17 weekend list #1 — Basic-tier hard cap of 25 "quick profiles" per
- * month, across ALL research types (company/person/product/political),
- * distinct from PERSON_SEARCH_MONTHLY_LIMIT above (which only covers
- * type === "person" and applies to every non-internal tier on a calendar-
- * month reset). This one resets on the account's *billing anniversary*
- * instead — there's no real subscription/billing system in this codebase
- * (no Stripe, no subscription-start column anywhere), so account creation
- * date (auth.users.created_at) is used as the anniversary-date proxy: the
- * period always starts on the same day-of-month the account was created,
- * most recently in the past relative to now.
+ * month (now also Pro's monthly fair-use caps, Phase 1), across ALL
+ * research types, distinct from PERSON_SEARCH_MONTHLY_LIMIT above (which
+ * only covers type === "person" and applies to every non-internal tier on
+ * a calendar-month reset).
+ *
+ * Phase 1: now prefers the account's real Stripe billing period
+ * (profiles.current_period_end, kept in sync by the webhook) when one
+ * exists — a paying customer's "monthly" cap should reset when Stripe
+ * actually bills them, not on some other date. Falls back to the original
+ * account-creation-anniversary proxy for anyone without an active
+ * subscription (Free, Team/trial/internal, or a lapsed subscription),
+ * which is unchanged from before Stripe existed.
  */
 async function getBillingPeriodStart(userId: string): Promise<Date> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("current_period_end")
+    .eq("id", userId)
+    .single();
+
+  const currentPeriodEnd = profile?.current_period_end ? new Date(profile.current_period_end) : null;
+  const now = new Date();
+
+  if (currentPeriodEnd && !isNaN(currentPeriodEnd.getTime()) && currentPeriodEnd > now) {
+    // The current period's start is one calendar month before its end —
+    // true for Stripe's monthly billing intervals. Same rollover-then-
+    // reclamp pattern as the anniversary fallback below, for the same
+    // reason (e.g. a period ending on the 31st has no "31st" in every
+    // preceding month).
+    const day = currentPeriodEnd.getDate();
+    const targetMonth = currentPeriodEnd.getMonth() - 1;
+    let periodStart = new Date(currentPeriodEnd.getFullYear(), targetMonth, day, 0, 0, 0, 0);
+    if (periodStart.getMonth() !== ((targetMonth + 12) % 12)) {
+      periodStart = new Date(currentPeriodEnd.getFullYear(), targetMonth + 1, 0, 0, 0, 0, 0);
+    }
+    return periodStart;
+  }
+
   const { data, error } = await supabase.auth.admin.getUserById(userId);
   const createdAt = data?.user?.created_at ? new Date(data.user.created_at) : null;
 
@@ -277,7 +343,6 @@ async function getBillingPeriodStart(userId: string): Promise<Date> {
   }
 
   const anniversaryDay = createdAt.getDate();
-  const now = new Date();
 
   // Start with this calendar month's anniversary date, clamped to the
   // month's actual last day (handles e.g. created on the 31st in a
@@ -309,6 +374,36 @@ async function getMonthlyResearchUsage(userId: string, periodStart: Date): Promi
     .gte("generated_at", periodStart.toISOString());
   if (error) {
     console.error("[monthly-research-usage] count error:", JSON.stringify(error));
+    return 0;
+  }
+  return count ?? 0;
+}
+
+/** Free tier's one-time cap (task 1.6) — total research_runs ever, no
+ *  date filter, as opposed to every other usage counter in this file
+ *  which is scoped to a rolling window. */
+async function getLifetimeResearchUsage(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("research_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (error) {
+    console.error("[lifetime-research-usage] count error:", JSON.stringify(error));
+    return 0;
+  }
+  return count ?? 0;
+}
+
+/** Pro's monthly Deep Dive fair-use cap (task 1.6) — mirrors
+ *  getMonthlyResearchUsage's shape but against deep_dives. */
+async function getMonthlyDeepDiveUsage(userId: string, periodStart: Date): Promise<number> {
+  const { count, error } = await supabase
+    .from("deep_dives")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("generated_at", periodStart.toISOString());
+  if (error) {
+    console.error("[monthly-deep-dive-usage] count error:", JSON.stringify(error));
     return 0;
   }
   return count ?? 0;
@@ -395,6 +490,19 @@ app.post("/research", async (req, res) => {
   // anniversary (see getBillingPeriodStart). Separate from, and stacks
   // with, the person-only cap above — a Basic user doing person research
   // can still be blocked by whichever limit they hit first.
+  // Free tier's one-time lifetime cap (task 1.6) — checked before the
+  // monthly cap below since it's a harder, non-recurring ceiling.
+  if (config.lifetimeResearchLimit !== -1) {
+    const usage = await getLifetimeResearchUsage(userId);
+    if (usage >= config.lifetimeResearchLimit) {
+      return tierDenied(
+        res,
+        `You've used all ${config.lifetimeResearchLimit} free research profiles.`,
+        "Upgrade to Basic or Pro to keep researching — see metisanalytic.com/pricing."
+      );
+    }
+  }
+
   if (config.monthlyResearchLimit !== -1) {
     const periodStart = await getBillingPeriodStart(userId);
     const monthlyUsage = await getMonthlyResearchUsage(userId, periodStart);
@@ -402,7 +510,9 @@ app.post("/research", async (req, res) => {
       return tierDenied(
         res,
         `Monthly limit of ${config.monthlyResearchLimit} quick profiles reached. Resets ${new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toLocaleDateString()}.`,
-        "Upgrade to Pro for unlimited quick profiles."
+        tier === "basic"
+          ? `Upgrade to Pro for up to ${PRO_MONTHLY_RESEARCH_LIMIT} quick profiles a month.`
+          : "Contact support@metisanalytic.com if you need a higher limit."
       );
     }
   }
@@ -893,6 +1003,21 @@ app.post("/deep-dive", async (req, res) => {
     const usage = await getDailyUsage(userId, "deep_dives");
     if (usage >= config.dailyDeepDiveLimit) {
       return tierDenied(res, `Daily Deep Dive limit of ${config.dailyDeepDiveLimit} reached.`);
+    }
+  }
+
+  // Pro's monthly fair-use soft cap (task 1.6) — dailyDeepDiveLimit is -1
+  // for Pro, so this is the binding check for that tier; other tiers that
+  // still use monthlyDeepDiveLimit: -1 skip this entirely.
+  if (config.monthlyDeepDiveLimit !== -1) {
+    const periodStart = await getBillingPeriodStart(userId);
+    const usage = await getMonthlyDeepDiveUsage(userId, periodStart);
+    if (usage >= config.monthlyDeepDiveLimit) {
+      return tierDenied(
+        res,
+        `Monthly Deep Dive limit of ${config.monthlyDeepDiveLimit} reached. Resets ${new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toLocaleDateString()}.`,
+        "Contact support@metisanalytic.com if you need a higher limit."
+      );
     }
   }
 

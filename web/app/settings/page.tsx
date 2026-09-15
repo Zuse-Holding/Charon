@@ -397,7 +397,7 @@ export default function Settings() {
             ) : (
               <div className={styles.upgradeCard}>
                 <div className={styles.upgradeText}>
-                  Data export is available on Pro and above.
+                  Data export is available on Basic and above.
                 </div>
                 <a href="mailto:support@metisanalytic.com?subject=Metis Pro Upgrade" className={styles.upgradeBtn}>
                   Contact us to upgrade →
