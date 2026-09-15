@@ -21,7 +21,7 @@ export default function LogoutPage() {
     <div className={styles.shell}>
       <div className={styles.card}>
         <div className={styles.logoMark}>METIS</div>
-        <div className={styles.logoSub}>ZUSE HOLDINGS // INTELLIGENCE PLATFORM</div>
+        <div className={styles.logoSub}>BUSINESS INTELLIGENCE PLATFORM</div>
         <div className={styles.divider} />
         <div className={styles.icon}>◐</div>
         <div className={styles.title}>You've been signed out</div>
