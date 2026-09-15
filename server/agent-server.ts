@@ -25,6 +25,7 @@ import { saveEntityExtraction, saveLittleSisRelationships } from "../src/databas
 import { upsertStatewideExecutives } from "../src/database/statewide-executives.js";
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { parsePersonQuery } from "../src/lib/nlp.js";
+import { withCostTracking } from "../src/lib/cost-tracking.js";
 import { createClient } from "@supabase/supabase-js";
 
 const app  = express();
@@ -577,11 +578,19 @@ app.post("/research", async (req, res) => {
     let littleSisRelationships: LittleSisRelationshipEntry[] | undefined;
 
     const egg = findEasterEgg(subject);
-    if (egg && egg.type === type) {
-      report = egg.markdown;
-      bundle = { query: subject, generatedAt: new Date().toISOString() };
-      outPath = type === "person" ? join(REPORTS_DIR, "people", `${slugify(subject)}.md`) : type === "product" ? join(REPORTS_DIR, "products", `${slugify(subject)}.md`) : join(REPORTS_DIR, `${slugify(subject)}.md`);
-    } else {
+
+    // Task C — every LLM call made anywhere within this block (however
+    // deep in the agent call graph) gets attributed to totalCostUsd via
+    // AsyncLocalStorage; see src/lib/cost-tracking.ts for why that's used
+    // instead of threading an accumulator through every agent signature.
+    const { totalCostUsd } = await withCostTracking(async () => {
+      if (egg && egg.type === type) {
+        report = egg.markdown;
+        bundle = { query: subject, generatedAt: new Date().toISOString() };
+        outPath = type === "person" ? join(REPORTS_DIR, "people", `${slugify(subject)}.md`) : type === "product" ? join(REPORTS_DIR, "products", `${slugify(subject)}.md`) : join(REPORTS_DIR, `${slugify(subject)}.md`);
+        return;
+      }
+
       const orchestrator = new ResearchOrchestrator();
       // Charon Protocol (internal tier only): deeper sourcing on person/
       // political research, on top of the unlimited quotas internal
@@ -621,7 +630,7 @@ app.post("/research", async (req, res) => {
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, "products", `${slugify(subject)}.md`);
       }
-    }
+    });
 
     writeFileSync(outPath, report, "utf-8");
 
@@ -633,6 +642,7 @@ app.post("/research", async (req, res) => {
         bundle: { ...(bundle as object), reportMarkdown: report },
         status: "completed",
         duration_ms: Date.now() - startedAt,
+        cost_usd: totalCostUsd,
       })
       .eq("id", runId);
 
@@ -1064,7 +1074,7 @@ app.post("/deep-dive", async (req, res) => {
     const fetcher = new DirectFetchProvider();
     const searcher = new SerperSearchProvider();
     const agent = new DeepDiveAgent(fetcher, searcher);
-    const bundle = await agent.run(company, send);
+    const { result: bundle, totalCostUsd } = await withCostTracking(() => agent.run(company, send));
 
     await supabase.from("deep_dives").upsert({
       id: bundle.id,
@@ -1073,6 +1083,7 @@ app.post("/deep-dive", async (req, res) => {
       generated_at: bundle.generatedAt,
       duration_ms: bundle.durationMs,
       sections: bundle.sections,
+      cost_usd: totalCostUsd,
     });
 
     res.end();

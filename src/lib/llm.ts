@@ -1,5 +1,6 @@
 import { z } from "zod";
 import Groq from "groq-sdk";
+import { recordLlmUsage } from "./cost-tracking.js";
 
 /**
  * Unified LLM extraction layer.
@@ -142,6 +143,18 @@ async function extractViaGroq<T>(
       });
     } finally {
       releaseGroqSlot();
+    }
+
+    // Task C — record before any parsing/validation can fail and return
+    // early, since the call (and its cost) already happened regardless of
+    // whether the response turns out to be usable.
+    if (completion.usage) {
+      recordLlmUsage({
+        provider: "groq",
+        model: modelOverride ?? GROQ_MODEL,
+        promptTokens: completion.usage.prompt_tokens ?? 0,
+        completionTokens: completion.usage.completion_tokens ?? 0,
+      });
     }
 
     const raw = completion.choices[0]?.message?.content;
@@ -300,7 +313,24 @@ async function extractViaOpenRouter<T>(
         return null;
       }
 
-      const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const data = await res.json() as {
+        choices?: Array<{ message?: { content?: string } }>;
+        model?: string;
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+
+      // Task C — `models` is a fallback list; `data.model` is whichever one
+      // actually served the request, which is what determines the real
+      // price, not necessarily models[0].
+      if (data.usage) {
+        recordLlmUsage({
+          provider: "openrouter",
+          model: data.model ?? models[0],
+          promptTokens: data.usage.prompt_tokens ?? 0,
+          completionTokens: data.usage.completion_tokens ?? 0,
+        });
+      }
+
       const raw = data.choices?.[0]?.message?.content;
       if (!raw) { console.error("[llm:openrouter] No content"); return null; }
 
@@ -355,8 +385,25 @@ async function extractViaOllama<T>(
         return null;
       }
 
-      const data = (await res.json()) as { response?: string };
+      const data = (await res.json()) as {
+        response?: string;
+        prompt_eval_count?: number;
+        eval_count?: number;
+      };
       if (!data.response) { console.error("[llm:ollama] No response field"); return null; }
+
+      // Task C — Ollama's field names differ from the OpenAI-shaped
+      // prompt_tokens/completion_tokens the other two providers use.
+      // Always prices at $0 (local model, no per-token API cost) but
+      // recorded anyway for a complete per-run call log.
+      if (data.prompt_eval_count !== undefined || data.eval_count !== undefined) {
+        recordLlmUsage({
+          provider: "ollama",
+          model: OLLAMA_MODEL,
+          promptTokens: data.prompt_eval_count ?? 0,
+          completionTokens: data.eval_count ?? 0,
+        });
+      }
 
       let parsed: unknown;
       try { parsed = JSON.parse(data.response); }

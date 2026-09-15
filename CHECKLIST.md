@@ -43,15 +43,21 @@ tracked here as they come up rather than left buried in commit messages.
   via `npm run duration-stats` that `research_runs.duration_ms` doesn't exist
   in production yet.
 
-## Product decision needed
+- [ ] **Run the pro_grace_expires_at migration too** — same file, under
+  "Legacy-account Pro grace period." Needed before `grant-legacy-pro-grace.mjs`
+  can run at all (it also depends on the Phase 1 `stripe_customer_id` column).
 
-- [ ] **Real cost-per-run tracking isn't built.** `research_runs.cost_usd` /
-  `deep_dives.cost_usd` exist as columns now but are never populated — none
-  of Groq/OpenRouter/Ollama's token usage is captured anywhere in
-  `src/lib/llm.ts` today. Wiring this up for real (capture tokens per call
-  across every agent and provider, price them, sum per run) is a genuinely
-  separate piece of work from "log run duration," not something to fake with
-  an estimate. Decide if/when this is worth prioritizing.
+## Verify before trusting cost_usd numbers
+
+- [ ] **Groq pricing in `src/lib/model-pricing.ts` is a best-effort guess,
+  not pulled from a live source.** Tried to fetch Groq's current per-model
+  pricing while building this (task C) — the marketing pricing page has no
+  pricing table, and the console page requires login, so I couldn't verify
+  programmatically. Check `llama-3.3-70b-versatile` / `llama-3.1-8b-instant`
+  against console.groq.com's actual current rate card before treating
+  cost_usd as accurate for anything real (budgets, margin analysis, etc.).
+  OpenRouter's three models are genuinely $0 (they're all `:free`-suffixed)
+  and Ollama is genuinely $0 (local) — those two aren't guesses.
 - [ ] **Untrack `.env.local`** — flagged in `AUDIT.md`: a real (likely expired)
   Vercel OIDC token is currently committed and tracked in this public repo.
   `git rm --cached .env.local` (already gitignored, just never actually removed
