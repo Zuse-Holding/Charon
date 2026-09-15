@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MarketingShell } from "../../components/marketing/MarketingShell";
+import { LEGAL_PAGES_FINAL } from "../../lib/legal";
 import styles from "../privacy/legal.module.css";
 
 export const metadata: Metadata = {
@@ -11,7 +12,7 @@ export default function TermsPage() {
   return (
     <MarketingShell>
       <div className={styles.header}>
-        <div className={styles.draftBadge}>DRAFT — PENDING LEGAL REVIEW</div>
+        {!LEGAL_PAGES_FINAL && <div className={styles.draftBadge}>DRAFT — PENDING LEGAL REVIEW</div>}
         <h1 className={styles.title}>Terms of Service</h1>
         <div className={styles.updated}>Last updated: August 24, 2026</div>
       </div>
