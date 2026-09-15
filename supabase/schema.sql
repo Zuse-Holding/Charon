@@ -480,3 +480,34 @@ CREATE INDEX IF NOT EXISTS idx_research_runs_duration
 -- ============================================================
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pro_grace_expires_at TIMESTAMPTZ;
+
+-- ============================================================
+-- Report issue reports (task 3.4 — "Something wrong in this report?")
+-- run_id is a plain TEXT reference to either research_runs.id or
+-- deep_dives.id (report_kind says which), not a foreign key — a report
+-- issue should still be storable even if the underlying run is later
+-- deleted, and the two source tables don't share an id space to FK
+-- against uniformly.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS report_issues (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+  run_id        TEXT        NOT NULL,
+  report_kind   TEXT        NOT NULL CHECK (report_kind IN ('quick', 'deep-dive')),
+  entity_name   TEXT        NOT NULL,
+  section       TEXT,
+  message       TEXT        NOT NULL,
+  correct_value TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE report_issues ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users manage own report issues"
+  ON report_issues FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_report_issues_user_date
+  ON report_issues (user_id, created_at DESC);

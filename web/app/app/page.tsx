@@ -7,6 +7,7 @@ import EntityTag from "../../components/EntityTag";
 import ReportViewer from "../../components/ReportViewer";
 import DeepDiveProgress from "../../components/DeepDiveProgress";
 import DeepDiveViewer from "../../components/DeepDiveViewer";
+import ReportIssueForm from "../../components/ReportIssueForm";
 import ErrorBoundary from "../../components/ErrorBoundary";
 import ResearchSkeleton from "../../components/ResearchSkeleton";
 import EmptyState from "../../components/EmptyState";
@@ -463,6 +464,14 @@ function Dashboard() {
                         ) : (
                           <ErrorBoundary>
                             <ReportViewer markdown={report} />
+                            {selected && (
+                              <ReportIssueForm
+                                runId={selected.id}
+                                reportKind="quick"
+                                entityName={selected.subject}
+                                sectionTitles={report.split("\n").filter((l) => l.startsWith("## ")).map((l) => l.replace("## ", "").trim())}
+                              />
+                            )}
                           </ErrorBoundary>
                         )
                       )}
@@ -473,6 +482,12 @@ function Dashboard() {
                             generatedAt={deepDive.generatedAt}
                             durationMs={deepDive.durationMs}
                             sections={deepDive.sections}
+                          />
+                          <ReportIssueForm
+                            runId={selected?.id ?? deepDive.company}
+                            reportKind="deep-dive"
+                            entityName={deepDive.company}
+                            sectionTitles={deepDive.sections.map((s) => s.title)}
                           />
                         </ErrorBoundary>
                       )}
