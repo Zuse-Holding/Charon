@@ -62,6 +62,11 @@ tracked here as they come up rather than left buried in commit messages.
   "Report issue reports." Needed before the "Something wrong in this report?"
   form can save anything; it'll 500 until this runs.
 
+- [ ] **Run the transactional-email migration too** (task 4.2) — same file,
+  under "Transactional email." Just two columns on `profiles`
+  (`day7_email_sent_at`, `last_cap_reached_email_at`) — needed before the
+  day-7 job or the cap-reached email can de-duplicate correctly.
+
 ## Verify before trusting cost_usd numbers
 
 - [ ] **Groq pricing in `src/lib/model-pricing.ts` is a best-effort guess,
@@ -150,6 +155,41 @@ done except the part that has to be your call:
   logged-in session against a real `deep_dives` row — inserted and deleted a
   throwaway test row to confirm the route itself compiles and serves
   correctly; RLS correctly 404s it without a session, as expected).
+
+## Transactional email (task 4.2)
+
+- [ ] **Sign up for Resend and set `RESEND_API_KEY`.** No email provider
+  existed anywhere in this codebase before this task (see task B's
+  `migration-output/legacy-pro-grace-email.txt`, written but never sendable).
+  Resend is a default choice, not one you asked for — picked for being
+  low-friction to set up and easy to swap later, same posture Stripe was
+  given before real keys existed. Everything no-ops until this is set.
+- [ ] **Verify a sending domain and set `EMAIL_FROM`** (e.g.
+  `"Metis <hello@metisanalytic.com>"`). Without a verified domain, Resend's
+  default `onboarding@resend.dev` only delivers to your own Resend account
+  email — fine for testing the wiring, not for real users.
+- [ ] **Replace the placeholder name in `src/lib/email/copy.ts`.** Every
+  email is signed `— Nick` right now — a placeholder, not a real person on
+  this team as far as I know from the repo. That file is the single place
+  to edit all three emails' copy (subject + body); nothing else needs to
+  change to update wording.
+- [ ] **Set up the day-7 cron job.** `npm run day7-email-job`
+  (`run-day7-email-job.mjs`) needs to run daily — same Railway Cron pattern
+  as `run-daily-creator-jobs.mjs`. De-duplication is handled by
+  `profiles.day7_email_sent_at` (set the first time it sends), so running
+  it more than once a day is safe, just wasteful.
+- [x] Welcome email (on signup), day-7 check-in, and cap-reached email
+  (cooldown: 7 days, via `profiles.last_cap_reached_email_at`) are all
+  wired for real — not stubbed. Cap-reached only fires on caps with a real
+  self-serve upgrade path (research/deep-dive quotas, Deep Dive access,
+  export access); Charon-only gates, rate limits, and the expired-trial
+  message don't send one, since "upgrade to Pro" wouldn't fix those.
+- Couldn't verify: no Resend account exists to test an actual delivered
+  email against (subject line, spam score, rendering in a real inbox).
+  Confirmed via a live curl against a running agent-server that
+  `/email/welcome` responds `{ ok: true, sent: false }` when
+  `RESEND_API_KEY` is unset — the no-op path works; the send path itself
+  is unverified past what Resend's own SDK guarantees.
 
 ## Hosting / infra
 

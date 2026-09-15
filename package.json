@@ -27,6 +27,7 @@
     "daily-creator-jobs": "tsx run-daily-creator-jobs.mjs",
     "duration-stats": "node duration-stats.mjs",
     "grant-legacy-pro-grace": "node grant-legacy-pro-grace.mjs",
+    "day7-email-job": "tsx run-day7-email-job.mjs",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
@@ -42,6 +43,7 @@
     "express": "^5.0.0",
     "groq-sdk": "^1.3.0",
     "posthog-node": "^4.18.0",
+    "resend": "^4.8.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "zod": "^4.4.3"

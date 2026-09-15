@@ -511,3 +511,23 @@ CREATE POLICY "Users manage own report issues"
 
 CREATE INDEX IF NOT EXISTS idx_report_issues_user_date
   ON report_issues (user_id, created_at DESC);
+
+-- ============================================================
+-- Transactional email (task 4.2)
+-- Both columns exist purely to de-duplicate sends, not to store any
+-- content — the emails themselves are plain-text templates in
+-- web/lib/email/copy.ts, sent via web/lib/email/send.ts (Resend).
+-- day7_email_sent_at: set by run-day7-email-job.mjs the one time it
+-- sends the day-7 "what did Metis get wrong" email to an account —
+-- without this, re-running the (idempotent-by-design, cron-driven) job
+-- daily would re-send it to the same account every day forever.
+-- last_cap_reached_email_at: a cooldown, not a one-time flag — a user
+-- can hit a different cap next month and should hear about it again,
+-- but shouldn't get a new email every single time they retry the same
+-- request against the same cap. Checked/set in tierDenied() in
+-- server/agent-server.ts, next to (not instead of) the paywall_hit
+-- analytics event that fires on every denial regardless of cooldown.
+-- ============================================================
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS day7_email_sent_at TIMESTAMPTZ;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_cap_reached_email_at TIMESTAMPTZ;

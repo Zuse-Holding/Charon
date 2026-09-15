@@ -27,6 +27,8 @@ import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.
 import { parsePersonQuery } from "../src/lib/nlp.js";
 import { withCostTracking } from "../src/lib/cost-tracking.js";
 import { trackEvent } from "../src/lib/analytics.js";
+import { sendEmail } from "../src/lib/email/send.js";
+import { welcomeEmail, capReachedEmail } from "../src/lib/email/copy.js";
 import { createClient } from "@supabase/supabase-js";
 
 const app  = express();
@@ -466,14 +468,62 @@ async function getMonthlyDeepDiveUsage(userId: string, periodStart: Date): Promi
   return count ?? 0;
 }
 
+// Task 4.2 — cooldown on the cap-reached email, not a one-time flag: a
+// user can hit a different cap next month and should hear about it again,
+// but shouldn't get a new email every time they retry the same request
+// against the same cap. See supabase/schema.sql's doc comment on
+// profiles.last_cap_reached_email_at.
+const CAP_EMAIL_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function maybeSendCapReachedEmail(userId: string, capLabel: string) {
+  // Skip the DB round-trip entirely when there's nowhere to send it anyway.
+  if (!process.env.RESEND_API_KEY) return;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name, last_cap_reached_email_at")
+    .eq("id", userId)
+    .single();
+  if (profile?.last_cap_reached_email_at) {
+    const elapsed = Date.now() - new Date(profile.last_cap_reached_email_at).getTime();
+    if (elapsed < CAP_EMAIL_COOLDOWN_MS) return;
+  }
+
+  const { data: userData, error } = await supabase.auth.admin.getUserById(userId);
+  if (error || !userData?.user?.email) return;
+
+  const firstName = profile?.display_name?.split(" ")[0] || "";
+  const { subject, text } = capReachedEmail(firstName, capLabel);
+  const { sent } = await sendEmail({ to: userData.user.email, subject, text });
+  if (sent) {
+    await supabase.from("profiles").update({ last_cap_reached_email_at: new Date().toISOString() }).eq("id", userId);
+  }
+}
+
 // Task 4.1 — every denial is a paywall_hit in PostHog, tagged with which
 // cap/gate was hit (`cap`) so the funnel is queryable by cause, not just
 // volume. userId is optional only because a couple of call sites (none
 // currently) might deny before a userId is known; trackEvent no-ops
-// without one anyway.
-function tierDenied(res: express.Response, message: string, upgradeHint?: string, analytics?: { userId?: string; cap: string }) {
+// without one anyway. `capEmail` is opt-in per call site (task 4.2) —
+// only the caps with a real self-serve upgrade path (research/deep-dive
+// quotas, deep dive/export access) send one; Charon-only gates, rate
+// limits, and the expired-trial message don't, since "upgrade to Pro"
+// wouldn't actually fix any of those.
+function tierDenied(
+  res: express.Response,
+  message: string,
+  upgradeHint?: string,
+  analytics?: { userId?: string; cap: string; capEmail?: string }
+) {
   res.status(403).json({ error: "tier_limit", message, upgradeHint: upgradeHint ?? "Upgrade your plan at metisanalytic.com/pricing" });
-  if (analytics?.userId) trackEvent(analytics.userId, "paywall_hit", { cap: analytics.cap });
+  if (analytics?.userId) {
+    trackEvent(analytics.userId, "paywall_hit", { cap: analytics.cap });
+    if (analytics.capEmail) {
+      maybeSendCapReachedEmail(analytics.userId, analytics.capEmail).catch((err) =>
+        console.error("[cap-reached-email] failed:", err)
+      );
+    }
+  }
 }
 
 /**
@@ -526,6 +576,28 @@ mkdirSync(join(REPORTS_DIR, "creators"), { recursive: true });
 function slugify(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
+
+/**
+ * Task 4.2 — welcome email, triggered by web/app/api/auth/signup/route.ts
+ * right after a successful signUp(). Lives here (not in the Next.js route
+ * itself) so the actual Resend integration and copy stay in one place —
+ * src/lib/email — alongside the day-7 and cap-reached emails, both of
+ * which already have to run from this side (a cron job and a tier-gate
+ * respectively). Fire-and-forget from the caller's side; this endpoint
+ * itself still does the send synchronously so a failure is logged here,
+ * not silently swallowed by an un-awaited fetch on the other end.
+ */
+app.post("/email/welcome", async (req, res) => {
+  if (!authCheck(req, res)) return;
+  const { email, firstName } = req.body;
+  if (!email) {
+    res.status(400).json({ error: "email required" });
+    return;
+  }
+  const { subject, text } = welcomeEmail(firstName ?? "");
+  const { sent } = await sendEmail({ to: email, subject, text });
+  res.json({ ok: true, sent });
+});
 
 app.post("/research", async (req, res) => {
   if (!authCheck(req, res)) return;
@@ -628,7 +700,7 @@ app.post("/research", async (req, res) => {
         res,
         `You've used all ${config.lifetimeResearchLimit} free research profiles.`,
         "Upgrade to Basic or Pro to keep researching — see metisanalytic.com/pricing.",
-        { userId, cap: "lifetime_research_limit" }
+        { userId, cap: "lifetime_research_limit", capEmail: "free research limit" }
       );
     }
   }
@@ -643,7 +715,7 @@ app.post("/research", async (req, res) => {
         tier === "basic"
           ? `Upgrade to Pro for up to ${PRO_MONTHLY_RESEARCH_LIMIT} quick profiles a month.`
           : "Contact support@metisanalytic.com if you need a higher limit.",
-        { userId, cap: "monthly_research_limit" }
+        { userId, cap: "monthly_research_limit", capEmail: "monthly quick-profile limit" }
       );
     }
   }
@@ -1150,7 +1222,7 @@ app.post("/deep-dive", async (req, res) => {
   }
 
   if (!config.deepDiveAccess) {
-    return tierDenied(res, "Deep Dive requires Pro or higher.", undefined, { userId, cap: "deep_dive_access" });
+    return tierDenied(res, "Deep Dive requires Pro or higher.", undefined, { userId, cap: "deep_dive_access", capEmail: "Deep Dive access" });
   }
 
   if (config.dailyDeepDiveLimit !== -1) {
@@ -1171,7 +1243,7 @@ app.post("/deep-dive", async (req, res) => {
         res,
         `Monthly Deep Dive limit of ${config.monthlyDeepDiveLimit} reached. Resets ${new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toLocaleDateString()}.`,
         "Contact support@metisanalytic.com if you need a higher limit.",
-        { userId, cap: "monthly_deep_dive_limit" }
+        { userId, cap: "monthly_deep_dive_limit", capEmail: "monthly Deep Dive limit" }
       );
     }
   }
@@ -1385,7 +1457,7 @@ app.get("/export/:userId", async (req, res) => {
   const config = getTierConfig(tier);
 
   if (!config.exportAccess) {
-    tierDenied(res, "Data export is not available on your current plan.", "Upgrade to Pro for data export.", { userId, cap: "export_access" });
+    tierDenied(res, "Data export is not available on your current plan.", "Upgrade to Pro for data export.", { userId, cap: "export_access", capEmail: "data export" });
     return;
   }
 
