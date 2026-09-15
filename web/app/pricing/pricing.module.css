@@ -18,6 +18,12 @@
   max-width: 1000px; margin: 0 auto; padding: 50px 48px 60px;
   position: relative; z-index: 2;
 }
+.finePrint {
+  text-align: center; margin-top: 24px;
+  font-size: 13px; color: #6b6b80; line-height: 1.7;
+}
+.finePrint a { color: #ff6b2b; text-decoration: none; }
+.finePrint a:hover { text-decoration: underline; }
 .pricingGrid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; text-align: left;
 }

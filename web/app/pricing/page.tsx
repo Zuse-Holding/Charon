@@ -53,18 +53,18 @@ const PLANS = [
   {
     tier: "TEAM",
     price: "$149",
-    period: "/mo · 3 seats",
+    period: "/mo",
     forWho: "For small firms and deal teams",
     value: "Everything in Pro, shared across a workspace — so the whole team is working off the same research instead of duplicating it.",
     features: [
       "Everything in Pro",
-      "3 seats included (+$40/seat after)",
       "Shared workspace",
       "Team watchlists",
       "API access",
     ],
-    cta: "Start Team →",
+    cta: "Contact Us →",
     highlight: false,
+    contactOnly: true,
   },
 ];
 
@@ -74,7 +74,6 @@ const COMPARE_ROWS: [string, string, string, string][] = [
   ["Watchlist entities", "5", "Unlimited", "Unlimited"],
   ["Knowledge Graph", "—", "Included", "Included"],
   ["Export formats", "Markdown", "Markdown + PDF", "Markdown + PDF"],
-  ["Seats included", "1", "1", "3 (+$40/seat)"],
   ["Shared workspace", "—", "—", "Included"],
   ["API access", "—", "—", "Included"],
 ];
@@ -90,7 +89,7 @@ const FAQS = [
   },
   {
     q: "What if I need more than the Team plan covers?",
-    a: "Reach out at support@metisanalytic.com — we handle larger seat counts and custom needs directly.",
+    a: "Reach out at support@metisanalytic.com — we handle higher limits and custom needs directly.",
   },
 ];
 
@@ -100,7 +99,7 @@ export default function PricingPage() {
       <section className={styles.hero}>
         <h1 className={styles.title}>Simple pricing, no sales call.</h1>
         <p className={styles.sub}>
-          Pick a plan, start researching in seconds. Upgrade, downgrade, or cancel whenever — every tier is self-serve.
+          Pick a plan, start researching in seconds. Upgrade, downgrade, or cancel whenever — Basic and Pro are self-serve.
         </p>
       </section>
 
@@ -130,16 +129,22 @@ export default function PricingPage() {
                   className={`${styles.planCta} ${plan.highlight ? styles.planCtaFeatured : ""}`}
                 />
               ) : (
-                <Link
-                  href="/login?mode=signup"
+                // Team isn't self-serve (task 1.6) — no signup link
+                // pretending to be a purchase; a real contact path instead.
+                <a
+                  href="mailto:support@metisanalytic.com?subject=Metis Team"
                   className={`${styles.planCta} ${plan.highlight ? styles.planCtaFeatured : ""}`}
                 >
                   {plan.cta}
-                </Link>
+                </a>
               )}
             </div>
           ))}
         </div>
+        <p className={styles.finePrint}>
+          Refunds within 7 days of your first charge, on request.<br />
+          Need higher limits? Email <a href="mailto:support@metisanalytic.com">support@metisanalytic.com</a>.
+        </p>
       </section>
 
       <section className={styles.compareSection}>

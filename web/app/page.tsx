@@ -58,7 +58,6 @@ const PRICING = [
     features: ["25 quick profiles/mo", "Company, person, product", "Watchlist (5 entities)", "Markdown export"],
     cta: "Get Started",
     highlight: false,
-    isEnterprise: false,
   },
   {
     tier: "PRO",
@@ -67,25 +66,15 @@ const PRICING = [
     features: ["Everything in Basic", "Deep Dive reports", "Unlimited Watchlist", "PDF export", "Knowledge Graph"],
     cta: "Start Pro →",
     highlight: true,
-    isEnterprise: false,
   },
   {
     tier: "TEAM",
     price: "$149",
-    period: "/mo · 3 seats",
-    features: ["Everything in Pro", "Shared workspace", "Team watchlists", "API access", "+$40/seat after 3"],
-    cta: "Start Team",
-    highlight: false,
-    isEnterprise: false,
-  },
-  {
-    tier: "ENTERPRISE",
-    price: "Custom",
-    period: "let's talk",
-    features: ["White-label deploy", "Custom data feeds", "Dedicated infra", "SLA & support", "Scoped to your needs"],
+    period: "/mo",
+    features: ["Everything in Pro", "Shared workspace", "Team watchlists", "API access"],
     cta: "Contact Us →",
     highlight: false,
-    isEnterprise: true,
+    contactOnly: true,
   },
 ];
 
@@ -95,17 +84,17 @@ export default function Landing() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   async function handlePlanClick(plan: (typeof PRICING)[number]) {
-    if (plan.isEnterprise) {
-      window.location.href = "mailto:support@metisanalytic.com?subject=Metis Enterprise";
+    // Team isn't self-serve (task 1.6) — a real contact path, not a
+    // signup link pretending to be a purchase.
+    if ("contactOnly" in plan && plan.contactOnly) {
+      window.location.href = "mailto:support@metisanalytic.com?subject=Metis Team";
       return;
     }
     if (plan.tier === "BASIC" || plan.tier === "PRO") {
       setCheckoutError(null);
       const result = await startCheckout(plan.tier.toLowerCase() as SellablePlan, router);
       if (result.error) setCheckoutError(result.error);
-      return;
     }
-    router.push("/login?mode=signup");
   }
 
   return (
@@ -236,7 +225,7 @@ export default function Landing() {
           {PRICING.map((plan) => (
             <div
               key={plan.tier}
-              className={`${styles.planCard} ${plan.highlight ? styles.planFeatured : ""} ${plan.isEnterprise ? styles.planEnterprise : ""}`}
+              className={`${styles.planCard} ${plan.highlight ? styles.planFeatured : ""} ${"contactOnly" in plan && plan.contactOnly ? styles.planEnterprise : ""}`}
             >
               {plan.highlight && <div className={styles.planBadge}>MOST POPULAR</div>}
               <div className={`${styles.planName} ${plan.highlight ? styles.planNameHighlight : ""}`}>{plan.tier}</div>
@@ -252,7 +241,7 @@ export default function Landing() {
                 ))}
               </ul>
               <button
-                className={`${styles.planCta} ${plan.highlight ? styles.planCtaFeatured : ""} ${plan.isEnterprise ? styles.planCtaEnterprise : ""}`}
+                className={`${styles.planCta} ${plan.highlight ? styles.planCtaFeatured : ""} ${"contactOnly" in plan && plan.contactOnly ? styles.planCtaEnterprise : ""}`}
                 onClick={() => handlePlanClick(plan)}
               >
                 {plan.cta}
@@ -261,6 +250,9 @@ export default function Landing() {
           ))}
         </div>
         {checkoutError && <p className={styles.checkoutError}>{checkoutError}</p>}
+        <p className={styles.higherLimitsNote}>
+          Need higher limits? Email <a href="mailto:support@metisanalytic.com">support@metisanalytic.com</a>.
+        </p>
         <Link href="/pricing" className={styles.pricingDetailLink}>See full pricing details →</Link>
       </section>
 
