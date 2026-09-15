@@ -198,7 +198,7 @@ const TIER_CONFIG: Record<Tier, TierConfig> = {
 async function getUserTier(userId: string): Promise<Tier | "expired"> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("tier, trial_expires_at")
+    .select("tier, trial_expires_at, pro_grace_expires_at, stripe_subscription_id")
     .eq("id", userId)
     .single();
 
@@ -209,6 +209,18 @@ async function getUserTier(userId: string): Promise<Tier | "expired"> {
   if (tier === "trial" && data.trial_expires_at) {
     const expired = new Date() > new Date(data.trial_expires_at);
     if (expired) return "expired";
+  }
+
+  // Legacy-account Pro grace period (see grant-legacy-pro-grace.mjs) —
+  // same shape as the trial-expiry check above, generalized to Pro. Only
+  // applies while there's no real Stripe subscription attached: once
+  // someone on a grace grant actually subscribes for real, the webhook
+  // sets stripe_subscription_id and this stops applying, so an expired
+  // grace date left over from before they paid can never downgrade a
+  // genuine paying customer.
+  if (tier === "pro" && data.pro_grace_expires_at && !data.stripe_subscription_id) {
+    const expired = new Date() > new Date(data.pro_grace_expires_at);
+    if (expired) return "free";
   }
 
   return tier;

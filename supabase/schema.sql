@@ -469,3 +469,14 @@ ALTER TABLE deep_dives ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
 
 CREATE INDEX IF NOT EXISTS idx_research_runs_duration
   ON research_runs (generated_at DESC) WHERE duration_ms IS NOT NULL;
+
+-- ============================================================
+-- Legacy-account Pro grace period (pre-launch task B)
+-- Set by grant-legacy-pro-grace.mjs (NOT auto-run), checked in
+-- getUserTier() in server/agent-server.ts. See that function's doc
+-- comment for why this only applies while stripe_subscription_id is
+-- still null — an expired grace date can never downgrade a genuine
+-- paying customer.
+-- ============================================================
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pro_grace_expires_at TIMESTAMPTZ;

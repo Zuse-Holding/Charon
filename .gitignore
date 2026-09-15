@@ -16,3 +16,6 @@ venv/
 selene_memory.db
 .env.local
 .env*.local
+
+# Local output from grant-legacy-pro-grace.mjs — real user emails, never commit
+migration-output/
