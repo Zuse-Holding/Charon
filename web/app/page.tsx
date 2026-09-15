@@ -193,7 +193,7 @@ export default function Landing() {
             </div>
             <div className={styles.termLine}>
               <span className={styles.termSuccess}>✓</span>
-              <span className={styles.termDone}>Report written · 7 agents · 23s</span>
+              <span className={styles.termDone}>Report written · 7 agents</span>
               <span className={styles.termCursor} />
             </div>
           </div>
@@ -204,7 +204,6 @@ export default function Landing() {
       <div className={`${styles.statsBar} ${styles.fadeIn}`}>
         {[
           { num: "7", label: "Parallel agents per run" },
-          { num: "~30s", label: "Average research time" },
           { num: "10", label: "Sections in Deep Dive" },
         ].map((s) => (
           <div key={s.label} className={styles.statItem}>
