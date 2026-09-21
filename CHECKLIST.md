@@ -14,33 +14,54 @@ tracked here as they come up rather than left buried in commit messages.
 - [x] **`.env.example` exists** — comprehensive, updated throughout this
   session as new env vars were added (Stripe, rate limits, cost tracking).
 
-## Stripe Dashboard
+## Stripe Dashboard — going live (in progress, 2026-09-15)
 
-- [ ] **Set Customer Portal cancellation to "at period end."** Task 1.2 requires
-  cancel-at-period-end behavior. This is a Stripe Dashboard setting (Settings →
-  Billing → Customer portal → Subscriptions → Cancellations → choose "At end of
-  billing period," not "Immediately"), not application code — the portal session
-  the app creates uses whatever the dashboard's active configuration says. Verify
-  this is set before relying on it; it's not something `web/app/api/stripe/portal/route.ts`
-  can enforce on its own.
-- [ ] **Create the Basic and Pro products/prices** (test mode first): $19/mo and
-  $49/mo recurring. Copy their `price_...` IDs into `STRIPE_PRICE_BASIC_MONTHLY`
-  / `STRIPE_PRICE_PRO_MONTHLY`. Do not create a Team price — it's not sold.
-- [ ] **Founding-member coupon** (task 1.5): create a promotion code in the
-  Stripe Dashboard — 50 redemptions, Pro at $29/mo forever. The app supports
-  `allow_promotion_codes` on Checkout; it does not create the coupon itself.
-- [ ] **Webhook endpoint**: for local testing use the Stripe CLI
-  (`stripe listen --forward-to localhost:3000/api/stripe/webhook`); only add a
-  real Dashboard webhook endpoint (`https://metisanalytic.com/api/stripe/webhook`)
-  when actually deploying live keys.
+Decision made 2026-09-15: skipping the test-mode walkthrough below and
+going straight to live mode. Status as of where we stopped for the day:
 
-- [ ] **Resolve the Stripe CLI account mismatch.** This machine's `stripe`
-  CLI is already authenticated — but to an account called "Vitale health
-  sandbox" (`acct_1Thxjz3rFpMM3SH9`), which is almost certainly unrelated
-  to Metis. Found via `stripe config --list` while writing TESTING.md; I
-  did not run any triggers or create any test data against it. Run
-  `stripe login` to point it at Metis's actual account before following
-  TESTING.md.
+- [x] Stripe CLI re-authenticated to the real Zuse Holdings account (the
+  old "Vitale health sandbox" mismatch is resolved).
+- [x] Live-mode restricted key created and set as `STRIPE_SECRET_KEY` in
+  `.env` (`rk_live_...`) — Custom permissions: Checkout Sessions (write),
+  Customers (write), Customer portal (write), Subscriptions (read). Not
+  yet confirmed set in Vercel/Railway — check both before deploying.
+- [ ] **Price IDs are still test-mode — this is the next step.** The two
+  `price_...` IDs currently in `.env`/Vercel/Railway
+  (`STRIPE_PRICE_BASIC_MONTHLY`, `STRIPE_PRICE_PRO_MONTHLY`) were created
+  while still in test mode, before the decision to go live. Stripe
+  doesn't carry products across modes — recreate both (Basic $19/mo, Pro
+  $49/mo, both recurring monthly, no Team price) in **Live mode**, and
+  replace all three copies (`.env`, Vercel, Railway) with the new live
+  price IDs. A live secret key cannot see test-mode prices at all, so
+  checkout will fail with "No such price" until this is done.
+- [ ] **Webhook endpoint — needs a real Dashboard endpoint, not `stripe
+  listen`.** `stripe listen` only forwards test-mode events; whatever
+  `whsec_...` it printed today is dead for production and shouldn't be
+  used. In live mode: Developers → Webhooks → Add endpoint → URL
+  `https://metisanalytic.com/api/stripe/webhook` → select the 6 events
+  this app handles (`checkout.session.completed`,
+  `customer.subscription.created/updated/deleted`,
+  `invoice.payment_succeeded/failed`). Set the resulting permanent
+  `whsec_...` as `STRIPE_WEBHOOK_SECRET` on Vercel — not in local `.env`,
+  there's no reason a local dev process needs to receive live webhooks.
+- [ ] **Set Customer Portal cancellation to "at period end"** (Live mode
+  — this setting is per-mode). Settings → Billing → Customer portal →
+  Subscriptions → Cancellations → "At end of billing period," not
+  "Immediately." Task 1.2 depends on this; the app's portal session
+  can't enforce it from code.
+- [ ] **Founding-member coupon** (task 1.5), live mode: a promotion code,
+  50 redemptions, Pro at $29/mo forever. `allow_promotion_codes` on
+  Checkout just lets the customer enter one — the app doesn't create it.
+- [ ] **Run the Phase 1 schema migration before any of this goes live —
+  see "Database (Supabase)" below.** This is the one that actually
+  matters for safety: if a real customer pays before this runs, the
+  webhook has nowhere to write `stripe_customer_id`/`tier`, and they're
+  charged with nothing to show for it.
+- Verifying an actual live checkout requires a real charge — I won't
+  click through that myself or enter payment details on your behalf
+  under any circumstances. Once the above is done, the safest path is
+  you running one real transaction while I watch the Stripe Dashboard
+  and the Supabase `profiles` table update alongside you.
 
 ## Database (Supabase)
 
@@ -66,6 +87,22 @@ tracked here as they come up rather than left buried in commit messages.
   under "Transactional email." Just two columns on `profiles`
   (`day7_email_sent_at`, `last_cap_reached_email_at`) — needed before the
   day-7 job or the cap-reached email can de-duplicate correctly.
+
+## Found 2026-09-21 (read-only checks, nothing changed)
+
+- [ ] **Vercel env var typo: `STRIPE_PRICE_BASIC_MONTLY` (missing an H).**
+  `web/lib/stripe.ts:38` reads `STRIPE_PRICE_BASIC_MONTHLY`, so the Basic
+  price ID in Vercel Production is invisible to the app. Fix while swapping
+  in the live price IDs: `vercel env rm STRIPE_PRICE_BASIC_MONTLY`, then add
+  the correctly spelled name. `STRIPE_WEBHOOK_SECRET` isn't in Vercel yet
+  either (expected — waits on the live webhook endpoint).
+- [ ] **Groq's two models may no longer be self-serve.** Secondary sources
+  (aggregator pricing blogs, not Groq's own site) say `llama-3.3-70b-versatile`
+  and `llama-3.1-8b-instant` moved to enterprise "Contact Sales" pricing on
+  2026-08-26. The rates in `model-pricing.ts` do match the last published
+  ones ($0.59/$0.79 and $0.05/$0.08 per 1M), so cost_usd isn't wrong for
+  past usage, but confirm in console.groq.com that calls to these models
+  still work at all.
 
 ## Verify before trusting cost_usd numbers
 
@@ -164,15 +201,17 @@ done except the part that has to be your call:
   Resend is a default choice, not one you asked for — picked for being
   low-friction to set up and easy to swap later, same posture Stripe was
   given before real keys existed. Everything no-ops until this is set.
-- [ ] **Verify a sending domain and set `EMAIL_FROM`** (e.g.
-  `"Metis <hello@metisanalytic.com>"`). Without a verified domain, Resend's
-  default `onboarding@resend.dev` only delivers to your own Resend account
-  email — fine for testing the wiring, not for real users.
-- [ ] **Replace the placeholder name in `src/lib/email/copy.ts`.** Every
-  email is signed `— Nick` right now — a placeholder, not a real person on
-  this team as far as I know from the repo. That file is the single place
-  to edit all three emails' copy (subject + body); nothing else needs to
-  change to update wording.
+- [ ] **Verify a sending domain and set `EMAIL_FROM`** to
+  `"Metis <support@metisanalytic.com>"` — matches `SUPPORT_EMAIL` already in
+  `src/lib/email/copy.ts`, so replies to the welcome/cap-reached emails (which
+  don't set an explicit `replyTo`) land at the same monitored inbox instead of
+  an unmonitored `hello@`. Without a verified domain, Resend's default
+  `onboarding@resend.dev` only delivers to your own Resend account email —
+  fine for testing the wiring, not for real users.
+- [x] **Sender name is generic** — emails are signed `— The Metis team`
+  (decided 2026-09-21), and the day-7 email's first-person "I" was changed
+  to "we" to match. `src/lib/email/copy.ts` is the single place to edit all
+  three emails' copy (subject + body).
 - [ ] **Set up the day-7 cron job.** `npm run day7-email-job`
   (`run-day7-email-job.mjs`) needs to run daily — same Railway Cron pattern
   as `run-daily-creator-jobs.mjs`. De-duplication is handled by

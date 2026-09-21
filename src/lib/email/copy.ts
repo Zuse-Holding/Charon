@@ -1,13 +1,8 @@
 /**
  * Task 4.2 — the one place to edit transactional email copy. Plain text,
- * signed by a human, not the brand — matches the tone already established
- * in migration-output/legacy-pro-grace-email.txt (task B).
- *
- * TODO(human): SENDER_NAME is a placeholder. Nothing in this codebase
- * records a real person's name to sign these with — replace it with
- * whoever should actually be sending these before going live.
+ * signed by the team rather than an individual.
  */
-export const SENDER_NAME = "Nick";
+export const SENDER_NAME = "The Metis team";
 export const SUPPORT_EMAIL = "support@metisanalytic.com";
 const APP_URL = process.env.FRONTEND_URL ?? "https://metisanalytic.com";
 
@@ -43,13 +38,12 @@ export function day7Email(firstName: string): EmailContent {
     subject: "What did Metis get wrong?",
     text: `Hey ${name},
 
-You signed up for Metis about a week ago, and I wanted to ask directly:
+You signed up for Metis about a week ago, and we wanted to ask directly:
 what did it get wrong?
 
 Every report is only as good as the sources it can find, and the fastest
 way we improve is hearing about the specific thing that was outdated,
-missing, or just off. Hit reply and tell me — I read every one of these
-myself.
+missing, or just off. Hit reply and tell us — we read every one of these.
 
 — ${SENDER_NAME}
 `,
