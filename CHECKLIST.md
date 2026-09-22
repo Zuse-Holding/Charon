@@ -66,23 +66,22 @@ going straight to live mode. Status as of where we stopped for the day:
   trusted: queried `profiles` and `stripe_webhook_events` directly through
   the REST API and got HTTP 200 with the new columns present, not a
   "column does not exist" error.
-- [ ] **Run the Phase 2 duration/cost migration too** — the block under
-  "Run duration / cost logging (Phase 2 task 2.3)" in the same file. Confirmed
-  via `npm run duration-stats` that `research_runs.duration_ms` doesn't exist
-  in production yet.
+- [x] **Phase 2 duration/cost migration run and verified** (2026-09-22) —
+  `research_runs.duration_ms/cost_usd/tier` and `deep_dives.cost_usd` all
+  confirmed to exist via a direct REST query (HTTP 200, not a missing-column
+  error).
 
-- [ ] **Run the pro_grace_expires_at migration too** — same file, under
-  "Legacy-account Pro grace period." Needed before `grant-legacy-pro-grace.mjs`
-  can run at all (it also depends on the Phase 1 `stripe_customer_id` column).
+- [x] **pro_grace_expires_at migration run and verified** (2026-09-22) —
+  `profiles.pro_grace_expires_at` confirmed via REST. `grant-legacy-pro-grace.mjs`
+  can now run.
 
-- [ ] **Run the report_issues migration too** (task 3.4) — same file, under
-  "Report issue reports." Needed before the "Something wrong in this report?"
-  form can save anything; it'll 500 until this runs.
+- [x] **report_issues migration run and verified** (2026-09-22) — table
+  confirmed queryable via REST with all expected columns. The "Something
+  wrong in this report?" form should no longer 500.
 
-- [ ] **Run the transactional-email migration too** (task 4.2) — same file,
-  under "Transactional email." Just two columns on `profiles`
-  (`day7_email_sent_at`, `last_cap_reached_email_at`) — needed before the
-  day-7 job or the cap-reached email can de-duplicate correctly.
+- [x] **Transactional-email migration run and verified** (2026-09-22) —
+  `profiles.day7_email_sent_at`/`last_cap_reached_email_at` confirmed via
+  REST. De-duplication for the day-7 job and cap-reached email now works.
 
 ## Found 2026-09-21 (read-only checks, nothing changed)
 
