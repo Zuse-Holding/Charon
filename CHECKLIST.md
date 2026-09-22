@@ -130,11 +130,15 @@ done except the part that has to be your call:
 - [x] `AGENT_SECRET` now has no insecure fallback anywhere — `server/agent-server.ts`
   refuses to start without it; every route that calls the agent server throws
   instead of silently using a default (task A, separate commit).
-- [ ] **Force-push the rewritten history, then get everyone else to re-clone.**
-  I did not do this myself — rewriting a shared branch's history and telling
-  collaborators to discard their clones is exactly the kind of action that
-  should be your call, not something to happen as a side effect of a security
-  fix. Exact commands:
+- [x] **Force-push already happened — verified, not assumed** (2026-09-22).
+  Checked before pushing anything: `git rev-list --left-right --count
+  origin/main...HEAD` returns `0 0` (local and `origin/main` identical,
+  zero divergence), and `.env.local` doesn't appear anywhere in
+  `origin/main`'s history. The rewritten history is already what's live on
+  GitHub — this must have happened before this session, just never marked
+  done here. **Still outstanding: get anyone else with a clone to re-clone
+  from scratch** (not pull) if that hasn't happened yet — commands below,
+  kept for reference.
 
   ```
   git push origin main --force-with-lease
