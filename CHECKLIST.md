@@ -46,9 +46,12 @@ going straight to live mode. Status as of where we stopped for the day:
   portal session (`web/app/api/stripe/portal/route.ts`) picks it up
   automatically. `customer_update` also allows email changes. Created via
   the Stripe API after granting the CLI key `customer_portal_write`.
-- [ ] **Founding-member coupon** (task 1.5), live mode: a promotion code,
-  50 redemptions, Pro at $29/mo forever. `allow_promotion_codes` on
-  Checkout just lets the customer enter one — the app doesn't create it.
+- [x] **Founding-member coupon — skipped by decision** (2026-09-22). Not
+  needed for launch. Separately, your own account (`olmosnick627@gmail.com`)
+  is already `tier: "internal"` in `profiles` — full unrestricted access,
+  no subscription, and structurally protected from ever being downgraded
+  by the webhook (`stripe_webhook_events` handler explicitly skips writes
+  to `"internal"`/`"trial"` tier accounts).
 - [x] **Phase 1 schema migration run** (2026-09-22) — see "Database
   (Supabase)" below. This was the one that actually mattered for safety;
   the webhook can now persist `stripe_customer_id`/`tier` on a real payment.
