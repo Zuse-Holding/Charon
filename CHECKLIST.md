@@ -49,11 +49,9 @@ going straight to live mode. Status as of where we stopped for the day:
 - [ ] **Founding-member coupon** (task 1.5), live mode: a promotion code,
   50 redemptions, Pro at $29/mo forever. `allow_promotion_codes` on
   Checkout just lets the customer enter one — the app doesn't create it.
-- [ ] **Run the Phase 1 schema migration before any of this goes live —
-  see "Database (Supabase)" below.** This is the one that actually
-  matters for safety: if a real customer pays before this runs, the
-  webhook has nowhere to write `stripe_customer_id`/`tier`, and they're
-  charged with nothing to show for it.
+- [x] **Phase 1 schema migration run** (2026-09-22) — see "Database
+  (Supabase)" below. This was the one that actually mattered for safety;
+  the webhook can now persist `stripe_customer_id`/`tier` on a real payment.
 - Verifying an actual live checkout requires a real charge — I won't
   click through that myself or enter payment details on your behalf
   under any circumstances. Once the above is done, the safest path is
@@ -62,11 +60,12 @@ going straight to live mode. Status as of where we stopped for the day:
 
 ## Database (Supabase)
 
-- [ ] **Run the Phase 1 schema migration** in the Supabase SQL editor before
-  testing anything Stripe-related end to end — see the SQL block added to
-  `supabase/schema.sql` under "Stripe / billing (Phase 1)". Nothing in the
-  webhook can persist state until this runs; every write will fail against the
-  live database until it does.
+- [x] **Phase 1 schema migration run and verified** (2026-09-22) — the SQL
+  block under "Stripe / billing (Phase 1)" in `supabase/schema.sql`, run by
+  you in the Supabase SQL editor. Verified for real afterward, not just
+  trusted: queried `profiles` and `stripe_webhook_events` directly through
+  the REST API and got HTTP 200 with the new columns present, not a
+  "column does not exist" error.
 - [ ] **Run the Phase 2 duration/cost migration too** — the block under
   "Run duration / cost logging (Phase 2 task 2.3)" in the same file. Confirmed
   via `npm run duration-stats` that `research_runs.duration_ms` doesn't exist
