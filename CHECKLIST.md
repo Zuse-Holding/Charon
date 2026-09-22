@@ -41,11 +41,11 @@ going straight to live mode. Status as of where we stopped for the day:
   as `STRIPE_WEBHOOK_SECRET` in Vercel Production. **A fresh deployment is
   needed for this to reach the running app** — Vercel env var changes don't
   hot-apply to already-deployed functions.
-- [ ] **Set Customer Portal cancellation to "at period end"** (Live mode
-  — this setting is per-mode). Settings → Billing → Customer portal →
-  Subscriptions → Cancellations → "At end of billing period," not
-  "Immediately." Task 1.2 depends on this; the app's portal session
-  can't enforce it from code.
+- [x] **Customer Portal cancellation set to "at period end"** (2026-09-22)
+  — `bpc_1UIM0e3AVejqlt1P5ALaaYnj`, live mode, `is_default: true` so every
+  portal session (`web/app/api/stripe/portal/route.ts`) picks it up
+  automatically. `customer_update` also allows email changes. Created via
+  the Stripe API after granting the CLI key `customer_portal_write`.
 - [ ] **Founding-member coupon** (task 1.5), live mode: a promotion code,
   50 redemptions, Pro at $29/mo forever. `allow_promotion_codes` on
   Checkout just lets the customer enter one — the app doesn't create it.
