@@ -25,25 +25,22 @@ going straight to live mode. Status as of where we stopped for the day:
   `.env` (`rk_live_...`) — Custom permissions: Checkout Sessions (write),
   Customers (write), Customer portal (write), Subscriptions (read). Not
   yet confirmed set in Vercel/Railway — check both before deploying.
-- [ ] **Price IDs are still test-mode — this is the next step.** The two
-  `price_...` IDs currently in `.env`/Vercel/Railway
-  (`STRIPE_PRICE_BASIC_MONTHLY`, `STRIPE_PRICE_PRO_MONTHLY`) were created
-  while still in test mode, before the decision to go live. Stripe
-  doesn't carry products across modes — recreate both (Basic $19/mo, Pro
-  $49/mo, both recurring monthly, no Team price) in **Live mode**, and
-  replace all three copies (`.env`, Vercel, Railway) with the new live
-  price IDs. A live secret key cannot see test-mode prices at all, so
-  checkout will fail with "No such price" until this is done.
-- [ ] **Webhook endpoint — needs a real Dashboard endpoint, not `stripe
-  listen`.** `stripe listen` only forwards test-mode events; whatever
-  `whsec_...` it printed today is dead for production and shouldn't be
-  used. In live mode: Developers → Webhooks → Add endpoint → URL
-  `https://metisanalytic.com/api/stripe/webhook` → select the 6 events
-  this app handles (`checkout.session.completed`,
+- [x] **Live-mode prices confirmed** (2026-09-21/22) — `Basic Tier`
+  (`price_1UGALT3AVejqlt1PgDUZKlwb`, $19/mo) and `Pro Tier`
+  (`price_1UGALq3AVejqlt1PlvYsShXf`, $49/mo), both recurring monthly, both
+  live-mode, both verified directly against the Stripe API. Set in Vercel
+  Production as `STRIPE_PRICE_BASIC_MONTHLY` / `STRIPE_PRICE_PRO_MONTHLY` —
+  along the way, found and fixed a Vercel typo (`STRIPE_PRICE_BASIC_MONTLY`,
+  missing the H) that made the Basic var invisible to the app. Railway not
+  yet checked — same values need to land there too.
+- [x] **Live webhook endpoint created** (2026-09-22) —
+  `we_1UILdp3AVejqlt1Pbg5syUdc`, `https://metisanalytic.com/api/stripe/webhook`,
+  all 6 events (`checkout.session.completed`,
   `customer.subscription.created/updated/deleted`,
-  `invoice.payment_succeeded/failed`). Set the resulting permanent
-  `whsec_...` as `STRIPE_WEBHOOK_SECRET` on Vercel — not in local `.env`,
-  there's no reason a local dev process needs to receive live webhooks.
+  `invoice.payment_succeeded/failed`), status `enabled`. Signing secret set
+  as `STRIPE_WEBHOOK_SECRET` in Vercel Production. **A fresh deployment is
+  needed for this to reach the running app** — Vercel env var changes don't
+  hot-apply to already-deployed functions.
 - [ ] **Set Customer Portal cancellation to "at period end"** (Live mode
   — this setting is per-mode). Settings → Billing → Customer portal →
   Subscriptions → Cancellations → "At end of billing period," not
