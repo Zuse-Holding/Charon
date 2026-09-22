@@ -86,33 +86,25 @@ going straight to live mode. Status as of where we stopped for the day:
   `profiles.day7_email_sent_at`/`last_cap_reached_email_at` confirmed via
   REST. De-duplication for the day-7 job and cap-reached email now works.
 
-## Found 2026-09-21 (read-only checks, nothing changed)
+## Found 2026-09-21/22 — fixed, not just flagged
 
-- [ ] **Vercel env var typo: `STRIPE_PRICE_BASIC_MONTLY` (missing an H).**
-  `web/lib/stripe.ts:38` reads `STRIPE_PRICE_BASIC_MONTHLY`, so the Basic
-  price ID in Vercel Production is invisible to the app. Fix while swapping
-  in the live price IDs: `vercel env rm STRIPE_PRICE_BASIC_MONTLY`, then add
-  the correctly spelled name. `STRIPE_WEBHOOK_SECRET` isn't in Vercel yet
-  either (expected — waits on the live webhook endpoint).
-- [ ] **Groq's two models may no longer be self-serve.** Secondary sources
-  (aggregator pricing blogs, not Groq's own site) say `llama-3.3-70b-versatile`
-  and `llama-3.1-8b-instant` moved to enterprise "Contact Sales" pricing on
-  2026-08-26. The rates in `model-pricing.ts` do match the last published
-  ones ($0.59/$0.79 and $0.05/$0.08 per 1M), so cost_usd isn't wrong for
-  past usage, but confirm in console.groq.com that calls to these models
-  still work at all.
-
-## Verify before trusting cost_usd numbers
-
-- [ ] **Groq pricing in `src/lib/model-pricing.ts` is a best-effort guess,
-  not pulled from a live source.** Tried to fetch Groq's current per-model
-  pricing while building this (task C) — the marketing pricing page has no
-  pricing table, and the console page requires login, so I couldn't verify
-  programmatically. Check `llama-3.3-70b-versatile` / `llama-3.1-8b-instant`
-  against console.groq.com's actual current rate card before treating
-  cost_usd as accurate for anything real (budgets, margin analysis, etc.).
-  OpenRouter's three models are genuinely $0 (they're all `:free`-suffixed)
-  and Ollama is genuinely $0 (local) — those two aren't guesses.
+- [x] **Vercel env var typo fixed** — see "Live-mode prices confirmed" above.
+- [x] **Groq's two default models were actually broken, not just
+  possibly-enterprise — fixed** (2026-09-22). Confirmed with a live call
+  against the real `GROQ_API_KEY`: both `llama-3.3-70b-versatile` and
+  `llama-3.1-8b-instant` return `404 model_not_found` — gone, not just
+  repriced. `GET /openai/v1/models` showed what's actually reachable on
+  this key now (`openai/gpt-oss-20b/120b`, `qwen/qwen3.8-27b`, others).
+  This wasn't just a pricing-accuracy issue — every real Groq call in
+  production was silently failing and falling through to heuristic
+  extraction, since `GROQ_MODEL` defaulted to a dead model
+  (`src/lib/llm.ts`). Switched the default to `openai/gpt-oss-20b` and
+  updated `model-pricing.ts` to match; verified the new default with a
+  real end-to-end call matching the app's actual system+user prompt shape
+  — got back clean, parseable JSON. Its $0.075/$0.30-per-1M price is still
+  an aggregator estimate, not Groq's own published rate (same caveat as
+  before — their pricing page still has no table) — worth a console.groq.com
+  login to confirm precisely, but no longer a "does this even work" question.
 
 ## Security — finish the secret-history cleanup (task A)
 

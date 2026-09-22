@@ -3,13 +3,15 @@
  * Keyed by the exact model string sent to each provider — src/lib/llm.ts
  * calls priceForModel() after every real API response.
  *
- * ⚠️ Groq prices below are best-effort from general knowledge, NOT pulled
- * from a live pricing page — attempted to fetch Groq's current pricing
- * programmatically while building this and couldn't get a real number
- * (the marketing pricing page has no pricing table; the console page
- * requires login). Verify these against console.groq.com's actual current
- * rate card before trusting cost_usd numbers for anything real — flagged
- * in CHECKLIST.md.
+ * ⚠️ llama-3.3-70b-versatile and llama-3.1-8b-instant are GONE as of
+ * 2026-09-22 — confirmed via a live call, both now return 404
+ * model_not_found (moved to enterprise-only). GROQ_MODEL's default in
+ * llm.ts was switched to openai/gpt-oss-20b, confirmed actually reachable
+ * via GET /openai/v1/models with the real key. Its price below is still
+ * best-effort from aggregator sources, NOT Groq's own pricing page (same
+ * problem as before: no pricing table on the marketing page, console
+ * requires login) — verify against console.groq.com before trusting
+ * cost_usd for anything real, flagged in CHECKLIST.md.
  *
  * OpenRouter's three models here are all suffixed ":free" (see
  * DEFAULT_OPENROUTER_MODELS in llm.ts) — genuinely $0, not an estimate.
@@ -29,8 +31,7 @@ export interface ModelPrice {
 
 export const MODEL_PRICES: Record<string, ModelPrice> = {
   // Groq — approximate, see warning above.
-  "llama-3.3-70b-versatile": { inputPer1M: 0.59, outputPer1M: 0.79 },
-  "llama-3.1-8b-instant": { inputPer1M: 0.05, outputPer1M: 0.08 },
+  "openai/gpt-oss-20b": { inputPer1M: 0.075, outputPer1M: 0.30 },
 
   // OpenRouter free-tier models (DEFAULT_OPENROUTER_MODELS in llm.ts) — $0.
   "google/gemma-4-31b-it:free": { inputPer1M: 0, outputPer1M: 0 },

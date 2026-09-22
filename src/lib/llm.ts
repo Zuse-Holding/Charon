@@ -29,7 +29,11 @@ import { recordLlmUsage } from "./cost-tracking.js";
 const LLM_PROVIDER = process.env.LLM_PROVIDER ??
   (process.env.GROQ_API_KEY ? "groq" : "ollama");
 
-const GROQ_MODEL   = process.env.GROQ_MODEL   ?? "llama-3.3-70b-versatile";
+// llama-3.3-70b-versatile / llama-3.1-8b-instant returned 404 model_not_found
+// on a live call as of 2026-09-22 — moved to enterprise-only access. Verified
+// via GET /openai/v1/models with the real key; openai/gpt-oss-20b is what's
+// actually reachable on Groq's self-serve tier now.
+const GROQ_MODEL   = process.env.GROQ_MODEL   ?? "openai/gpt-oss-20b";
 const OLLAMA_URL   = process.env.OLLAMA_URL   ?? "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.1:8b";
 
