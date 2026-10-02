@@ -39,6 +39,7 @@ export function SiteFooter() {
       <div className={styles.footerLinks}>
         <Link href="/pricing" className={styles.footerLink}>Pricing</Link>
         <Link href="/resources" className={styles.footerLink}>Resources</Link>
+        <a href="https://diligence.metisanalytic.com" className={styles.footerLink}>Diligence</a>
         <Link href="/privacy" className={styles.footerLink}>Privacy</Link>
         <Link href="/terms" className={styles.footerLink}>Terms</Link>
         <a href="mailto:support@metisanalytic.com" className={styles.footerLink}>support@metisanalytic.com</a>
