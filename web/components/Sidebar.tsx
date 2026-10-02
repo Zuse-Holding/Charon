@@ -14,6 +14,10 @@ const NAV = [
   { label: "Watchlist",       icon: "◎", href: "/watchlist" },
 ];
 
+// Metis Diligence (CIM red-team for small-business acquisitions) runs as its
+// own app with its own data, so this is a plain cross-site link.
+export const DILIGENCE_URL = "https://diligence.metisanalytic.com";
+
 const SYSTEM_NAV = [
   { label: "Knowledge Graph", icon: "◉", href: "/knowledge-graph" },
   { label: "Settings",        icon: "⊙", href: "/settings" },
@@ -62,6 +66,11 @@ export default function Sidebar() {
             {item.label}
           </div>
         ))}
+        <div className={styles.navLabel}>PRODUCTS</div>
+        <a className={styles.navItem} href={DILIGENCE_URL}>
+          <span className={styles.icon}>◇</span>
+          Diligence ↗
+        </a>
         <div className={styles.navLabel}>SYSTEM</div>
         {SYSTEM_NAV.map((item) => (
           <div
