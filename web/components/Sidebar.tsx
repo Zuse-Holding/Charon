@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "../lib/supabase/client";
 import { useResearch } from "../lib/research-context";
 import { useTier } from "../lib/tier-context";
+import { BUSINESS_INTELLIGENCE_PATH, DILIGENCE_URL } from "../lib/products";
 import styles from "./Sidebar.module.css";
 
 const NAV = [
@@ -14,9 +15,6 @@ const NAV = [
   { label: "Watchlist",       icon: "◎", href: "/watchlist" },
 ];
 
-// Metis Diligence (CIM red-team for small-business acquisitions) runs as its
-// own app with its own data, so this is a plain cross-site link.
-export const DILIGENCE_URL = "https://diligence.metisanalytic.com";
 
 const SYSTEM_NAV = [
   { label: "Knowledge Graph", icon: "◉", href: "/knowledge-graph" },
@@ -49,7 +47,7 @@ export default function Sidebar() {
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.logo} onClick={() => router.push("/")} style={{ cursor: "pointer" }}>
+      <div className={styles.logo} onClick={() => router.push(BUSINESS_INTELLIGENCE_PATH)} style={{ cursor: "pointer" }}>
         <div className={styles.logoMark}>METIS</div>
         <div className={styles.logoSub}>BUSINESS INTELLIGENCE</div>
       </div>
