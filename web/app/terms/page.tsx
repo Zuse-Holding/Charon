@@ -14,7 +14,7 @@ export default function TermsPage() {
       <div className={styles.header}>
         {!LEGAL_PAGES_FINAL && <div className={styles.draftBadge}>DRAFT — PENDING LEGAL REVIEW</div>}
         <h1 className={styles.title}>Terms of Service</h1>
-        <div className={styles.updated}>Last updated: August 24, 2026</div>
+        <div className={styles.updated}>Last updated: October 1, 2026</div>
       </div>
 
       <div className={styles.body}>
@@ -36,12 +36,22 @@ export default function TermsPage() {
           <li>Attempt to circumvent your plan's usage limits or access another account without authorization.</li>
         </ul>
 
+        <h2>Not for screening people</h2>
+        <p>
+          Metis is not a consumer reporting agency, and its reports are not consumer reports. You
+          may not use Metis, or anything it produces, to decide whether someone is eligible for
+          employment, credit, insurance, housing or any other purpose covered by the Fair Credit
+          Reporting Act or similar laws.
+        </p>
+
         <h2>Plans and billing</h2>
         <p>
-          Metis is offered on self-serve monthly plans (Basic, Pro, Team) at the pricing listed on{" "}
-          our <a href="/pricing">pricing page</a>. Plans are billed monthly and can be canceled at
-          any time from your account settings — no contracts. Once paid billing is active, a
-          third-party payment processor will handle your payment details directly.
+          Basic and Pro are self-serve monthly plans at the prices on our{" "}
+          <a href="/pricing">pricing page</a>; Team is arranged by email. Plans renew monthly
+          until canceled, with no contract. You can cancel any time from your account settings;
+          your plan stays active until the end of the period you've paid for, then ends. If you
+          ask within 7 days of your first charge, we'll refund it. Payments are processed by
+          Stripe, which handles your card details directly.
         </p>
 
         <h2>Not investment, legal, or financial advice</h2>

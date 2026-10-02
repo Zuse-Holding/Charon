@@ -12,6 +12,11 @@ import type { NextConfig } from "next";
 // wide open.
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : "";
+// Browser analytics (web/lib/analytics-client.ts) posts to this host only,
+// and only when NEXT_PUBLIC_POSTHOG_KEY is set.
+const posthogOrigin = process.env.NEXT_PUBLIC_POSTHOG_KEY
+  ? new URL(process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com").origin
+  : "";
 
 const CSP = [
   `default-src 'self'`,
@@ -19,7 +24,7 @@ const CSP = [
   `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
   `font-src 'self' https://fonts.gstatic.com`,
   `img-src 'self' data: https:`,
-  `connect-src 'self' https://api.stripe.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+  `connect-src 'self' https://api.stripe.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${posthogOrigin ? ` ${posthogOrigin}` : ""}`,
   `frame-src https://js.stripe.com https://hooks.stripe.com`,
   `frame-ancestors 'none'`,
   `base-uri 'self'`,
