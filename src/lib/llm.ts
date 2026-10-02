@@ -119,6 +119,34 @@ export async function isOllamaAvailable(): Promise<boolean> {
 }
 
 // --- Groq provider ---
+// openai/gpt-oss-* (the only self-serve Groq models since 2026-09-22) are
+// reasoning models: at default effort they spent the whole 1024-token budget
+// reasoning on full-page inputs and failed with "max completion tokens
+// reached before generating a valid document" or an empty generation
+// (4 of 4 Groq calls in a live Stripe run, 2026-10-02). Low effort plus
+// more room fixes that; the reasoning text itself is never returned.
+const GROQ_MAX_TOKENS = 2048;
+function groqReasoningParams(model: string) {
+  return model.startsWith("openai/gpt-oss")
+    ? { reasoning_effort: "low" as const, include_reasoning: false }
+    : {};
+}
+
+/** Groq's json_object mode only accepts a top-level object, so a correct
+ *  answer for an array schema (e.g. a competitor list) comes back as a 400
+ *  json_validate_failed with the answer in failed_generation. Use it when it
+ *  parses and matches the schema. */
+function recoverFailedGeneration<T>(err: unknown, schema: z.ZodType<T>): T | null {
+  const generated = (err as { error?: { error?: { failed_generation?: unknown } } })?.error?.error?.failed_generation;
+  if (typeof generated !== "string" || !generated.trim()) return null;
+  try {
+    const result = schema.safeParse(JSON.parse(generated));
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
 async function extractViaGroq<T>(
   systemPrompt: string,
   userContent: string,
@@ -130,10 +158,11 @@ async function extractViaGroq<T>(
   try {
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
     await acquireGroqSlot();
+    const model = modelOverride ?? GROQ_MODEL;
     let completion;
     try {
       completion = await groq.chat.completions.create({
-        model: modelOverride ?? GROQ_MODEL,
+        model,
         messages: [
           {
             role: "system",
@@ -142,8 +171,9 @@ async function extractViaGroq<T>(
           { role: "user", content: userContent },
         ],
         temperature: 0.1,
-        max_tokens: 1024,
+        max_tokens: GROQ_MAX_TOKENS,
         response_format: { type: "json_object" },
+        ...groqReasoningParams(model),
       });
     } finally {
       releaseGroqSlot();
@@ -155,7 +185,7 @@ async function extractViaGroq<T>(
     if (completion.usage) {
       recordLlmUsage({
         provider: "groq",
-        model: modelOverride ?? GROQ_MODEL,
+        model,
         promptTokens: completion.usage.prompt_tokens ?? 0,
         completionTokens: completion.usage.completion_tokens ?? 0,
       });
@@ -207,7 +237,12 @@ async function extractViaGroq<T>(
       return extractViaGroq(systemPrompt, userContent, schema, retryCount + 1, modelOverride);
     }
 
-    console.error(`[llm:groq] Error: ${message}`);
+    if (message.includes("json_validate_failed")) {
+      const recovered = recoverFailedGeneration(err, schema);
+      if (recovered !== null) return recovered;
+    }
+
+    console.error(`[llm:groq] Error: ${message.slice(0, 300)}`);
     return null;
   }
 }
