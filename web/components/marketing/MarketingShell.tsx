@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DILIGENCE_URL } from "../../lib/products";
 import styles from "./MarketingShell.module.css";
 
 const NAV_LINKS = [
@@ -7,14 +8,14 @@ const NAV_LINKS = [
   { href: "/resources", label: "Resources" },
 ];
 
-export function SiteNav() {
+export function SiteNav({ subtitle = "BUSINESS INTELLIGENCE" }: { subtitle?: string }) {
   return (
     <nav className={styles.nav}>
       <Link href="/" className={styles.navLogo}>
         <div className={styles.logoIcon} />
         <div>
           <div className={styles.logoMark}>METIS</div>
-          <div className={styles.logoSub}>BUSINESS INTELLIGENCE</div>
+          <div className={styles.logoSub}>{subtitle}</div>
         </div>
       </Link>
       <div className={styles.navCenter}>
@@ -39,7 +40,7 @@ export function SiteFooter() {
       <div className={styles.footerLinks}>
         <Link href="/pricing" className={styles.footerLink}>Pricing</Link>
         <Link href="/resources" className={styles.footerLink}>Resources</Link>
-        <a href="https://diligence.metisanalytic.com" className={styles.footerLink}>Diligence</a>
+        <a href={DILIGENCE_URL} className={styles.footerLink}>Diligence</a>
         <Link href="/privacy" className={styles.footerLink}>Privacy</Link>
         <Link href="/terms" className={styles.footerLink}>Terms</Link>
         <a href="mailto:support@metisanalytic.com" className={styles.footerLink}>support@metisanalytic.com</a>
@@ -59,11 +60,11 @@ export function PageEffects() {
   );
 }
 
-export function MarketingShell({ children }: { children: React.ReactNode }) {
+export function MarketingShell({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
   return (
     <div className={styles.page}>
       <PageEffects />
-      <SiteNav />
+      <SiteNav subtitle={subtitle} />
       {children}
       <SiteFooter />
     </div>

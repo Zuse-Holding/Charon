@@ -6,6 +6,7 @@ const SITE_URL = "https://metisanalytic.com";
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${SITE_URL}/`, changeFrequency: "weekly", priority: 1 },
+    { url: `${SITE_URL}/business-intelligence`, changeFrequency: "weekly", priority: 0.9 },
     { url: `${SITE_URL}/pricing`, changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/vs/crunchbase`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/vs/pitchbook`, changeFrequency: "monthly", priority: 0.8 },
