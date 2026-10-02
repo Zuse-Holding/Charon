@@ -5,6 +5,8 @@ import { TierProvider } from "../lib/tier-context";
 import { PastDueBanner } from "../components/PastDueBanner";
 
 export const metadata: Metadata = {
+  // Absolute URLs for the generated social preview image (app/opengraph-image.tsx).
+  metadataBase: new URL("https://metisanalytic.com"),
   title: "Metis — Business Intelligence",
   description: "AI-powered business intelligence research on any company, person, or product. Analyst-grade reports in seconds. Built for founders, operators, and BD teams.",
   icons: {
@@ -18,6 +20,7 @@ export const metadata: Metadata = {
     siteName: "Metis",
     type: "website",
   },
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({

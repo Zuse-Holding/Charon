@@ -12,6 +12,9 @@
  */
 import posthog from "posthog-js";
 
+// Must match the connect-src entry in next.config.ts.
+export const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com";
+
 let initialized = false;
 
 function ensureInit(): boolean {
@@ -19,8 +22,21 @@ function ensureInit(): boolean {
   if (!key) return false;
   if (!initialized) {
     posthog.init(key, {
-      api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      api_host: POSTHOG_HOST,
       person_profiles: "identified_only",
+      // This wrapper exists for one explicit event (pdf_export), so turn off
+      // everything posthog-js does on its own: no cookies or localStorage
+      // (the privacy policy promises essential cookies only), no automatic
+      // clicks/pageviews, no recordings or surveys, and no scripts loaded
+      // from PostHog's CDN (the CSP in next.config.ts allows only the API host).
+      persistence: "memory",
+      autocapture: false,
+      capture_pageview: false,
+      capture_pageleave: false,
+      disable_session_recording: true,
+      disable_surveys: true,
+      disable_external_dependency_loading: true,
+      advanced_disable_flags: true,
     });
     initialized = true;
   }

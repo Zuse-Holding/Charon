@@ -8,7 +8,7 @@ import styles from "./pricing.module.css";
 export const metadata: Metadata = {
   title: "Pricing — Metis",
   description:
-    "Simple, self-serve pricing. Basic at $19/mo, Pro at $49/mo, Team at $149/mo. No sales call required.",
+    "Simple pricing. Basic at $19/mo and Pro at $49/mo, self-serve with no sales call. Team at $149/mo by email.",
   openGraph: {
     title: "Pricing — Metis",
     description: "Simple, self-serve pricing starting at $19/mo. No sales call required.",

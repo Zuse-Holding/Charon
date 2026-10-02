@@ -7,11 +7,17 @@
 // separate "already sent" table because one boolean-ish timestamp per
 // account is all this needs.
 //
-// Windowed on created_at >= 7 days ago (not "exactly 7 days ago") so a
+// Windowed on accounts 7 to 14 days old (not "exactly 7 days ago") so a
 // day the job doesn't run (a deploy, a crash) doesn't silently skip
 // anyone — the day7_email_sent_at IS NULL filter is what prevents
-// duplicate sends, not the date window.
+// duplicate sends, not the date window. The 14-day upper bound matters
+// on the first run: without it, every account older than a week (all
+// legacy users) would get a "you signed up about a week ago" email.
+//
+// Runs daily as a stage of run-daily-creator-jobs.mjs (the one Railway
+// Cron service), or on its own: npm run day7-email-job.
 import "dotenv/config";
+import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { day7Email } from "./src/lib/email/copy.js";
 import { sendEmail } from "./src/lib/email/send.js";
@@ -21,13 +27,25 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-async function main() {
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const DAY7_WINDOW_DAYS = { min: 7, max: 14 };
+
+/** Accounts due the day-7 email: 7–14 days old, never sent it. */
+export function dueForDay7(users, profileById, now = Date.now()) {
+  const newest = now - DAY7_WINDOW_DAYS.min * DAY_MS;
+  const oldest = now - DAY7_WINDOW_DAYS.max * DAY_MS;
+  return users.filter((u) => {
+    const created = new Date(u.created_at).getTime();
+    if (created > newest || created < oldest) return false;
+    return !profileById.get(u.id)?.day7_email_sent_at;
+  });
+}
+
+export async function runDay7EmailJob() {
   if (!process.env.RESEND_API_KEY) {
     console.log("[day7-email-job] RESEND_API_KEY not set — nothing to do.");
     return true;
   }
-
-  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
   // Same pagination pattern as grant-legacy-pro-grace.mjs — auth.users is
   // the only place account age (created_at) and email live together.
@@ -53,11 +71,7 @@ async function main() {
   }
   const profileById = new Map(profiles.map((p) => [p.id, p]));
 
-  const due = allUsers.filter((u) => {
-    if (new Date(u.created_at) > cutoff) return false; // not 7 days old yet
-    const profile = profileById.get(u.id);
-    return !profile?.day7_email_sent_at;
-  });
+  const due = dueForDay7(allUsers, profileById);
 
   console.log(`[day7-email-job] ${due.length} account(s) due.`);
 
@@ -88,9 +102,11 @@ async function main() {
   return failed === 0;
 }
 
-main()
-  .then((ok) => process.exit(ok ? 0 : 1))
-  .catch((err) => {
-    console.error("[day7-email-job] Fatal error:", err);
-    process.exit(1);
-  });
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runDay7EmailJob()
+    .then((ok) => process.exit(ok ? 0 : 1))
+    .catch((err) => {
+      console.error("[day7-email-job] Fatal error:", err);
+      process.exit(1);
+    });
+}

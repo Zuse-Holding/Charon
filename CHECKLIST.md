@@ -31,8 +31,9 @@ going straight to live mode. Status as of where we stopped for the day:
   live-mode, both verified directly against the Stripe API. Set in Vercel
   Production as `STRIPE_PRICE_BASIC_MONTHLY` / `STRIPE_PRICE_PRO_MONTHLY` —
   along the way, found and fixed a Vercel typo (`STRIPE_PRICE_BASIC_MONTLY`,
-  missing the H) that made the Basic var invisible to the app. Railway not
-  yet checked — same values need to land there too.
+  missing the H) that made the Basic var invisible to the app. Railway
+  doesn't need them: checked 2026-10-01, nothing under `server/` or `src/`
+  reads any `STRIPE_*` variable (billing runs entirely in the Vercel app).
 - [x] **Live webhook endpoint created** (2026-09-22) —
   `we_1UILdp3AVejqlt1Pbg5syUdc`, `https://metisanalytic.com/api/stripe/webhook`,
   all 6 events (`checkout.session.completed`,
@@ -206,11 +207,17 @@ done except the part that has to be your call:
   (decided 2026-09-21), and the day-7 email's first-person "I" was changed
   to "we" to match. `src/lib/email/copy.ts` is the single place to edit all
   three emails' copy (subject + body).
-- [ ] **Set up the day-7 cron job.** `npm run day7-email-job`
-  (`run-day7-email-job.mjs`) needs to run daily — same Railway Cron pattern
-  as `run-daily-creator-jobs.mjs`. De-duplication is handled by
-  `profiles.day7_email_sent_at` (set the first time it sends), so running
-  it more than once a day is safe, just wasteful.
+- [x] **Day-7 email folded into the existing daily cron** (2026-10-01).
+  `run-daily-creator-jobs.mjs` now runs it as a third stage, so there's no
+  second cron service to set up. Fixed a real bug on the way: the job had
+  no upper age bound, so its first run would have emailed "you signed up
+  about a week ago" to every account older than a week (all legacy users).
+  It now only picks accounts 7–14 days old. De-duplication is still
+  `profiles.day7_email_sent_at`.
+- [ ] **Confirm the Railway Cron service for `npm run daily-creator-jobs`
+  exists and has `RESEND_API_KEY` + `EMAIL_FROM`** (plus its existing
+  Supabase vars). Until the Resend vars are set, the day-7 stage logs
+  "nothing to do" and exits cleanly.
 - [x] Welcome email (on signup), day-7 check-in, and cap-reached email
   (cooldown: 7 days, via `profiles.last_cap_reached_email_at`) are all
   wired for real — not stubbed. Cap-reached only fires on caps with a real

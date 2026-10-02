@@ -1,10 +1,11 @@
 import "dotenv/config";
 import { runCreatorSnapshotAgent } from "./src/agents/creator-snapshot-agent/index.js";
 import { runCreatorDiscoveryAgent } from "./src/agents/creator-discovery-agent/index.js";
+import { runDay7EmailJob } from "./run-day7-email-job.mjs";
 
-// Single entrypoint for the Railway Cron service — runs both daily
-// creator jobs back to back in one scheduled process, so there's only
-// one cron service to configure instead of two. Order between them
+// Single entrypoint for the Railway Cron service — runs every daily job
+// back to back in one scheduled process (the two creator jobs, then the
+// day-7 email), so there's only one cron service to configure. Order between them
 // doesn't matter functionally (discovery only queues pending candidates,
 // it doesn't touch the watchlist snapshot reads); snapshot runs first
 // since it's the existing daily-tracking job, discovery second.
@@ -34,6 +35,14 @@ async function main() {
   } catch (err) {
     ok = false;
     console.error("[daily-creator-jobs] creator-discovery failed:", err);
+  }
+
+  try {
+    console.log("[daily-creator-jobs] Starting day-7 email...");
+    if (!(await runDay7EmailJob())) ok = false;
+  } catch (err) {
+    ok = false;
+    console.error("[daily-creator-jobs] day-7 email failed:", err);
   }
 
   return ok;

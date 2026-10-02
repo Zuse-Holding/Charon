@@ -14,7 +14,7 @@ export default function PrivacyPage() {
       <div className={styles.header}>
         {!LEGAL_PAGES_FINAL && <div className={styles.draftBadge}>DRAFT — PENDING LEGAL REVIEW</div>}
         <h1 className={styles.title}>Privacy Policy</h1>
-        <div className={styles.updated}>Last updated: August 24, 2026</div>
+        <div className={styles.updated}>Last updated: October 1, 2026</div>
       </div>
 
       <div className={styles.body}>
@@ -30,8 +30,10 @@ export default function PrivacyPage() {
           <li><strong>Account information</strong> — name and email address, provided directly or via Google sign-in.</li>
           <li><strong>Research activity</strong> — the companies, people, and products you search for, and the reports and watchlists you create, so we can serve them back to you.</li>
           <li><strong>Usage data</strong> — basic technical logs (timestamps, request counts) needed to operate the service and enforce plan limits.</li>
+          <li><strong>Product analytics</strong> — a small set of events (for example: signed up, ran a report, hit a plan limit, started checkout), tied to your account ID, so we can see which features get used. Event data doesn&apos;t include the names you research or the contents of your reports.</li>
+          <li><strong>Billing information</strong> — your plan and subscription status. Card details go to our payment processor and never reach our servers.</li>
         </ul>
-        <p>We do not currently run any third-party analytics or advertising trackers on this site.</p>
+        <p>We don&apos;t run advertising trackers.</p>
 
         <h2>How we use it</h2>
         <ul>
@@ -43,22 +45,23 @@ export default function PrivacyPage() {
 
         <h2>Who we share it with</h2>
         <p>
-          We use <strong>Supabase</strong> as our authentication and database provider — your
-          account and research data is stored there on our behalf, under their standard security
-          practices. If Google sign-in is used, Google processes the authentication handshake per
-          its own privacy policy. We do not share your data with other third parties beyond what's
-          needed to run the service.
+          We use service providers to run Metis. Each one gets only what its job needs:
         </p>
-        <p>
-          If and when paid billing goes live, payment details will be handled directly by a
-          third-party payment processor — Metis does not store your card number or billing
-          credentials on its own servers.
-        </p>
+        <ul>
+          <li><strong>Supabase</strong> — authentication and database. Your account and research data is stored there on our behalf.</li>
+          <li><strong>Stripe</strong> — payments. Stripe handles your card details directly; Metis never stores them.</li>
+          <li><strong>Search and AI providers</strong> — to build a report, the name of the company, person or product you research, and public web content about it, is sent to search and language-model providers (such as Serper, Groq and OpenRouter). Your name and email are not sent. Some of these providers may keep or use the requests they receive under their own terms, so don&apos;t put confidential information into a search.</li>
+          <li><strong>Resend</strong> — account emails, such as the welcome email. It receives your email address and first name.</li>
+          <li><strong>PostHog</strong> — the product analytics described above.</li>
+          <li><strong>Vercel and Railway</strong> — hosting for the website and the research service.</li>
+          <li><strong>Google</strong> — if you sign in with Google, it handles that sign-in under its own privacy policy.</li>
+        </ul>
+        <p>We don&apos;t share your data with anyone else, except where the law requires it.</p>
 
         <h2>Cookies</h2>
         <p>
-          We currently use only the essential session cookies required to keep you signed in.
-          We don't set advertising or cross-site tracking cookies.
+          We use only the essential cookies required to keep you signed in. Analytics doesn&apos;t
+          set cookies, and we don&apos;t set advertising or cross-site tracking cookies.
         </p>
 
         <h2>Data retention and deletion</h2>
