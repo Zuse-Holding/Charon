@@ -35,7 +35,7 @@ export function SiteNav() {
 export function SiteFooter() {
   return (
     <footer className={styles.footer}>
-      <span>© 2026 METIS ANALYTICS</span>
+      <span>© 2026 ZUSE HOLDINGS LLC</span>
       <div className={styles.footerLinks}>
         <Link href="/pricing" className={styles.footerLink}>Pricing</Link>
         <Link href="/resources" className={styles.footerLink}>Resources</Link>
