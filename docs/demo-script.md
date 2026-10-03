@@ -1,131 +1,124 @@
-# Charon — Demo Script
-**Oak Tree Investments Conversation**
+# Metis: Demo Script (both products)
+**Updated 2026-10-02 for the hub at metisanalytic.com**
+
+Runs about 15 minutes: Business Intelligence (~9), Diligence (~5), close (~1).
 
 ---
 
-## Setup (before the meeting)
-- Log in at charonv1-silk.vercel.app with your account
-- Clear the recent research feed (delete old runs) for a clean slate
-- Have the Knowledge Graph page open in a separate tab
-- Test one search beforehand to confirm Railway is up
+## The day before
+
+- [ ] Sign in at **metisanalytic.com** → Sign in, with your internal account.
+- [ ] Run one quick search (e.g. "Stripe") on the live site. If it hangs or comes back thin, the Railway research server is down or stale: check Railway before the meeting, not during it.
+- [ ] Pre-run the **BlackRock Deep Dive** so it's in Reports. Run it live only if the room has 3 minutes to watch; otherwise open the saved one.
+- [ ] Clear old runs from the recent feed for a clean slate.
+- [ ] Open **diligence.metisanalytic.com** in a second tab. It runs on fictional companies (Harbor Line Mechanical etc.); that's the point, since real CIMs are under NDA.
+- [ ] Phone on silent; second screen mirrored; browser zoom at 110%.
 
 ---
 
-## Opening (30 seconds)
-"I'll show you the product first, then we can talk numbers."
+## 1. Open on the hub (30 seconds)
 
-Go to the landing page. Let them read it for 10 seconds.
+Go to metisanalytic.com. Let them read the two cards.
 
-"The gap we're filling — Crunchbase gives you shallow profiles at $49/month. PitchBook gives you depth at $20,000 a year. There's nothing in between for founders and operators who need real intelligence fast."
-
----
-
-## Demo Flow
-
-### 1. Quick Research — Stripe (2 minutes)
-Type "Stripe" in the search bar. Hit Run Research.
-
-While it runs (30 seconds): "Seven agents running in parallel right now — pulling from their website, news, corporate data, leadership databases, competitors. All synthesized into one report."
-
-When it loads — point out:
-- Leadership section with Patrick and John Collison
-- Competitors (PayPal, Adyen, Square — specific, not generic)
-- Recent news with real headlines
-- Risks section — specific, not filler
-
-"This took 30 seconds. A junior analyst would bill 2-3 hours for this."
+"Two tools. One investigates a company from seven angles at once. The other argues with a seller's numbers before you sign. I'll show the first, then the second."
 
 ---
 
-### 2. Deep Dive — BlackRock (3-4 minutes)
-Search "BlackRock". When quick report loads, click **Deep Dive** tab.
+## 2. Business Intelligence
 
-"This is where it gets interesting. Ten-section analyst report — founding history, leadership red flags, market sizing, competitive context, strategic options, and a verdict."
+### Quick research: Stripe (2 minutes)
+Explore Business Intelligence → Sign in → type **Stripe** → Run Research.
 
-Start the Deep Dive. Watch sections populate live.
+While it runs (~30–60s): "Seven agents in parallel: the website, news, corporate data, leadership, products, competitors, public records. Then it's written up as one report with sources per section."
 
-Point out as they fill in:
-- Leadership Deep Dive — specific names, tenures, red flags
-- Risk Flags with severity ratings (High/Medium/Low)
-- Strategic Options with four quadrants (Acquire/Partner/Compete/Invest)
-- The Verdict section — a clear, opinionated recommendation
+Point at:
+- **Leadership**: Patrick and John Collison.
+- **Competitors**: PayPal, Square, Braintree, Adyen, Checkout.com, the real rivals rather than a listicle.
+- **Sources under every section**: "Every section shows where it came from. Click any of them."
 
-"This is the kind of report that used to cost $5,000 from a consulting firm. We're doing it in under 4 minutes."
+"A junior analyst would spend a couple of hours on this."
 
----
+### Deep Dive: BlackRock (3 minutes)
+Open the BlackRock Deep Dive you pre-ran (or run it live).
 
-### 3. Person Research — UCLA Health leadership (1 minute)
-Search a UCLA Health executive name (Dr. Johnese Spisso — CEO, or Dr. David Feinberg).
+"Ten sections: founding history, leadership, risk flags, competitive context, market sizing, strategic options, and a verdict."
 
-"You can research people too. Current role, career history, education, net worth for public figures."
+Point at:
+- **Risk Flags**: specific and ranked.
+- **Strategic Options**: Acquire, Partner, Compete, Invest.
+- **Verdict**: an actual recommendation, not "it depends."
 
-This is where you can confirm the results live: "That's accurate — I work there, I can verify that in real time."
+⚠ Skip **Funding & Financials** for public companies: it's built for private funding rounds and reads oddly for a listed firm like BlackRock.
 
----
+### Person research (1 minute)
+Search a public executive (e.g. Dr. Johnese Spisso, UCLA Health). "Current role, career history, education."
+(Person research is enabled on your internal account; it isn't sold on the public plans yet.)
 
-### 4. Knowledge Graph (1 minute)
-Navigate to Knowledge Graph tab.
+### Knowledge Graph and Intel Feed (1 minute each)
+Knowledge Graph: "Every entity we research is added to a relationship graph. The more you research, the richer it gets." Hover a node to show the relationship labels.
+Intel Feed: "Daily business signals by sector. Any headline clicks straight through to a report."
 
-"Every entity we research automatically gets added to a relationship graph. Tesla connects to Elon Musk, connects to SpaceX, connects to competitors. The more you research, the richer this gets."
-
-Hover over a node to show the relationship labels.
-
-"Cross-entity queries — 'who invested in both Stripe and Hims?' — that's what this is building toward. Nobody else has this at this price point."
-
----
-
-### 5. Intelligence Feed (30 seconds)
-Click Intel Feed in the sidebar.
-
-"Daily business signals across 8 sectors. Every morning you open this and see what moved overnight. Any headline you can immediately click through to research the company."
+### Pricing (30 seconds)
+"Basic is $19 a month for 25 profiles. Pro is $49: unlimited profiles, Deep Dives, PDF export, Knowledge Graph. Team is $149 by arrangement."
+"Above Crunchbase on depth, far below PitchBook on price."
 
 ---
 
-## Pricing (30 seconds)
-"Basic is $19/month — unlimited quick profiles. Pro is $49 — Deep Dive, Knowledge Graph, PDF export. Team is $149 for three seats. Enterprise is custom."
+## 3. Diligence (5 minutes)
 
-"We're below Crunchbase on price, above them on depth. That's the positioning."
+Switch to the diligence.metisanalytic.com tab.
+
+"Different buyer, different job. Someone buying a $1M–$10M business gets a CIM written by the seller's broker. This tears into it before they sign the LOI."
+
+**View as a buyer → Harbor Line Mechanical** (the delivered report):
+- **Verdict + numbers strip**: broker says $1.19M of earnings; adjusted is $846K–$1.01M. "The broker's number doesn't survive contact with the tax returns."
+- **Red flag #1**: CIM revenue for 2023 is 11% above the tax return. Click a citation chip: "every claim points to the page it came from. Nothing is asserted without a source."
+- **Add-backs**: each graded solid, arguable or unsupported, with the reason.
+- **Debt coverage**: "Can it carry SBA debt after paying a real manager? At the low end, no."
+- **Disagreements**: "Four AI analysts (a lender, a forensic CPA, an operator and a bear) argue, then rebut each other. Where they still disagree, we show it instead of averaging it away."
+- **Pre-mortem**: "It's 18 months later and the deal failed. Here's how, and what to check now."
+- **Seller questions**: "The list to send the broker tomorrow."
+
+**Switch role → View as the reviewer** (30 seconds): the review queue and editor. "Every report is checked before the buyer sees it. The model's original and the reviewer's edits are stored separately, so we measure exactly how much a person had to fix."
+
+If asked about confidentiality: "Separate database and storage from Metis, a private file per deal, AI provider that doesn't train on the data, deleted automatically 90 days after delivery."
+
+If asked "is this live?": "The full pipeline is built and tested; we're onboarding the first pilot deals now. What you're seeing is a fictional company because real CIMs are under NDA."
 
 ---
 
-## The Ask
-[Fill in based on conversation — what are you actually asking for?]
-
-Options:
-- Seed check to extend runway while acquiring first paying customers
-- Strategic introduction to potential customers in their portfolio
-- Advisory relationship / feedback on the product
+## The ask
+[Fill in before the meeting.]
+- Seed check to extend runway while landing the first paying customers
+- Introductions: portfolio companies (Business Intelligence) or searchers/acquirers (Diligence)
+- Advisory: a finance reviewer for Diligence pilot reports
 
 ---
 
-## Likely Questions & Answers
+## Likely questions
 
 **"How is this different from ChatGPT?"**
-"ChatGPT is general purpose — you prompt it, it responds from training data. Charon runs seven specialized agents against live web data, structures the output into a consistent format, and builds a persistent knowledge graph over time. It's a research tool, not a chatbot."
+"ChatGPT answers from its training data. Metis runs specialized agents against live sources, structures the output the same way every time, cites every section, and keeps your research. Diligence goes further: the numbers come out of your documents with page references, and code does the arithmetic, not the model."
 
 **"What's the moat?"**
-"Three things: the Knowledge Graph (proprietary relationship data that builds with every search), the prompt architecture (months of tuning for business intelligence specifically), and the switching cost once someone's graph is populated with their industry."
+"The Knowledge Graph builds with every search. The extraction and citation pipeline is months of work. And in Diligence, every reviewer edit is measured, so the product learns where it's wrong."
 
 **"Who's the customer?"**
-"Founders doing due diligence on potential hires or partners. BD professionals prepping for sales calls. VC analysts doing company research. Anyone who currently pays for Crunchbase and wishes it was deeper."
+"Business Intelligence: founders, BD teams and analysts who pay for Crunchbase and want more depth. Diligence: individual buyers, search funds and small PE doing $1M–$10M acquisitions."
 
-**"What's the current revenue?"**
-"Pre-revenue, early beta. The product has been live for [X weeks]. We're focused on getting to first paying customers before automating billing."
+**"Revenue?"**
+"Billing is live on Business Intelligence (Basic and Pro self-serve). Diligence is in pilot." [Add real numbers before the meeting.]
 
 **"Why now?"**
-"The infrastructure to do this — fast LLM APIs, cheap vector search, agent frameworks — only got reliable enough in the last 12 months. The incumbents are not AI-native and aren't moving fast."
+"Fast, cheap models made multi-agent research affordable at consumer prices, and they're now reliable enough to read financial documents with citations. The incumbents aren't AI-native."
 
 ---
 
-## Easter Eggs (if the mood is right)
-Search "Wayne Enterprises" — instant, pre-baked report with Bruce Wayne as CEO.
-Search "Patrick Bateman" (as person) — intentionally empty/redacted result.
-
-These land well if the conversation is going well and you want to show personality.
+## Easter eggs (only if the mood is right)
+Search "Wayne Enterprises": a pre-built report with Bruce Wayne as CEO.
+Search "Patrick Bateman" as a person: an intentionally redacted result.
 
 ---
 
-## After the Demo
-Let them ask questions. Don't over-explain.
-
-If they want to try it themselves: create them an account on the spot.
+## After the demo
+Let them ask. Don't over-explain. If they want to try it, create them an account on the spot.

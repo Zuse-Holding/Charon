@@ -42,7 +42,7 @@ const ROWS = [
   },
   {
     label: "ADDING SEATS",
-    metis: "Team plan covers 3 seats at $149/mo, additional seats scale linearly",
+    metis: "Team plan at $149/mo, arranged by email; multi-seat workspaces are coming soon",
     competitor: "Additional users typically add several thousand dollars per seat, per year",
   },
 ];

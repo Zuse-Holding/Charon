@@ -58,9 +58,9 @@ const PLANS = [
     value: "Everything in Pro, shared across a workspace — so the whole team is working off the same research instead of duplicating it.",
     features: [
       "Everything in Pro",
-      "Shared workspace",
-      "Team watchlists",
-      "API access",
+      "Shared workspace (coming soon)",
+      "Team watchlists (coming soon)",
+      "API access (coming soon)",
     ],
     cta: "Contact Us →",
     highlight: false,
@@ -74,8 +74,8 @@ const COMPARE_ROWS: [string, string, string, string][] = [
   ["Watchlist entities", "5", "Unlimited", "Unlimited"],
   ["Knowledge Graph", "—", "Included", "Included"],
   ["Export formats", "Markdown", "Markdown + PDF", "Markdown + PDF"],
-  ["Shared workspace", "—", "—", "Included"],
-  ["API access", "—", "—", "Included"],
+  ["Shared workspace", "—", "—", "Coming soon"],
+  ["API access", "—", "—", "Coming soon"],
 ];
 
 const FAQS = [

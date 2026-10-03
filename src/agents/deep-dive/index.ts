@@ -195,9 +195,11 @@ WRITING STANDARDS — mandatory:
           `${companyName} funding rounds raised investors`,
           `${companyName} valuation worth`,
           `${companyName} revenue financials annual`,
-          `${companyName} Series funding Crunchbase`,
+          `${companyName} annual revenue net income market cap`,
         ],
-        `Detail ${companyName}'s financial history: all known funding rounds (amount, date, lead investors), current valuation, any revenue figures or estimates, burn rate signals, and what the capital has been used for. Assess financial health and runway.`
+        // Public companies need a different frame: a BlackRock run reported
+        // "four funding rounds, the first in 2015" (a database artifact).
+        `Detail ${companyName}'s financial history. If ${companyName} is publicly traded, cover its listing (exchange, ticker, IPO year), the latest reported annual revenue and profit, market capitalization, and how it returns or raises capital; do not describe database "funding round" records as venture rounds. If it is private, cover all known funding rounds (amount, date, lead investors), current valuation, revenue figures or estimates, burn rate signals, and what the capital has been used for. Either way, assess financial health.`
       );
 
       // 5. Products & Traction

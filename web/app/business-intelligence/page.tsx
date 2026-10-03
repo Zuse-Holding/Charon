@@ -71,7 +71,7 @@ const PRICING = [
     tier: "TEAM",
     price: "$149",
     period: "/mo",
-    features: ["Everything in Pro", "Shared workspace", "Team watchlists", "API access"],
+    features: ["Everything in Pro", "Shared workspace (coming soon)", "Team watchlists (coming soon)", "API access (coming soon)"],
     cta: "Contact Us →",
     highlight: false,
     contactOnly: true,

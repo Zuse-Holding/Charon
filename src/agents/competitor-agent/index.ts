@@ -45,7 +45,10 @@ export class CompetitorAgent {
     // as a backstop.
     const override = findOverride(companyName);
     const rawResults = await this.searcher.search(
-      appendDomainExclusions(`${companyName} top competitors and alternatives`, override),
+      // "main competitors", not "alternatives": the latter mostly returns
+      // affiliate listicles of small vendors (a live Stripe run listed Stax,
+      // Helcim and Payment Depot, missing PayPal, Adyen and Square).
+      appendDomainExclusions(`${companyName} main competitors`, override),
       5
     );
 
@@ -84,6 +87,7 @@ STRICT RULES:
 - NEVER include "${companyName}" itself
 - NEVER include companies that are merely mentioned in an article without being a direct competitor
 - If you are not confident a company is a direct competitor, exclude it
+- Order by significance: the largest, best-known rivals named in the text first, niche or small vendors last
 - Return 3-8 genuine direct competitors only`,
         combinedText,
         CompetitorExtractionSchema
