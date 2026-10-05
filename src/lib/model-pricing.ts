@@ -13,8 +13,8 @@
  * requires login) — verify against console.groq.com before trusting
  * cost_usd for anything real, flagged in CHECKLIST.md.
  *
- * OpenRouter's three models here are all suffixed ":free" (see
- * DEFAULT_OPENROUTER_MODELS in llm.ts) — genuinely $0, not an estimate.
+ * OpenRouter's paid models (DEFAULT_OPENROUTER_MODELS in llm.ts): prices
+ * from OpenRouter's /api/v1/models listing, checked 2026-10-04.
  * Ollama is always $0 — it's a local model, no per-token API cost.
  *
  * A model called that ISN'T in this table contributes $0 to the total and
@@ -33,10 +33,10 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   // Groq — approximate, see warning above.
   "openai/gpt-oss-20b": { inputPer1M: 0.075, outputPer1M: 0.30 },
 
-  // OpenRouter free-tier models (DEFAULT_OPENROUTER_MODELS in llm.ts) — $0.
-  "google/gemma-4-31b-it:free": { inputPer1M: 0, outputPer1M: 0 },
-  "poolside/laguna-xs-2.1:free": { inputPer1M: 0, outputPer1M: 0 },
-  "google/gemma-4-26b-a4b-it:free": { inputPer1M: 0, outputPer1M: 0 },
+  // OpenRouter (DEFAULT_OPENROUTER_MODELS in llm.ts), from /api/v1/models 2026-10-04.
+  "google/gemma-4-31b-it": { inputPer1M: 0.09, outputPer1M: 0.34 },
+  "mistralai/mistral-small-3.2-24b-instruct": { inputPer1M: 0.094, outputPer1M: 0.25 },
+  "google/gemini-2.5-flash-lite": { inputPer1M: 0.10, outputPer1M: 0.40 },
 
   // Ollama (local, OLLAMA_MODEL default) — always $0, no API cost.
   "llama3.1:8b": { inputPer1M: 0, outputPer1M: 0 },

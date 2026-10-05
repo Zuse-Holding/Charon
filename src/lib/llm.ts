@@ -299,10 +299,18 @@ let openRouterKeyIndex = 0;
 // second entry despite the list only spanning two vendors right now — the
 // free-tier catalog has shrunk since the three-vendor rule above was
 // written. Re-diversify if a viable third vendor shows up.
+//
+// 2026-10-04: switched from the :free variants to paid ones. Every free call
+// in three live test runs came back rate-limited or empty (shared free
+// capacity is congested), pushing all work onto Groq's free tier, whose
+// 8K tokens/minute cap and locked Developer upgrade make it the bottleneck.
+// The paid models are non-reasoning instruct models with JSON support and
+// cost under a cent per research report from the existing OpenRouter
+// credit. Same Gemma model first, then two other vendors.
 const DEFAULT_OPENROUTER_MODELS = [
-  "google/gemma-4-31b-it:free",
-  "poolside/laguna-xs-2.1:free",
-  "google/gemma-4-26b-a4b-it:free",
+  "google/gemma-4-31b-it",
+  "mistralai/mistral-small-3.2-24b-instruct",
+  "google/gemini-2.5-flash-lite",
 ];
 
 async function extractViaOpenRouter<T>(
