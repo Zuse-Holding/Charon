@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { fetchRevenue } from "@/lib/stripe";
 
-// Metis revenue, read-only from Stripe (lib/stripe.ts). Same "not
-// connected" shape as /api/ops/alpaca so the UI can say what's missing.
+// Metis revenue, read-only from Stripe (lib/stripe.ts). Returns
+// { connected: false, error } when it can't sync, so the UI can say what's missing.
 
 export const dynamic = "force-dynamic";
 

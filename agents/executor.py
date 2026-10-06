@@ -38,7 +38,7 @@ BATCH = 20
 MAX_RECIPIENTS = 5
 
 EMAIL_RE = re.compile(r"^[^@\s<>,;]+@[^@\s<>,;]+\.[^@\s<>,;]+$")
-VENTURES = {"zuse", "metis", "charon", "lounge", "kairos", "personal_mixed", "trading"}
+VENTURES = {"zuse", "metis", "charon", "lounge", "kairos", "personal_mixed"}  # "trading" retired
 LEAD_STATUSES = {"new", "enriched", "contacted", "replied", "qualified", "closed", "dead"}
 METIS_PRODUCTS = {"intelligence", "diligence", "committee"}
 INVOICE_MAX_ITEMS = 20

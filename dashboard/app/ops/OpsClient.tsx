@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "./ops.module.css";
 import { subscribeToAgentRuns } from "../../lib/realtime";
-import type { AgentJob, AgentRunRow, AgentRunStatus, TradeRow } from "@/lib/supabase/types";
-import { formatMoney, relTime as relTimeFmt } from "@/lib/format";
+import type { AgentJob, AgentRunRow, AgentRunStatus } from "@/lib/supabase/types";
+import { formatMoney } from "@/lib/format";
 import ApprovalQueue from "./ApprovalQueue";
 import SeleneStatusRing from "./AgentRunStatus";
 import FinanceView from "./FinanceView";
@@ -68,10 +68,12 @@ const DEFAULT_PARTICLE_COLOR = "#4de3ff"; // was #ff3b30 pre-Tron-blue swap
 // dealings, exactly what Selene OS (agents/selene.py) runs. Metis Analytics
 // = its three products (Intelligence — the original build, which every
 // existing metis node belongs to — plus Diligence and Committee, the trading
-// platform, neither wired yet) and shared platform ops. Telehealth Platform and Trading Bots have
-// no nodes yet — every existing node dims out when either is selected,
+// platform, which also houses Moneyball — neither wired yet) and shared
+// platform ops. The Trading Bots venture is retired: the Committee app
+// replaces it. Telehealth Platform has
+// no nodes yet — every existing node dims out when it's selected,
 // which is correct: there's nothing wired to them for now.
-const NODE_VENTURE: Record<string, "zuse" | "metis" | "telehealth" | "trading"> = {
+const NODE_VENTURE: Record<string, "zuse" | "metis" | "telehealth"> = {
   bug: "metis", deploy: "metis", supabase: "metis", briefing: "metis", political: "metis", kg: "metis",
   oaktree: "zuse", formation: "zuse", inbox: "zuse", finance: "zuse", leads: "zuse", brief: "zuse",
 };
@@ -186,34 +188,6 @@ export default function OpsClient() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [feedOpen, setFeedOpen] = useState(true);
 
-  // ── Trading Bots venture (Alpaca) — fetched lazily on first view, not on
-  // every page load, since it's an outbound call to a third party. ────────
-  interface AlpacaBotResult {
-    name: string;
-    account: { equity: number; buyingPower: number; cash: number } | null;
-    error: string | null;
-  }
-  type AlpacaState =
-    | { status: "idle" }
-    | { status: "loading" }
-    | { status: "connected"; bots: AlpacaBotResult[]; trades: TradeRow[] }
-    | { status: "error"; error: string };
-  const [alpaca, setAlpaca] = useState<AlpacaState>({ status: "idle" });
-
-  function fetchAlpaca() {
-    setAlpaca({ status: "loading" });
-    fetch("/api/ops/alpaca")
-      .then(res => res.json())
-      .then(data => {
-        if (data.connected) {
-          setAlpaca({ status: "connected", bots: data.bots, trades: data.trades });
-        } else {
-          setAlpaca({ status: "error", error: data.error ?? "Alpaca sync failed" });
-        }
-      })
-      .catch(() => setAlpaca({ status: "error", error: "Couldn't reach the Alpaca sync route." }));
-  }
-
   // ── Metis revenue (Stripe, read-only — /api/ops/revenue) ───────────────
   type ProductKey = "intelligence" | "diligence" | "committee" | "other";
   type RevenueState =
@@ -230,11 +204,9 @@ export default function OpsClient() {
       .catch(() => setRevenue({ status: "error", error: "Couldn't reach the revenue route." }));
   }
 
-  // Fetch on page load regardless of which venture is active — so a plain
-  // page refresh is enough to have fresh data waiting the moment Trading
-  // Bots gets clicked into, not just when that venture is already selected.
+  // Fetch on page load regardless of which venture is active, so the top
+  // bar's MRR is filled in without opening Metis first.
   useEffect(() => {
-    fetchAlpaca();
     fetchRevenue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -661,7 +633,6 @@ export default function OpsClient() {
   const metisCount = SIDEBAR_NODE_IDS.filter(id => NODE_VENTURE[id] === "metis").reduce((sum, id) => sum + (sidebarCounts[id] ?? 0), 0);
   const zuseCount = SIDEBAR_NODE_IDS.filter(id => NODE_VENTURE[id] === "zuse").reduce((sum, id) => sum + (sidebarCounts[id] ?? 0), 0);
   const telehealthCount = SIDEBAR_NODE_IDS.filter(id => NODE_VENTURE[id] === "telehealth").reduce((sum, id) => sum + (sidebarCounts[id] ?? 0), 0);
-  const tradingCount = SIDEBAR_NODE_IDS.filter(id => NODE_VENTURE[id] === "trading").reduce((sum, id) => sum + (sidebarCounts[id] ?? 0), 0);
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
@@ -740,7 +711,7 @@ export default function OpsClient() {
           </div>
           <div className={`${styles.sidebarBody} ${sidebarOpen ? "" : styles.collapsed}`}>
           <div className={styles.sidebarSection}>
-            <div className={styles.groupLabel}>Ventures <span>4</span></div>
+            <div className={styles.groupLabel}>Ventures <span>3</span></div>
             <div
               className={`${styles.strand} ${activeVenture === "zuse" ? styles.active : ""}`}
               onClick={() => setActiveVenture("zuse")}
@@ -758,12 +729,6 @@ export default function OpsClient() {
               onClick={() => setActiveVenture("telehealth")}
             >
               <div className={styles.name}><span className={styles.icon}>✚</span>Telehealth Platform</div><span className={styles.count}>{telehealthCount}</span>
-            </div>
-            <div
-              className={`${styles.strand} ${activeVenture === "trading" ? styles.active : ""}`}
-              onClick={() => setActiveVenture("trading")}
-            >
-              <div className={styles.name}><span className={styles.icon}>▲</span>Trading Bots</div><span className={styles.count}>{tradingCount}</span>
             </div>
           </div>
           {activeVenture === "metis" && (
@@ -818,7 +783,10 @@ export default function OpsClient() {
           </div>
           <div className={styles.sidebarSection}>
             <div className={styles.groupLabel}>Committee <span>beta</span></div>
-            <div className={styles.sidebarEmpty}>Trading platform. Name&apos;s still in beta — nothing wired here yet.</div>
+            <div className={`${styles.strand} ${styles.nested}`}>
+              <div className={styles.name}><span className={styles.icon}>▲</span>Moneyball</div><span className={styles.count}>bot</span>
+            </div>
+            <div className={styles.sidebarEmpty}>The trading platform. Name&apos;s still in beta. Moneyball runs inside it. Nothing wired here yet.</div>
           </div>
           <div className={styles.sidebarSection}>
             <div className={styles.groupLabel}>Platform <span>2</span></div>
@@ -863,49 +831,6 @@ export default function OpsClient() {
           <div className={styles.sidebarSection}>
             <div className={styles.groupLabel}>Telehealth Platform</div>
             <div className={styles.sidebarEmpty}>Nothing wired here yet — first strand lands when the venture does.</div>
-          </div>
-          )}
-          {activeVenture === "trading" && (
-          <div className={styles.sidebarSection}>
-            <div className={styles.groupLabel}>
-              Trading Bots
-              <span className={styles.count} style={{ cursor: "pointer" }} onClick={fetchAlpaca} title="Refresh">↻</span>
-            </div>
-            {alpaca.status === "idle" || alpaca.status === "loading" ? (
-              <div className={styles.sidebarEmpty}>Checking Alpaca…</div>
-            ) : alpaca.status === "error" ? (
-              <div className={styles.sidebarEmpty}>
-                Not connected — {alpaca.error} Add <code>ALPACA_BOT_1_NAME</code> / <code>_KEY_ID</code> / <code>_SECRET</code> (and <code>_2</code>, <code>_3</code>) to the server env, then hit ↻.
-              </div>
-            ) : (
-              <>
-                {alpaca.bots.map(b => (
-                  <div key={b.name} className={styles.sidebarEmpty}>
-                    {b.account
-                      ? `${b.name}: equity ${formatMoney(b.account.equity)} · buying power ${formatMoney(b.account.buyingPower)}`
-                      : `${b.name}: ${b.error}`}
-                  </div>
-                ))}
-                {alpaca.trades.length === 0 ? (
-                  <div className={styles.sidebarEmpty}>Connected — no orders yet.</div>
-                ) : (
-                  alpaca.trades.map(t => (
-                    <div key={t.id} className={`${styles.strand} ${styles.nested}`}>
-                      <div className={styles.name}>
-                        <span className={styles.icon}>{t.side === "buy" ? "▲" : "▼"}</span>
-                        {t.side.toUpperCase()} {t.qty} {t.symbol}
-                        {t.bot ? ` · ${t.bot}` : ""}
-                      </div>
-                      <span className={styles.count}>
-                        {t.status === "filled" && t.filled_at
-                          ? `${formatMoney(t.price ?? 0)} · ${relTimeFmt(t.filled_at)}`
-                          : t.status}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </>
-            )}
           </div>
           )}
           <div className={styles.sidebarFooter}>
@@ -957,7 +882,7 @@ export default function OpsClient() {
               })}
             </div>
 
-            <div className={`${styles.statCorner} ${styles.tl}`}>42,000 NEURONS · 4 VENTURES</div>
+            <div className={`${styles.statCorner} ${styles.tl}`}>42,000 NEURONS · 3 VENTURES</div>
             <div className={`${styles.statCorner} ${styles.tr}`}>NEURAL CORE · CONNECTED</div>
             <div className={`${styles.statCorner} ${styles.br}`}>ZUSE HOLDINGS LLC · CHARON ACTIVE</div>
 

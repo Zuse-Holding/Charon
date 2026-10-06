@@ -17,7 +17,7 @@ const KIND_LABEL: Record<string, string> = {
 const PRODUCT_LABEL: Record<string, string> = {
   intelligence: "Metis Intelligence", diligence: "Metis Diligence", committee: "Committee",
 };
-const VENTURES = ["zuse", "metis", "charon", "lounge", "kairos", "trading", "personal_mixed"];
+const VENTURES = ["zuse", "metis", "charon", "lounge", "kairos", "personal_mixed"];
 
 type Draft = Partial<Record<keyof ContractRow, string | boolean | number | null>>;
 

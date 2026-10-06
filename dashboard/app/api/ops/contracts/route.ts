@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 const KINDS = ["nda", "customer", "vendor", "partner", "contractor", "other"];
 const STATUSES = ["draft", "sent", "signed", "expired", "terminated"];
-const VENTURES = ["zuse", "metis", "charon", "lounge", "kairos", "personal_mixed", "trading"];
+const VENTURES = ["zuse", "metis", "charon", "lounge", "kairos", "personal_mixed"];
 const PRODUCTS = ["intelligence", "diligence", "committee"];
 const BILLING = ["one_time", "monthly", "annual"];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

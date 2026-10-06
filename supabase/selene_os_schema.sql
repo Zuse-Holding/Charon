@@ -54,7 +54,9 @@ create index on ledger (entry_date desc);
 create index on ledger (venture, category);
 
 -- ------------------------------------------------------------
--- TRADES — buy/sell log for the trading-bots venture. Manual for now;
+-- TRADES — RETIRED with the Trading Bots venture (Committee replaces it;
+-- Moneyball lives there now). Kept so past rows aren't lost.
+-- Original note: buy/sell log for the trading-bots venture. Manual for now;
 -- 'source' leaves room for a future Alpaca sync job to insert with
 -- source='alpaca' (service role bypasses RLS) without opening that
 -- source value to client-side inserts (same pattern as ledger.source).
