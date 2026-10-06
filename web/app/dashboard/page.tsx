@@ -6,7 +6,6 @@ import Topbar from "../../components/Topbar";
 import EmptyState from "../../components/EmptyState";
 import PersonResearchModal from "../../components/PersonResearchModal";
 import MuckRockSearchModal from "../../components/MuckRockSearchModal";
-import IdentityVerifyModal from "../../components/IdentityVerifyModal";
 import OnboardingChecklist from "../../components/OnboardingChecklist";
 import { useTier } from "../../lib/tier-context";
 
@@ -175,7 +174,6 @@ export default function DashboardPage() {
   const [time, setTime] = useState(new Date());
   const [showPersonResearch, setShowPersonResearch] = useState(false);
   const [showMuckRock, setShowMuckRock] = useState(false);
-  const [showIdentityVerify, setShowIdentityVerify] = useState(false);
 
   // Layout is inline styles (see S above), so responsive behavior can't
   // come from @media in a stylesheet — track viewport width directly and
@@ -438,7 +436,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Row 3: Charon Tools (Charon tier only) */}
-              {(can("personResearchAccess") || can("muckrockAccess") || can("identityVerificationAccess")) && (
+              {(can("personResearchAccess") || can("muckrockAccess")) && (
                 <div style={{ ...S.row, ...(isMobile ? { flexDirection: "column" as const } : {}) }}>
                   {can("personResearchAccess") && (
                     <div style={S.panel("#F87171")}>
@@ -477,28 +475,6 @@ export default function DashboardPage() {
                           background: "transparent", border: "1px solid #9F7AEA55",
                           borderRadius: 6, padding: "6px 14px",
                           color: "#9F7AEA", fontSize: 11, fontWeight: 700,
-                          letterSpacing: "0.04em", cursor: "pointer",
-                        }}
-                      >
-                        Launch →
-                      </button>
-                    </div>
-                  )}
-                  {can("identityVerificationAccess") && (
-                    <div style={S.panel("#4A90D9")}>
-                      <div style={S.panelTitle}>
-                        Photo Identity Verification
-                        <span style={S.badge("#4A90D9")}>Charon</span>
-                      </div>
-                      <div style={{ fontSize: 12, color: "#6B7A99", lineHeight: 1.5, marginBottom: 12 }}>
-                        1:1 face comparison between two photos you already have — checks if they&apos;re the same person.
-                      </div>
-                      <button
-                        onClick={() => setShowIdentityVerify(true)}
-                        style={{
-                          background: "transparent", border: "1px solid #4A90D955",
-                          borderRadius: 6, padding: "6px 14px",
-                          color: "#4A90D9", fontSize: 11, fontWeight: 700,
                           letterSpacing: "0.04em", cursor: "pointer",
                         }}
                       >
@@ -587,7 +563,6 @@ export default function DashboardPage() {
       </main>
       {showPersonResearch && <PersonResearchModal onClose={() => setShowPersonResearch(false)} />}
       {showMuckRock && <MuckRockSearchModal onClose={() => setShowMuckRock(false)} />}
-      {showIdentityVerify && <IdentityVerifyModal onClose={() => setShowIdentityVerify(false)} />}
     </div>
   );
 }

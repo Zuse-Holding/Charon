@@ -13,7 +13,7 @@ import { mergeByKey, personGroupKey } from "../../entity-validation.js";
  * entity records) for the report — pulling relationships for every match
  * would be a much heavier, slower call than every proAccess (Pro/Team+)
  * research run should pay for. Pass `includeRelationships: true` (Charon/
- * internal-tier only, same "deep" gate OpenCorporates/MuckRock/ICIJ
+ * internal-tier only, same "deep" gate OpenCorporates/MuckRock
  * already use — see orchestrator.researchPerson/researchCompany) to also
  * pull the matched entity's relationships (Stage 2), filtered to the
  * categories worth feeding into the Knowledge Graph: board/officer
@@ -96,7 +96,7 @@ const RELEVANT_CATEGORIES: Record<number, string> = {
 // (pageCount: 1) — a cap of 4/category was discarding the large majority
 // of real, current data, not just trimming a long tail. 10/category (up
 // to 50 total across 6 categories) matches the "top 25-50" range the
-// dedup/relevance-floor fix used for ICIJ. Not paginating past page 1:
+// relevance-floor approach used elsewhere. Not paginating past page 1:
 // every category checked live for both test subjects (Koch, Soros) fit
 // within one page at this cap, and page 1 is already the most-recent
 // slice — acceptable per the original scoping ask's own "or set a

@@ -264,37 +264,6 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notification_preferences JSONB NOT
   DEFAULT '{"watchlistRefresh": true, "weeklyDigest": false, "productUpdates": true}'::jsonb;
 
 -- ============================================================
--- Identity Verification audit (Charon-only, src/agents/face-verify-agent)
--- Mirrors person_search_audit's shape/intent (that table's own CREATE
--- TABLE isn't captured in this file either — see the "Auto-create
--- profiles row on signup" block above for why). One row per
--- /person-research/verify-photo call, success or failure, so there's a
--- record of who ran a face comparison and when — deliberately NO column
--- for the photos themselves; see FaceVerifyAgent's doc comment for why
--- this tool never persists the images it compares.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS identity_verification_audit (
-  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  subject_name TEXT,
-  match        BOOLEAN     NOT NULL,
-  confidence   NUMERIC,
-  ip_address   TEXT,
-  created_at   TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE identity_verification_audit ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users manage own identity verification audit rows"
-  ON identity_verification_audit FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE INDEX IF NOT EXISTS idx_identity_verification_audit_user_date
-  ON identity_verification_audit (user_id, created_at DESC);
-
--- ============================================================
 -- Creator snapshot tracking (creator-snapshot-agent)
 -- `creators` isn't captured elsewhere in this file either (see the
 -- "Auto-create profiles row on signup" block above for why that keeps
@@ -531,3 +500,12 @@ CREATE INDEX IF NOT EXISTS idx_report_issues_user_date
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS day7_email_sent_at TIMESTAMPTZ;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_cap_reached_email_at TIMESTAMPTZ;
+
+-- ============================================================
+-- Retire Photo Identity Verification (2026-10-05)
+-- The face-comparison tool and its audit log were removed: biometric
+-- matching is out of scope for Metis (provenance & trust spec). Run once
+-- in the Supabase SQL editor; this deletes the audit rows.
+-- ============================================================
+
+DROP TABLE IF EXISTS identity_verification_audit;

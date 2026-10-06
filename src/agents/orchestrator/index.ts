@@ -16,7 +16,6 @@ import { SanctionsAgent } from "../sanctions-agent/index.js";
 import { WaybackAgent } from "../wayback-agent/index.js";
 import { ProPublicaNonprofitAgent } from "../propublica-nonprofit-agent/index.js";
 import { LittleSisAgent, LittleSisRelationshipEntry } from "../littlesis-agent/index.js";
-import { IcijAgent } from "../icij-agent/index.js";
 import { synthesizeRisksOpportunities } from "../synthesis-agent/index.js";
 import { ReportAgent } from "../report-agent/index.js";
 import {
@@ -67,7 +66,6 @@ export class ResearchOrchestrator {
   private waybackAgent: WaybackAgent;
   private nonprofitAgent: ProPublicaNonprofitAgent;
   private littleSisAgent: LittleSisAgent;
-  private icijAgent: IcijAgent;
   private reportAgent: ReportAgent;
   private searcher: SearchProvider;
 
@@ -93,7 +91,6 @@ export class ResearchOrchestrator {
     this.waybackAgent = new WaybackAgent();
     this.nonprofitAgent = new ProPublicaNonprofitAgent();
     this.littleSisAgent = new LittleSisAgent();
-    this.icijAgent = new IcijAgent();
     this.reportAgent = new ReportAgent();
   }
 
@@ -102,8 +99,8 @@ export class ResearchOrchestrator {
    *   screening, Wayback archive history, ProPublica nonprofit lookup,
    *   LittleSis power-mapping) — gated to Pro/Team/internal via
    *   TierConfig.publicRecordsAccess, checked by the caller.
-   * @param deep Charon Protocol (internal tier only) — adds the ICIJ
-   *   Offshore Leaks reconciliation lookup on top of proAccess sources.
+   * @param deep Charon Protocol (internal tier only) — passed through to
+   *   LittleSis for relationship pulling.
    */
   async researchCompany(companyName: string, proAccess = false, deep = false): Promise<{
     bundle: ResearchBundle;
@@ -127,13 +124,12 @@ export class ResearchOrchestrator {
     // Public-record fusion sources — Pro/Team+ only. Wayback needs a
     // resolved website URL, which only exists once siteResult is in, so
     // this batch runs after the first Promise.all rather than alongside it.
-    const [sanctionsResult, waybackResult, nonprofitResult, littleSisResult, icijResult] =
+    const [sanctionsResult, waybackResult, nonprofitResult, littleSisResult] =
       await Promise.all([
         proAccess ? this.sanctionsAgent.run(companyName) : Promise.resolve({ matches: [], sources: [] }),
         proAccess && siteResult.company.website ? this.waybackAgent.run(siteResult.company.website) : Promise.resolve({ summary: {} as WebArchiveSummary, sources: [] }),
         proAccess ? this.nonprofitAgent.run(companyName) : Promise.resolve({ organizations: [], sources: [] }),
         proAccess ? this.littleSisAgent.run(companyName, "company", deep) : Promise.resolve({ matches: [], relationships: [], sources: [] }),
-        deep ? this.icijAgent.run(companyName) : Promise.resolve({ matches: [], sources: [] }),
       ]);
 
     const sources: Source[] = [
@@ -146,7 +142,6 @@ export class ResearchOrchestrator {
       ...waybackResult.sources,
       ...nonprofitResult.sources,
       ...littleSisResult.sources,
-      ...icijResult.sources,
     ];
 
     const bundle: ResearchBundle = {
@@ -166,11 +161,6 @@ export class ResearchOrchestrator {
       webArchive: waybackResult.summary.snapshotCount ? waybackResult.summary : undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
-      // undefined = ICIJ never ran (not Charon tier); [] = it ran and
-      // found nothing above the relevance floor. Report needs to tell
-      // these apart to show an explicit "no matches" state rather than
-      // silently omitting the section — see icij-agent/report-agent.
-      offshoreLeaksMatches: deep ? icijResult.matches : undefined,
     };
 
     // Risks/Opportunities is pure LLM synthesis with no heuristic
@@ -216,14 +206,13 @@ export class ResearchOrchestrator {
     // Charon/internal-only (deep) — see researchCompany's same field.
     littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
-    const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult, icijResult] = await Promise.all([
+    const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult] = await Promise.all([
       this.peopleAgent.run(personName, deep, affiliation),
       deep ? this.openCorporatesAgent.run(personName) : Promise.resolve({ affiliations: [], sources: [] }),
       deep ? this.muckRockAgent.run(personName) : Promise.resolve({ requests: [], sources: [] }),
       proAccess ? this.sanctionsAgent.run(personName) : Promise.resolve({ matches: [], sources: [] }),
       proAccess ? this.nonprofitAgent.run(personName) : Promise.resolve({ organizations: [], sources: [] }),
       proAccess ? this.littleSisAgent.run(personName, "person", deep) : Promise.resolve({ matches: [], relationships: [], sources: [] }),
-      deep ? this.icijAgent.run(personName) : Promise.resolve({ matches: [], sources: [] }),
     ]);
 
     const bundle: PersonResearchBundle = {
@@ -234,18 +223,13 @@ export class ResearchOrchestrator {
       news: result.news,
       sources: [
         ...result.sources, ...corporateResult.sources, ...foiaResult.sources,
-        ...sanctionsResult.sources, ...nonprofitResult.sources, ...littleSisResult.sources, ...icijResult.sources,
+        ...sanctionsResult.sources, ...nonprofitResult.sources, ...littleSisResult.sources,
       ],
       corporateAffiliations: corporateResult.affiliations.length > 0 ? corporateResult.affiliations : undefined,
       foiaRequests: foiaResult.requests.length > 0 ? foiaResult.requests : undefined,
       sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
-      // undefined = ICIJ never ran (not Charon tier); [] = it ran and
-      // found nothing above the relevance floor. Report needs to tell
-      // these apart to show an explicit "no matches" state rather than
-      // silently omitting the section — see icij-agent/report-agent.
-      offshoreLeaksMatches: deep ? icijResult.matches : undefined,
     };
 
     const report = this.reportAgent.generatePerson(bundle);
