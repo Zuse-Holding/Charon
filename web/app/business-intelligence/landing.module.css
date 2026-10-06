@@ -148,7 +148,7 @@
 }
 .statLabel {
   display: block; font-family: var(--font-mono); font-size: 9px;
-  color: #3a3a4a; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 4px;
+  color: #8a8a9c; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 4px;
 }
 
 /* FEATURES */
