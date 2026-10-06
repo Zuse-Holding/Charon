@@ -18,12 +18,15 @@ create table approval_queue (
   summary       text not null,             -- one line, Selene's voice, shown on the card
   payload       jsonb not null,            -- full draft / entry / action body
   status        text not null default 'pending'
-                check (status in ('pending','approved','rejected','executed','failed')),
+                check (status in ('pending','approved','rejected','executing','executed','failed')),
   resolved_at   timestamptz,               -- when Nick approved/rejected
   executed_at   timestamptz,               -- when the executor actually ran it
   error         text,
+  result        text,                      -- what the executor did (agents/executor.py)
+  source_ref    text,                      -- idempotency key: gmail message id / lead id
   related_lead  uuid,                      -- optional FK-ish links (soft, nullable)
-  related_triage uuid
+  related_triage uuid,
+  constraint approval_queue_source_ref_key unique (action_type, source_ref)
 );
 create index on approval_queue (status, created_at desc);
 
@@ -40,14 +43,38 @@ create table ledger (
   direction     text not null check (direction in ('out','in')),
   category      text not null,             -- 'software' | 'domains' | 'hardware' | 'filing_fees' | 'api' | ...
   venture       text not null default 'zuse'
-                check (venture in ('zuse','metis','charon','lounge','kairos','personal_mixed')),
+                check (venture in ('zuse','metis','charon','lounge','kairos','personal_mixed','trading')),
   deductible    boolean not null default true,
   business_use_pct int not null default 100 check (business_use_pct between 0 and 100),
   receipt_url   text,
-  source        text not null default 'manual'  -- 'manual' | 'email_forward' | 'agent'
+  source        text not null default 'manual', -- 'manual' | 'email_forward' | 'agent' | 'stripe'
+  source_ref    text constraint ledger_source_ref_key unique  -- e.g. stripe:<invoice id>
 );
 create index on ledger (entry_date desc);
 create index on ledger (venture, category);
+
+-- ------------------------------------------------------------
+-- TRADES — buy/sell log for the trading-bots venture. Manual for now;
+-- 'source' leaves room for a future Alpaca sync job to insert with
+-- source='alpaca' (service role bypasses RLS) without opening that
+-- source value to client-side inserts (same pattern as ledger.source).
+-- ------------------------------------------------------------
+create table trades (
+  id            uuid primary key default gen_random_uuid(),
+  created_at    timestamptz not null default now(),
+  venture       text not null default 'trading',
+  symbol        text not null,
+  side          text not null check (side in ('buy','sell')),
+  qty           numeric(18,8) not null check (qty > 0),
+  price         numeric(18,4),                  -- fill price; null until filled
+  filled_at     timestamptz,
+  status        text not null default 'open' check (status in ('open','filled','canceled')),
+  source        text not null default 'manual' check (source in ('manual','alpaca')),
+  external_id   text,                            -- Alpaca order id, once wired
+  bot           text,                            -- which bot placed it (Alpaca account name), null for manual rows
+  notes         text
+);
+create index on trades (venture, filled_at desc);
 
 create table recurring_costs (
   id            uuid primary key default gen_random_uuid(),
@@ -85,7 +112,8 @@ create table leads (
                 check (status in ('new','enriched','contacted','replied','qualified','closed','dead')),
   score         int check (score between 0 and 100),
   enrichment    jsonb,                     -- Charon's write-up: {who, company, role, angle, flags}
-  last_touch_at timestamptz
+  last_touch_at timestamptz,
+  source_ref    text constraint leads_source_ref_key unique  -- gmail message id for inbox leads
 );
 create index on leads (status, created_at desc);
 
@@ -99,17 +127,44 @@ create table lead_events (
 create index on lead_events (lead_id, created_at);
 
 -- ------------------------------------------------------------
+-- INVOICES — sent through Stripe by agents/executor.py after approval;
+-- status kept in step by agents/invoices.py.
+-- ------------------------------------------------------------
+create table if not exists invoices (
+  id                uuid primary key default gen_random_uuid(),
+  created_at        timestamptz not null default now(),
+  approval_id       uuid unique,                  -- approval_queue row that sent it
+  stripe_invoice_id text not null unique,
+  number            text,                         -- Stripe's human invoice number
+  customer_email    text not null,
+  customer_name     text,
+  product           text check (product in ('intelligence','diligence','committee')),
+  lead_id           uuid references leads(id) on delete set null,
+  amount_due        numeric(12,2) not null check (amount_due >= 0),
+  amount_paid       numeric(12,2) not null default 0,
+  currency          text not null default 'usd',
+  status            text not null default 'open'
+                    check (status in ('open','paid','void','uncollectible')),
+  due_date          date,
+  hosted_url        text,                         -- the page the customer pays on
+  paid_at           timestamptz,
+  synced_at         timestamptz
+);
+create index if not exists invoices_status_idx on invoices (status, due_date);
+
+-- ------------------------------------------------------------
 -- COMPLIANCE CLOCK  (pure date math — no LLM dependency)
 -- ------------------------------------------------------------
 create table deadlines (
   id            uuid primary key default gen_random_uuid(),
   title         text not null,
-  kind          text not null check (kind in ('state','tax','domain','insurance','other')),
+  kind          text not null check (kind in ('state','tax','domain','insurance','contract','other')),
   due_date      date not null,
   recurrence    text check (recurrence in ('annual','biennial','none')),
   notes         text,
   status        text not null default 'open' check (status in ('open','done','waived')),
-  completed_at  timestamptz
+  completed_at  timestamptz,
+  source_ref    text constraint deadlines_source_ref_key unique  -- set by triggers (e.g. contract:<id>:ends)
 );
 create index on deadlines (status, due_date);
 
@@ -121,6 +176,96 @@ insert into deadlines (title, kind, due_date, recurrence, notes) values
    'Flat annual tax, applies regardless of revenue. Confirm first-year timing with CPA.'),
   ('metisanalytic.com renewal', 'domain', '2027-07-13', 'annual',
    'Registered ~Jul 2026; confirm exact renewal date at registrar.');
+
+-- ------------------------------------------------------------
+-- CONTRACTS — NDAs, customer/vendor/partner agreements. Their dates reach
+-- the compliance clock through the trigger below (pure SQL, no agent).
+-- ------------------------------------------------------------
+create table if not exists contracts (
+  id            uuid primary key default gen_random_uuid(),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  title         text not null,               -- "Oak Tree NDA"
+  counterparty  text not null,
+  kind          text not null default 'other'
+                check (kind in ('nda','customer','vendor','partner','contractor','other')),
+  venture       text not null default 'zuse'
+                check (venture in ('zuse','metis','charon','lounge','kairos','personal_mixed','trading')),
+  product       text check (product in ('intelligence','diligence','committee')),  -- Metis products
+  status        text not null default 'draft'
+                check (status in ('draft','sent','signed','expired','terminated')),
+  sent_on       date,
+  signed_on     date,
+  ends_on       date,                         -- term end / next renewal date
+  auto_renews   boolean not null default false,
+  renewal_months int check (renewal_months between 1 and 120),  -- term length when it auto-renews
+  notice_days   int check (notice_days between 0 and 365),       -- notice needed before ends_on
+  value_usd     numeric(12,2) check (value_usd >= 0),
+  billing       text check (billing in ('one_time','monthly','annual')),
+  doc_url       text,
+  notes         text
+);
+create index if not exists contracts_status_idx on contracts (status, ends_on);
+
+create or replace function sync_contract_deadlines() returns trigger
+language plpgsql as $$
+declare
+  ends_ref   text;
+  notice_ref text;
+begin
+  if tg_op = 'DELETE' then
+    delete from deadlines where source_ref in ('contract:' || old.id || ':ends', 'contract:' || old.id || ':notice');
+    return old;
+  end if;
+
+  ends_ref   := 'contract:' || new.id || ':ends';
+  notice_ref := 'contract:' || new.id || ':notice';
+
+  -- Term end / renewal date. A changed date reopens a row Nick had closed.
+  if new.status = 'signed' and new.ends_on is not null then
+    insert into deadlines (title, kind, due_date, recurrence, notes, source_ref)
+    values (
+      new.title || case when new.auto_renews then ' renews' else ' ends' end,
+      'contract', new.ends_on, 'none', 'Contract with ' || new.counterparty || '.', ends_ref
+    )
+    on conflict (source_ref) do update set
+      title        = excluded.title,
+      notes        = excluded.notes,
+      due_date     = excluded.due_date,
+      status       = case when deadlines.due_date <> excluded.due_date then 'open' else deadlines.status end,
+      completed_at = case when deadlines.due_date <> excluded.due_date then null else deadlines.completed_at end;
+  else
+    update deadlines set status = 'waived' where source_ref = ends_ref and status = 'open';
+  end if;
+
+  -- Last day to give notice (or to cancel before an auto-renewal).
+  if new.status = 'signed' and new.ends_on is not null and coalesce(new.notice_days, 0) > 0 then
+    insert into deadlines (title, kind, due_date, recurrence, notes, source_ref)
+    values (
+      'Notice deadline: ' || new.title, 'contract', new.ends_on - new.notice_days, 'none',
+      case when new.auto_renews
+        then 'Last day to cancel before it auto-renews.'
+        else 'Last day to give notice before it ends.' end,
+      notice_ref
+    )
+    on conflict (source_ref) do update set
+      title        = excluded.title,
+      notes        = excluded.notes,
+      due_date     = excluded.due_date,
+      status       = case when deadlines.due_date <> excluded.due_date then 'open' else deadlines.status end,
+      completed_at = case when deadlines.due_date <> excluded.due_date then null else deadlines.completed_at end;
+  else
+    update deadlines set status = 'waived' where source_ref = notice_ref and status = 'open';
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists contracts_deadlines on contracts;
+create trigger contracts_deadlines
+  after insert or update or delete on contracts
+  for each row execute function sync_contract_deadlines();
+
 
 -- ------------------------------------------------------------
 -- PERSONAL — Nick's own goals/countdowns, separate from Zuse Holdings
@@ -215,12 +360,19 @@ alter table inbox_triage    enable row level security;
 alter table briefs          enable row level security;
 alter table selene_facts    enable row level security;
 alter table agent_runs      enable row level security;
+alter table trades          enable row level security;
+alter table contracts       enable row level security;
+alter table invoices        enable row level security;
 
 create policy "read all"        on approval_queue  for select using (true);
-create policy "resolve queue"   on approval_queue  for update using (true)
-  with check (status in ('approved','rejected'));
+-- No anon update on approval_queue: approve/reject/undo go through the
+-- dashboard's /api/ops/queue route (service role, behind its login), since
+-- an approved row now really gets executed (agents/executor.py).
 create policy "read ledger"     on ledger          for select using (true);
 create policy "manual ledger"   on ledger          for insert with check (source = 'manual');
+create policy "read trades"     on trades          for select using (true);
+create policy "manual trades"   on trades          for insert with check (source = 'manual');
+create policy "edit trades"     on trades          for update using (true);
 create policy "read recurring"  on recurring_costs for select using (true);
 create policy "edit recurring"  on recurring_costs for all    using (true);
 create policy "read leads"      on leads           for select using (true);
@@ -231,6 +383,8 @@ create policy "read lead ev"    on lead_events     for select using (true);
 -- allowed to make them ("move leads" above); scoped to that one event_type
 -- so the dashboard can't backdate/forge enrichment or other agent-only events.
 create policy "log lead move"   on lead_events     for insert with check (event_type = 'status_change');
+create policy "read invoices"   on invoices        for select using (true);
+create policy "read contracts"  on contracts       for select using (true);
 create policy "read deadlines"  on deadlines       for select using (true);
 create policy "edit deadlines"  on deadlines       for all    using (true);
 create policy "read goals"      on personal_goals  for select using (true);

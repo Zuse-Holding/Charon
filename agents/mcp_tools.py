@@ -62,19 +62,68 @@ def propose_action(
     payload: dict[str, Any],
     related_lead: str | None = None,
     related_triage: str | None = None,
+    source_ref: str | None = None,
 ) -> str:
     """Selene's ONLY path to consequences. Inserts a pending approval_queue
     row for Nick to approve or reject himself — never executes anything.
     module must be one of: inbox, finance, leads, brief, system.
     action_type must be one of: send_email, add_ledger_entry, contact_lead,
-    update_lead_status. Returns the new row's id."""
+    update_lead_status, send_invoice.
+    send_invoice payload: {'customer_email', 'customer_name', 'product'
+    (intelligence/diligence/committee), 'items': [{'description', 'amount'
+    (dollars per unit), 'quantity'}], 'days_until_due', 'memo'}. Only
+    propose one when the customer has clearly agreed to a price.
+    source_ref: pass the gmail_message_id (or lead id) this proposal comes
+    from. Proposing the same action_type for the same source_ref again
+    returns the existing row instead of creating a duplicate.
+    Returns the row's id."""
     if action_type not in IRREVERSIBLE_ACTIONS:
         raise ValueError(f"unknown action_type {action_type!r}; must be one of {sorted(IRREVERSIBLE_ACTIONS)}")
-    row = SUPABASE.table("approval_queue").insert({
+    values = {
         "module": module, "action_type": action_type, "summary": summary,
         "payload": payload, "related_lead": related_lead, "related_triage": related_triage,
-    }).execute()
-    return row.data[0]["id"]
+    }
+    if not source_ref:
+        return SUPABASE.table("approval_queue").insert(values).execute().data[0]["id"]
+
+    # Idempotency key: unique (action_type, source_ref) in schema.sql.
+    row = SUPABASE.table("approval_queue").upsert(
+        {**values, "source_ref": source_ref}, on_conflict="action_type,source_ref", ignore_duplicates=True,
+    ).execute()
+    if row.data:
+        if related_triage:
+            SUPABASE.table("inbox_triage").update({"draft_queued": row.data[0]["id"]}).eq("id", related_triage).execute()
+        return row.data[0]["id"]
+    existing = (
+        SUPABASE.table("approval_queue").select("id")
+        .eq("action_type", action_type).eq("source_ref", source_ref).execute()
+    )
+    return existing.data[0]["id"]
+
+
+@mcp.tool()
+def flag_lead(
+    source_ref: str,
+    name: str | None = None,
+    email: str | None = None,
+    company: str | None = None,
+    message: str | None = None,
+) -> str:
+    """Add a lead that came in by email so the enrichment job picks it up.
+    source_ref is the gmail_message_id it came from — flagging the same
+    message twice updates the one lead instead of duplicating it. message
+    is your one-paragraph summary of what they want, not their raw text.
+    Returns the lead's id."""
+    row = SUPABASE.table("leads").upsert({
+        "source": "inbox", "source_ref": source_ref, "name": name, "email": email,
+        "company": company, "message": message,
+    }, on_conflict="source_ref", ignore_duplicates=True).execute()
+    if row.data:
+        SUPABASE.table("lead_events").insert({
+            "lead_id": row.data[0]["id"], "event_type": "created", "detail": "flagged from inbox",
+        }).execute()
+        return row.data[0]["id"]
+    return SUPABASE.table("leads").select("id").eq("source_ref", source_ref).execute().data[0]["id"]
 
 
 @mcp.tool()
@@ -165,7 +214,8 @@ def remember_fact(fact: str) -> str:
 def read_ops_data() -> dict[str, Any]:
     """Everything the weekly brief needs, in one pull: open approvals,
     recent triage, recent ledger entries, active recurring costs, the lead
-    pipeline, open deadlines, and known facts."""
+    pipeline, open deadlines, contracts still open or awaiting signature,
+    and known facts."""
     return {
         "queue_open": SUPABASE.table("approval_queue").select("*").eq("status", "pending").execute().data,
         "triage_recent": SUPABASE.table("inbox_triage").select("bucket, needs_reply, created_at")
@@ -175,6 +225,9 @@ def read_ops_data() -> dict[str, Any]:
         "recurring": SUPABASE.table("recurring_costs").select("*").eq("active", True).execute().data,
         "leads": SUPABASE.table("leads").select("id, status, score, created_at, last_touch_at").execute().data,
         "deadlines": SUPABASE.table("deadlines").select("*").eq("status", "open").execute().data,
+        "contracts": SUPABASE.table("contracts")
+            .select("title, counterparty, kind, venture, product, status, sent_on, signed_on, ends_on, auto_renews, notice_days")
+            .in_("status", ["draft", "sent", "signed"]).execute().data,
         "facts": SUPABASE.table("selene_facts").select("fact").eq("active", True).execute().data,
     }
 

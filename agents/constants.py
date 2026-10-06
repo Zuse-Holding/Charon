@@ -15,19 +15,19 @@ from __future__ import annotations
 # Actions that change something outside our own database: send a message,
 # move money, touch a lead's status/contact history. Every one of these is
 # only ever *created* by propose_action, as a pending row — never executed
-# by anything in this codebase. The executor that actually sends/spends is
-# a human clicking Approve, or (Phase 3) a separate service triggered by
-# that approval. No agent tool performs the action itself.
-IRREVERSIBLE_ACTIONS = {"send_email", "add_ledger_entry", "contact_lead", "update_lead_status"}
+# by any agent tool. agents/executor.py carries out a row only after Nick
+# approves it on the dashboard; it's cron-run plain code the model can't
+# reach. No agent tool performs the action itself.
+IRREVERSIBLE_ACTIONS = {"send_email", "add_ledger_entry", "contact_lead", "update_lead_status", "send_invoice"}
 
 # Tool names (bare, i.e. without the mcp__selene-tools__ prefix Claude Code
 # adds) each job may call. Deny-by-default: a job gets nothing not listed
-# here. gmail_read isn't listed anywhere yet because no Gmail MCP server is
-# configured — see SELENE_OS_SPEC.md §8 / CLAUDE.md's "verify Gmail MCP
-# config" note. Once one exists, add its read-only tool name(s) to "inbox"
-# and "finance" below.
+# here. No job gets a Gmail tool: agents/gmail.py fetches mail in plain
+# Python (read-only token) and hands it to the model as untrusted data in
+# the prompt. Sending lives in agents/gmail_send.py, reachable only from
+# agents/executor.py after Nick approves.
 JOB_ALLOWLISTS: dict[str, set[str]] = {
-    "inbox":      {"record_triage", "propose_action", "delegate_to_charon", "remember_fact"},
+    "inbox":      {"record_triage", "propose_action", "flag_lead", "delegate_to_charon", "remember_fact"},
     "finance":    {"propose_action", "remember_fact"},
     "enrichment": {"delegate_to_charon", "save_enrichment", "propose_action"},
     "brief":      {"read_ops_data", "save_brief", "remember_fact"},
@@ -40,5 +40,5 @@ JOB_ALLOWLISTS: dict[str, set[str]] = {
 # propose_action's payload may *contain* one of those action_type values).
 ALL_TOOLS = {
     "propose_action", "record_triage", "save_enrichment", "remember_fact",
-    "read_ops_data", "save_brief", "delegate_to_charon",
+    "read_ops_data", "save_brief", "delegate_to_charon", "flag_lead",
 }
