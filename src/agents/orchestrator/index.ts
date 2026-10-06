@@ -33,6 +33,9 @@ import {
   WebArchiveSummary,
 } from "../../types/research.js";
 import { classifyOfficeType } from "../../lib/office-classifier.js";
+import { isEnabled } from "../../lib/flags.js";
+import { buildCompanyProvenance, buildPersonProvenance, type BuiltProvenance } from "../../lib/provenance/build.js";
+import { recordSnapshots, type Snapshot } from "../../lib/provenance/snapshots.js";
 import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
 
 /**
@@ -110,6 +113,20 @@ export class ResearchOrchestrator {
     // caller to feed into the Knowledge Graph. Not part of the report
     // itself, see littlesis-agent's doc comment.
     littleSisRelationships?: LittleSisRelationshipEntry[];
+    /** Raw source responses for the caller to store (provenance flag on). */
+    snapshots?: Snapshot[];
+  }> {
+    const { value, snapshots } = await recordSnapshots(isEnabled("provenance"), () =>
+      this.gatherCompany(companyName, proAccess, deep));
+    const { bundle, littleSisRelationships } = value;
+    const stored = attachProvenance(bundle, snapshots, buildCompanyProvenance);
+    const report = this.reportAgent.generate(bundle);
+    return { bundle, report, littleSisRelationships, snapshots: stored };
+  }
+
+  private async gatherCompany(companyName: string, proAccess: boolean, deep: boolean): Promise<{
+    bundle: ResearchBundle;
+    littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
     const [siteResult, newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
@@ -172,11 +189,8 @@ export class ResearchOrchestrator {
       bundle.opportunities = synthesis.opportunities;
     }
 
-    const report = this.reportAgent.generate(bundle);
-
     return {
       bundle,
-      report,
       littleSisRelationships: littleSisResult.relationships.length > 0 ? littleSisResult.relationships : undefined,
     };
   }
@@ -205,6 +219,19 @@ export class ResearchOrchestrator {
     report: string;
     // Charon/internal-only (deep) — see researchCompany's same field.
     littleSisRelationships?: LittleSisRelationshipEntry[];
+    snapshots?: Snapshot[];
+  }> {
+    const { value, snapshots } = await recordSnapshots(isEnabled("provenance"), () =>
+      this.gatherPerson(personName, deep, affiliation, proAccess));
+    const { bundle, littleSisRelationships } = value;
+    const stored = attachProvenance(bundle, snapshots, buildPersonProvenance);
+    const report = this.reportAgent.generatePerson(bundle);
+    return { bundle, report, littleSisRelationships, snapshots: stored };
+  }
+
+  private async gatherPerson(personName: string, deep: boolean, affiliation: string | undefined, proAccess: boolean): Promise<{
+    bundle: PersonResearchBundle;
+    littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
     const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult] = await Promise.all([
       this.peopleAgent.run(personName, deep, affiliation),
@@ -232,11 +259,8 @@ export class ResearchOrchestrator {
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
     };
 
-    const report = this.reportAgent.generatePerson(bundle);
-
     return {
       bundle,
-      report,
       littleSisRelationships: littleSisResult.relationships.length > 0 ? littleSisResult.relationships : undefined,
     };
   }
@@ -404,5 +428,26 @@ export class ResearchOrchestrator {
     const report = this.reportAgent.generatePolitical(bundle);
 
     return { bundle, report };
+  }
+}
+
+/**
+ * Builds and attaches provenance when the run was recorded. Provenance must
+ * never cost a user their report: if building it fails, the report ships
+ * without it and the error is logged.
+ */
+function attachProvenance<B extends { provenance?: BuiltProvenance["record"] }>(
+  bundle: B,
+  snapshots: Snapshot[] | null,
+  build: (b: B, s: Snapshot[]) => BuiltProvenance,
+): Snapshot[] | undefined {
+  if (!snapshots) return undefined;
+  try {
+    const built = build(bundle, snapshots);
+    bundle.provenance = built.record;
+    return built.snapshots;
+  } catch (err) {
+    console.error("[provenance] build failed; report continues without it:", err instanceof Error ? err.message : err);
+    return undefined;
   }
 }

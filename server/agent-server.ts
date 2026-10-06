@@ -25,6 +25,9 @@ import { upsertStatewideExecutives } from "../src/database/statewide-executives.
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { parsePersonQuery } from "../src/lib/nlp.js";
 import { withCostTracking } from "../src/lib/cost-tracking.js";
+import { persistProvenance } from "../src/lib/provenance/store.js";
+import type { Snapshot } from "../src/lib/provenance/snapshots.js";
+import type { ProvenanceRecord } from "../src/lib/provenance/build.js";
 import { trackEvent } from "../src/lib/analytics.js";
 import { sendEmail } from "../src/lib/email/send.js";
 import { welcomeEmail, capReachedEmail } from "../src/lib/email/copy.js";
@@ -712,6 +715,9 @@ app.post("/research", async (req, res) => {
     // as real Knowledge Graph edges once the run completes. Only company/
     // person research call LittleSis at all.
     let littleSisRelationships: LittleSisRelationshipEntry[] | undefined;
+    // Raw source responses, present only when FEATURE_PROVENANCE is on
+    // (company/person research). Stored after the report is saved.
+    let snapshots: Snapshot[] | undefined;
 
     const egg = findEasterEgg(subject);
 
@@ -742,11 +748,13 @@ app.post("/research", async (req, res) => {
         const result = await orchestrator.researchCompany(subject, proAccess, deep);
         bundle = result.bundle; report = result.report;
         littleSisRelationships = result.littleSisRelationships;
+        snapshots = result.snapshots;
         outPath = join(REPORTS_DIR, `${slugify(subject)}.md`);
       } else if (type === "person") {
         const result = await orchestrator.researchPerson(subject, deep, personAffiliation, proAccess);
         bundle = result.bundle; report = result.report;
         littleSisRelationships = result.littleSisRelationships;
+        snapshots = result.snapshots;
         outPath = join(REPORTS_DIR, "people", `${slugify(subject)}.md`);
       } else if (type === "political") {
         // Was a stub that silently ran regular person research and
@@ -796,6 +804,15 @@ app.post("/research", async (req, res) => {
     }
 
     res.json({ ok: true, runId, reportPath: outPath, tier, charon: config.charonProtocol });
+
+    // Provenance (Feature 2): store the raw responses and findings behind
+    // this report. Runs after the response so it never delays or fails it.
+    const provenance = (bundle as { provenance?: ProvenanceRecord }).provenance;
+    if (snapshots && provenance) {
+      persistProvenance(supabase, { userId, runId, snapshots, findings: provenance.findings })
+        .then((n) => console.log(`[provenance] run ${runId}: stored ${n.snapshots} snapshots, ${n.findings} findings`))
+        .catch((err) => console.error(`[provenance] run ${runId}: storing failed:`, err instanceof Error ? err.message : err));
+    }
 
     // Task 4.1 — priorLifetimeUsage was read before this run's row existed,
     // so 0 here means this run is the account's first ever (not just first

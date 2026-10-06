@@ -1,5 +1,104 @@
 "use client";
+import { isEnabled } from "../lib/flags";
 import styles from "./ReportViewer.module.css";
+
+// Provenance (Feature 2): the "Findings and Sources" section that
+// src/lib/provenance/render.ts writes, one finding per line:
+//   - [single_source] Leadership | Jane Doe — CEO | [acme.com](https://acme.com/team) | 2026-10-05 | ai_extracted
+// Change both files together.
+const PROVENANCE_TITLE = "Findings and Sources";
+const FINDING_LINE = /^\[(confirmed|single_source|unverified)\] (.+?) \| (.+?) \| \[(.+?)\]\((.+?)\) \| (\d{4}-\d{2}-\d{2}) \| (\w+)$/;
+
+type Verification = "confirmed" | "single_source" | "unverified";
+interface FindingRow {
+  verification: Verification;
+  section: string;
+  claim: string;
+  sourceName: string;
+  sourceUrl: string;
+  retrieved: string;
+  method: string;
+}
+
+// Symbol + words, never colour alone.
+const VERIFICATION_LABEL: Record<Verification, { label: string; symbol: string; className: string }> = {
+  confirmed: { label: "Confirmed", symbol: "✓", className: "fConfirmed" },
+  single_source: { label: "Single source", symbol: "●", className: "fSingle" },
+  unverified: { label: "Unverified", symbol: "!", className: "fUnverified" },
+};
+const METHOD_LABEL: Record<string, string> = {
+  api: "API", scrape: "Web page", manual_entry: "Manual entry", ai_extracted: "AI extracted",
+};
+
+function parseFindings(content: string[]): { summary: string; rows: FindingRow[] } {
+  const summary = (content.find((l) => l.trim().startsWith("_")) ?? "").trim().replace(/^_|_$/g, "");
+  const rows: FindingRow[] = [];
+  for (const line of content) {
+    const m = line.trim().replace(/^- /, "").match(FINDING_LINE);
+    if (m) {
+      rows.push({
+        verification: m[1] as Verification, section: m[2], claim: m[3], sourceName: m[4], sourceUrl: m[5],
+        retrieved: m[6], method: m[7],
+      });
+    }
+  }
+  return { summary, rows };
+}
+
+function csvCell(v: string): string {
+  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
+function downloadFindingsCsv(rows: FindingRow[]) {
+  const header = ["verification", "section", "finding", "source_name", "source_url", "retrieved_at", "retrieval_method"];
+  const body = rows.map((r) => [r.verification, r.section, r.claim, r.sourceName, r.sourceUrl, r.retrieved, r.method].map(csvCell).join(","));
+  const blob = new Blob([[header.join(","), ...body].join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "findings-and-sources.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ProvenanceSection({ content }: { content: string[] }) {
+  const { summary, rows } = parseFindings(content);
+  return (
+    <div className={styles.provenance}>
+      {summary && <p className={styles.provSummary}>{summary}</p>}
+      {rows.length > 0 && (
+        <>
+          <button type="button" className={styles.provCsv} onClick={() => downloadFindingsCsv(rows)}>
+            Download findings (CSV)
+          </button>
+          <details className={styles.provDetails}>
+            <summary>Show all {rows.length} findings with their sources</summary>
+            <table className={styles.provTable}>
+              <thead>
+                <tr><th>Status</th><th>Section</th><th>Finding</th><th>Source</th><th>Retrieved</th><th>Method</th></tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => {
+                  const v = VERIFICATION_LABEL[r.verification];
+                  return (
+                    <tr key={i}>
+                      <td data-label="Status"><span className={`${styles.fBadge} ${styles[v.className]}`}>{v.symbol} {v.label}</span></td>
+                      <td data-label="Section">{r.section}</td>
+                      <td data-label="Finding">{r.claim}</td>
+                      <td data-label="Source"><a href={r.sourceUrl} target="_blank" rel="noopener noreferrer">{r.sourceName} ↗</a></td>
+                      <td data-label="Retrieved" className={styles.provMono}>{r.retrieved}</td>
+                      <td data-label="Method">{METHOD_LABEL[r.method] ?? r.method}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </details>
+        </>
+      )}
+    </div>
+  );
+}
 
 interface ReportViewerProps {
   markdown: string;
@@ -121,6 +220,8 @@ function getPlainText(content: string[]): string {
 
 function renderSection(section: Section) {
   const { title, content } = section;
+
+  if (title === PROVENANCE_TITLE) return <ProvenanceSection content={content} />;
 
   if (isPlaceholder(content)) {
     return (
@@ -299,9 +400,17 @@ function renderSection(section: Section) {
 
 export default function ReportViewer({ markdown }: ReportViewerProps) {
   const sections = parseMarkdown(markdown);
+  // Reports from before per-finding provenance carry no Findings section:
+  // say so plainly rather than let them read as checked.
+  const legacy = isEnabled("provenance") && sections.length > 0 && !sections.some((s) => s.title === PROVENANCE_TITLE);
 
   return (
     <div className={styles.viewer}>
+      {legacy && (
+        <div className={styles.legacyBanner} role="note">
+          ! This report was created before Metis recorded a source for every finding. Treat its contents as unverified.
+        </div>
+      )}
       {sections.map((section, i) => {
         const { body, sourceLines, unverified } = splitOutSources(section.content);
         return (

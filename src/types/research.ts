@@ -1,3 +1,5 @@
+import type { ProvenanceRecord } from "../lib/provenance/build.js";
+
 // Core data models shared across agents.
 // These map directly to the spec's per-agent output shapes, plus a Source
 // type for citation tracking (built now so Sprint 2's citation engine has
@@ -190,6 +192,9 @@ export interface PersonResearchBundle {
   sanctionsMatches?: SanctionsMatch[];
   nonprofitFilings?: NonprofitFilingEntry[];
   powerMapConnections?: PowerMapEntry[];
+  /** Per-finding provenance (Feature 2). Present only when the
+   *  FEATURE_PROVENANCE flag was on for the run. */
+  provenance?: ProvenanceRecord;
 }
 
 // --- Deep Dive types ---
@@ -240,6 +245,9 @@ export interface ResearchBundle {
   webArchive?: WebArchiveSummary;
   nonprofitFilings?: NonprofitFilingEntry[];
   powerMapConnections?: PowerMapEntry[];
+  /** Per-finding provenance (Feature 2). Present only when the
+   *  FEATURE_PROVENANCE flag was on for the run. */
+  provenance?: ProvenanceRecord;
 }
 
 // --- Political research types (Round 2, item 1) ---
