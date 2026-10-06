@@ -21,6 +21,7 @@ import { runCreatorSnapshotAgent } from "../src/agents/creator-snapshot-agent/in
 import { runCreatorDiscoveryAgent, listCandidates, promoteCandidate, rejectCandidate } from "../src/agents/creator-discovery-agent/index.js";
 import { findEasterEgg } from "../src/easter-eggs/index.js";
 import { saveEntityExtraction, saveLittleSisRelationships } from "../src/database/knowledge-graph.js";
+import { recordsFromBundle } from "../src/lib/entities/records.js";
 import { upsertStatewideExecutives } from "../src/database/statewide-executives.js";
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { parsePersonQuery } from "../src/lib/nlp.js";
@@ -826,7 +827,10 @@ app.post("/research", async (req, res) => {
       const entityAgent = new EntityExtractionAgent();
       setTimeout(() => {
         entityAgent.extract(report, { name: subject, type })
-          .then((extraction) => saveEntityExtraction(userId, runId, extraction))
+          .then((extraction) => saveEntityExtraction(userId, runId, extraction, {
+            records: recordsFromBundle(bundle as Parameters<typeof recordsFromBundle>[0]),
+            subject: { name: subject, type },
+          }))
           .catch((err) => console.error("[entity-extraction] failed:", err));
       }, 3000);
     }
