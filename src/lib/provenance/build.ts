@@ -119,6 +119,11 @@ export function buildCompanyProvenance(b: ResearchBundle, snapshots: Snapshot[])
     c.push({ section: "Public Records", claim: `First archived ${b.webArchive.firstSnapshot.timestamp.slice(0, 8)}`,
       terms: [b.webArchive.firstSnapshot.timestamp], method: "api", recordUrl: b.webArchive.firstSnapshot.url, sourceName: "Internet Archive" });
   }
+  for (const d of b.domainPosture?.checks ?? []) {
+    if (d.status === "unknown") continue;
+    c.push({ section: "Domain Posture", claim: `${d.label}: ${clean(d.detail)}`, terms: [], method: "api",
+      recordUrl: d.sourceUrl, sourceName: d.sourceName, direct: true });
+  }
 
   const { findings, generated, untraceable } = traceFindings(c, snapshots, fallbackFrom(b.sources));
   return { record: summarize(findings, snapshots, untraceable), snapshots: [...snapshots, ...generated] };

@@ -141,6 +141,94 @@ function CoverageSection({ content, onRetry }: { content: string[]; onRetry?: ()
   );
 }
 
+// Domain posture (Feature 5): the "Domain Posture" section that
+// src/agents/domain-posture-agent/render.ts writes, one check per line:
+//   - [flag:medium] DMARC | No DMARC record. | Spoofed email ... | [Public DNS (_dmarc TXT)](https://...)
+// Change both files together.
+const POSTURE_TITLE = "Domain Posture";
+const POSTURE_LINE = /^\[(ok|info|unknown|flag:(?:high|medium|low))\] (.+?) \| (.+?) \| (.+?) \| \[(.+?)\]\((.+?)\)$/;
+
+interface PostureRow {
+  status: string;
+  severity?: "high" | "medium" | "low";
+  label: string;
+  detail: string;
+  impact?: string;
+  sourceName: string;
+  sourceUrl: string;
+}
+
+const SEVERITY_LABEL: Record<string, { label: string; className: string }> = {
+  high: { label: "High", className: "fError" },
+  medium: { label: "Medium", className: "fUnverified" },
+  low: { label: "Low", className: "fSingle" },
+};
+const POSTURE_STATUS: Record<string, { label: string; symbol: string; className: string }> = {
+  ok: { label: "OK", symbol: "✓", className: "fConfirmed" },
+  info: { label: "Info", symbol: "i", className: "fSingle" },
+  unknown: { label: "Unknown", symbol: "?", className: "fUnverified" },
+};
+
+function parsePosture(content: string[]): { summary: string; rows: PostureRow[] } {
+  const summary = (content.find((l) => l.trim().startsWith("_")) ?? "").trim().replace(/^_|_$/g, "");
+  const rows: PostureRow[] = [];
+  for (const line of content) {
+    const m = line.trim().replace(/^- /, "").match(POSTURE_LINE);
+    if (!m) continue;
+    const [status, severity] = m[1].split(":");
+    rows.push({
+      status, severity: severity as PostureRow["severity"], label: m[2], detail: m[3],
+      impact: m[4] === "-" ? undefined : m[4], sourceName: m[5], sourceUrl: m[6],
+    });
+  }
+  return { summary, rows };
+}
+
+const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 } as const;
+
+function PostureSection({ content }: { content: string[] }) {
+  const { summary, rows } = parsePosture(content);
+  const flags = rows.filter((r) => r.status === "flag")
+    .sort((a, b) => SEVERITY_ORDER[a.severity ?? "medium"] - SEVERITY_ORDER[b.severity ?? "medium"]);
+  const rest = rows.filter((r) => r.status !== "flag");
+  return (
+    <div className={styles.provenance}>
+      {summary && <p className={styles.provSummary}>{summary}</p>}
+      {flags.map((r, i) => {
+        const s = SEVERITY_LABEL[r.severity ?? "medium"];
+        return (
+          <div key={i} className={styles.postureFlag}>
+            <div className={styles.postureHead}>
+              <span className={`${styles.fBadge} ${styles[s.className]}`}>! {s.label}</span>
+              <span className={styles.postureLabel}>{r.label}</span>
+            </div>
+            <div className={styles.postureDetail}>{r.detail}</div>
+            {r.impact && <div className={styles.postureImpact}><strong>Why it matters:</strong> {r.impact}</div>}
+            <a href={r.sourceUrl} target="_blank" rel="noopener noreferrer" className={styles.postureSource}>{r.sourceName} ↗</a>
+          </div>
+        );
+      })}
+      {rest.length > 0 && (
+        <div className={styles.postureList}>
+          {rest.map((r, i) => {
+            const s = POSTURE_STATUS[r.status] ?? POSTURE_STATUS.unknown;
+            return (
+              <div key={i} className={styles.postureRow}>
+                <span className={`${styles.fBadge} ${styles[s.className]}`}>{s.symbol} {s.label}</span>
+                <span className={styles.postureLabel}>{r.label}</span>
+                <span className={styles.postureDetail}>
+                  {r.detail}{" "}
+                  <a href={r.sourceUrl} target="_blank" rel="noopener noreferrer" className={styles.postureSource}>{r.sourceName} ↗</a>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProvenanceSection({ content }: { content: string[] }) {
   const { summary, rows } = parseFindings(content);
   return (
@@ -305,6 +393,7 @@ function renderSection(section: Section, onRetry?: () => void) {
 
   if (title === PROVENANCE_TITLE) return <ProvenanceSection content={content} />;
   if (title === COVERAGE_TITLE) return <CoverageSection content={content} onRetry={onRetry} />;
+  if (title === POSTURE_TITLE) return <PostureSection content={content} />;
 
   if (isPlaceholder(content)) {
     return (

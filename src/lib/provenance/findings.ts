@@ -53,6 +53,10 @@ export interface Candidate {
   /** Direct link to the record when the source gave one. */
   recordUrl?: string;
   sourceName?: string;
+  /** The claim is a direct reading of the response fetched from
+   *  recordUrl (e.g. "no DMARC record" from a DNS answer), so that stored
+   *  response supports it even when no text in it can be matched. */
+  direct?: boolean;
 }
 
 // Search engines return other sites' snippets: useful evidence, but not an
@@ -126,6 +130,14 @@ export function searchResultLink(snapshot: Snapshot, terms: string[]): string | 
   return undefined;
 }
 
+function sameUrl(a: string, b: string): boolean {
+  try {
+    return new URL(a).toString() === new URL(b).toString();
+  } catch {
+    return a === b;
+  }
+}
+
 function httpUrl(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   try {
@@ -157,7 +169,11 @@ export function traceFindings(
     // so the finding falls back to the response that contains it.
     const c = { ...original, recordUrl: httpUrl(original.recordUrl) };
     const terms = c.terms.map(normalize).filter((t) => t.trim().length >= 2);
-    const matches = terms.length === 0 ? [] : usable.filter((_, i) => terms.every((t) => bodies[i].includes(t)));
+    let matches = terms.length === 0 ? [] : usable.filter((_, i) => terms.every((t) => bodies[i].includes(t)));
+    if (matches.length === 0 && c.direct && c.recordUrl) {
+      const own = usable.find((s) => sameUrl(s.url, c.recordUrl!));
+      if (own) matches = [own];
+    }
     const independent = new Set(matches.filter((s) => !SEARCH_HOSTS.includes(s.host)).map((s) => siteOf(s.host)));
     const verification: Verification =
       independent.size >= 2 ? "confirmed" : matches.length > 0 ? "single_source" : "unverified";

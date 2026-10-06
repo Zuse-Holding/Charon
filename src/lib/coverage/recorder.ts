@@ -142,7 +142,7 @@ export class CoverageRecorder {
    *  source is ever left out. */
   result(): CoverageEntry[] | undefined {
     if (!this.enabled) return undefined;
-    return sourcesFor(this.report).map((s) =>
+    return sourcesFor(this.report, this.env).map((s) =>
       this.entries.get(s.id) ??
       entry(s, "not_searched", this.query, {
         reason: s.reason ?? "Not searched in this report.",

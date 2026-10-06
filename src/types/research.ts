@@ -1,5 +1,6 @@
 import type { ProvenanceRecord } from "../lib/provenance/build.js";
 import type { CoverageEntry } from "../lib/coverage/recorder.js";
+import type { DomainPosture } from "../agents/domain-posture-agent/index.js";
 
 // Core data models shared across agents.
 // These map directly to the spec's per-agent output shapes, plus a Source
@@ -255,6 +256,9 @@ export interface ResearchBundle {
   /** One entry per source for this report type. Present only when the
    *  FEATURE_COVERAGE flag was on for the run. */
   coverage?: CoverageEntry[];
+  /** Passive domain check of the company website (Feature 5). Present
+   *  only when FEATURE_DOMAIN_POSTURE was on and a website was found. */
+  domainPosture?: DomainPosture;
 }
 
 // --- Political research types (Round 2, item 1) ---

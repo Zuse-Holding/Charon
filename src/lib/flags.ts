@@ -6,11 +6,12 @@
  *   FEATURE_PROVENANCE=on   per-finding provenance (Feature 2)
  *   FEATURE_COVERAGE=on     source coverage ledger (Feature 1)
  *   FEATURE_ENTITY_RESOLUTION=on  identifier-based entity resolution (Feature 3)
+ *   FEATURE_DOMAIN_POSTURE=on     passive domain posture check (Feature 5)
  *
  * Server-side only. The web app reads its own NEXT_PUBLIC_FEATURE_* copy
  * where the UI needs to know (see web/lib/flags.ts).
  */
-export type Flag = "provenance" | "coverage" | "entity_resolution";
+export type Flag = "provenance" | "coverage" | "entity_resolution" | "domain_posture";
 
 export function isEnabled(flag: Flag, env: Record<string, string | undefined> = process.env): boolean {
   const value = env[`FEATURE_${flag.toUpperCase()}`]?.trim().toLowerCase();
