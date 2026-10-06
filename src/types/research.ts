@@ -1,4 +1,5 @@
 import type { ProvenanceRecord } from "../lib/provenance/build.js";
+import type { CoverageEntry } from "../lib/coverage/recorder.js";
 
 // Core data models shared across agents.
 // These map directly to the spec's per-agent output shapes, plus a Source
@@ -195,6 +196,9 @@ export interface PersonResearchBundle {
   /** Per-finding provenance (Feature 2). Present only when the
    *  FEATURE_PROVENANCE flag was on for the run. */
   provenance?: ProvenanceRecord;
+  /** One entry per source for this report type. Present only when the
+   *  FEATURE_COVERAGE flag was on for the run. */
+  coverage?: CoverageEntry[];
 }
 
 // --- Deep Dive types ---
@@ -248,6 +252,9 @@ export interface ResearchBundle {
   /** Per-finding provenance (Feature 2). Present only when the
    *  FEATURE_PROVENANCE flag was on for the run. */
   provenance?: ProvenanceRecord;
+  /** One entry per source for this report type. Present only when the
+   *  FEATURE_COVERAGE flag was on for the run. */
+  coverage?: CoverageEntry[];
 }
 
 // --- Political research types (Round 2, item 1) ---

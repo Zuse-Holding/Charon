@@ -36,6 +36,7 @@ import { classifyOfficeType } from "../../lib/office-classifier.js";
 import { isEnabled } from "../../lib/flags.js";
 import { buildCompanyProvenance, buildPersonProvenance, type BuiltProvenance } from "../../lib/provenance/build.js";
 import { recordSnapshots, type Snapshot } from "../../lib/provenance/snapshots.js";
+import { CoverageRecorder } from "../../lib/coverage/recorder.js";
 import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
 
 /**
@@ -116,37 +117,61 @@ export class ResearchOrchestrator {
     /** Raw source responses for the caller to store (provenance flag on). */
     snapshots?: Snapshot[];
   }> {
+    const cov = new CoverageRecorder(isEnabled("coverage"), "company", companyName);
     const { value, snapshots } = await recordSnapshots(isEnabled("provenance"), () =>
-      this.gatherCompany(companyName, proAccess, deep));
+      this.gatherCompany(companyName, proAccess, deep, cov));
     const { bundle, littleSisRelationships } = value;
+    bundle.coverage = cov.result();
     const stored = attachProvenance(bundle, snapshots, buildCompanyProvenance);
     const report = this.reportAgent.generate(bundle);
     return { bundle, report, littleSisRelationships, snapshots: stored };
   }
 
-  private async gatherCompany(companyName: string, proAccess: boolean, deep: boolean): Promise<{
+  private async gatherCompany(companyName: string, proAccess: boolean, deep: boolean, cov: CoverageRecorder): Promise<{
     bundle: ResearchBundle;
     littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
     const [siteResult, newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
-        this.websiteAgent.run(companyName),
-        this.newsAgent.run(companyName),
-        this.competitorAgent.run(companyName),
-        this.corporateAgent.run(companyName),
+        cov.run("website", () => this.websiteAgent.run(companyName),
+          { company: { name: companyName }, leadership: [], products: [], sources: [] },
+          (r) => r.leadership.length + r.products.length + (r.company.description ? 1 : 0)),
+        cov.run("news", () => this.newsAgent.run(companyName), { news: [], sources: [] }, (r) => r.news.length),
+        cov.run("competitors", () => this.competitorAgent.run(companyName), { competitors: [], sources: [] }, (r) => r.competitors.length),
+        cov.run("sec", () => this.corporateAgent.run(companyName), { funding: [], insiderActivity: [], sources: [] },
+          (r) => r.funding.length + r.insiderActivity.length + (r.ownership ? 1 : 0)),
         // Free public API, no tier gating — every research run gets this.
-        this.usaSpendingAgent.run(companyName),
+        cov.run("usaspending", () => this.usaSpendingAgent.run(companyName), { awards: [], sources: [] }, (r) => r.awards.length),
       ]);
+
+    const website = siteResult.company.website;
+    const siteHost = website ? hostname(website) : undefined;
+    if (!proAccess) {
+      for (const id of ["sanctions", "nonprofits", "littlesis"]) cov.skip(id, "Included with Pro.");
+      cov.skip("wayback", "Included with Pro.", siteHost ?? companyName);
+    } else if (!website) {
+      cov.skip("wayback", "No company website was found to look up.");
+    }
 
     // Public-record fusion sources — Pro/Team+ only. Wayback needs a
     // resolved website URL, which only exists once siteResult is in, so
     // this batch runs after the first Promise.all rather than alongside it.
     const [sanctionsResult, waybackResult, nonprofitResult, littleSisResult] =
       await Promise.all([
-        proAccess ? this.sanctionsAgent.run(companyName) : Promise.resolve({ matches: [], sources: [] }),
-        proAccess && siteResult.company.website ? this.waybackAgent.run(siteResult.company.website) : Promise.resolve({ summary: {} as WebArchiveSummary, sources: [] }),
-        proAccess ? this.nonprofitAgent.run(companyName) : Promise.resolve({ organizations: [], sources: [] }),
-        proAccess ? this.littleSisAgent.run(companyName, "company", deep) : Promise.resolve({ matches: [], relationships: [], sources: [] }),
+        proAccess
+          ? cov.run("sanctions", () => this.sanctionsAgent.run(companyName), { matches: [], sources: [] }, (r) => r.matches.length)
+          : Promise.resolve({ matches: [], sources: [] }),
+        proAccess && website
+          ? cov.run("wayback", () => this.waybackAgent.run(website), { summary: {} as WebArchiveSummary, sources: [] },
+            (r) => r.summary.snapshotCount ?? 0, siteHost)
+          : Promise.resolve({ summary: {} as WebArchiveSummary, sources: [] }),
+        proAccess
+          ? cov.run("nonprofits", () => this.nonprofitAgent.run(companyName), { organizations: [], sources: [] }, (r) => r.organizations.length)
+          : Promise.resolve({ organizations: [], sources: [] }),
+        proAccess
+          ? cov.run("littlesis", () => this.littleSisAgent.run(companyName, "company", deep),
+            { matches: [], relationships: [], sources: [] }, (r) => r.matches.length)
+          : Promise.resolve({ matches: [], relationships: [], sources: [] }),
       ]);
 
     const sources: Source[] = [
@@ -221,25 +246,42 @@ export class ResearchOrchestrator {
     littleSisRelationships?: LittleSisRelationshipEntry[];
     snapshots?: Snapshot[];
   }> {
+    const cov = new CoverageRecorder(isEnabled("coverage"), "person", personName);
     const { value, snapshots } = await recordSnapshots(isEnabled("provenance"), () =>
-      this.gatherPerson(personName, deep, affiliation, proAccess));
+      this.gatherPerson(personName, deep, affiliation, proAccess, cov));
     const { bundle, littleSisRelationships } = value;
+    bundle.coverage = cov.result();
     const stored = attachProvenance(bundle, snapshots, buildPersonProvenance);
     const report = this.reportAgent.generatePerson(bundle);
     return { bundle, report, littleSisRelationships, snapshots: stored };
   }
 
-  private async gatherPerson(personName: string, deep: boolean, affiliation: string | undefined, proAccess: boolean): Promise<{
+  private async gatherPerson(personName: string, deep: boolean, affiliation: string | undefined, proAccess: boolean, cov: CoverageRecorder): Promise<{
     bundle: PersonResearchBundle;
     littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
+    if (!deep) for (const id of ["opencorporates", "muckrock"]) cov.skip(id, "Searched automatically on the Charon plan.");
+    if (!proAccess) for (const id of ["sanctions", "nonprofits", "littlesis"]) cov.skip(id, "Included with Pro.");
     const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult] = await Promise.all([
-      this.peopleAgent.run(personName, deep, affiliation),
-      deep ? this.openCorporatesAgent.run(personName) : Promise.resolve({ affiliations: [], sources: [] }),
-      deep ? this.muckRockAgent.run(personName) : Promise.resolve({ requests: [], sources: [] }),
-      proAccess ? this.sanctionsAgent.run(personName) : Promise.resolve({ matches: [], sources: [] }),
-      proAccess ? this.nonprofitAgent.run(personName) : Promise.resolve({ organizations: [], sources: [] }),
-      proAccess ? this.littleSisAgent.run(personName, "person", deep) : Promise.resolve({ matches: [], relationships: [], sources: [] }),
+      cov.run("people", () => this.peopleAgent.run(personName, deep, affiliation),
+        { person: { name: personName }, careerHistory: [], news: [], sources: [] },
+        (r) => r.careerHistory.length + r.news.length + (r.person.currentRole ? 1 : 0)),
+      deep
+        ? cov.run("opencorporates", () => this.openCorporatesAgent.run(personName), { affiliations: [], sources: [] }, (r) => r.affiliations.length)
+        : Promise.resolve({ affiliations: [], sources: [] }),
+      deep
+        ? cov.run("muckrock", () => this.muckRockAgent.run(personName), { requests: [], sources: [] }, (r) => r.requests.length)
+        : Promise.resolve({ requests: [], sources: [] }),
+      proAccess
+        ? cov.run("sanctions", () => this.sanctionsAgent.run(personName), { matches: [], sources: [] }, (r) => r.matches.length)
+        : Promise.resolve({ matches: [], sources: [] }),
+      proAccess
+        ? cov.run("nonprofits", () => this.nonprofitAgent.run(personName), { organizations: [], sources: [] }, (r) => r.organizations.length)
+        : Promise.resolve({ organizations: [], sources: [] }),
+      proAccess
+        ? cov.run("littlesis", () => this.littleSisAgent.run(personName, "person", deep),
+          { matches: [], relationships: [], sources: [] }, (r) => r.matches.length)
+        : Promise.resolve({ matches: [], relationships: [], sources: [] }),
     ]);
 
     const bundle: PersonResearchBundle = {
@@ -448,6 +490,14 @@ function attachProvenance<B extends { provenance?: BuiltProvenance["record"] }>(
     return built.snapshots;
   } catch (err) {
     console.error("[provenance] build failed; report continues without it:", err instanceof Error ? err.message : err);
+    return undefined;
+  }
+}
+
+function hostname(url: string): string | undefined {
+  try {
+    return new URL(url).hostname.replace(/^www[.]/, "");
+  } catch {
     return undefined;
   }
 }

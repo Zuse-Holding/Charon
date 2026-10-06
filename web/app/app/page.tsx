@@ -465,7 +465,10 @@ function Dashboard() {
                           </div>
                         ) : (
                           <ErrorBoundary>
-                            <ReportViewer markdown={report} />
+                            <ReportViewer
+                              markdown={report}
+                              onRetry={selected ? () => runSuggestion(selected.subject, selected.type as "company" | "person" | "product") : undefined}
+                            />
                             {selected && (
                               <ReportIssueForm
                                 runId={selected.id}
