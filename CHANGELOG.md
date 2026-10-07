@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Passive domain posture check (Feature 5): behind `FEATURE_DOMAIN_POSTURE`
+- Company reports gain a "Domain Posture" card for the company's website domain, built from public records only: the registry's RDAP record (found through IANA's bootstrap file), public DNS over HTTPS, and the certificate from one ordinary HTTPS handshake. No scanning or probing.
+- Flags: expiry within 90 days, registered to an individual, no transfer lock, SPF missing or ending in +all, DMARC missing or p=none, no CAA (low), certificate expiring within 30 days. Each flag carries a plain-English line on why it matters to a buyer. A privacy-protected registrant is reported as "registrant hidden", not flagged; a failed lookup is "unknown", never a flag.
+- Feeds the coverage ledger (as "Domain records") and provenance: each check is a finding linked to the stored registry or DNS response it was read from.
+- Setup: set `FEATURE_DOMAIN_POSTURE=on` on the agent server. No keys, no database change.
+
 ### Identifier-based entity resolution (Feature 3): behind `FEATURE_ENTITY_RESOLUTION`
 - Knowledge Graph entities merge only when they share a hard identifier: an EIN (from ProPublica nonprofit filings) or a state entity number together with its state (from OpenCorporates company links). Each identifier is stored with the source that supplied it.
 - A shared name alone never merges. The new entity is flagged as a possible match, with "Merge them" and "Keep separate" buttons; each decision is logged with who made it and when (`kg_match_reviews`).

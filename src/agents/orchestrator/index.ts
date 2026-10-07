@@ -16,6 +16,8 @@ import { SanctionsAgent } from "../sanctions-agent/index.js";
 import { WaybackAgent } from "../wayback-agent/index.js";
 import { ProPublicaNonprofitAgent } from "../propublica-nonprofit-agent/index.js";
 import { LittleSisAgent, LittleSisRelationshipEntry } from "../littlesis-agent/index.js";
+import { DomainPostureAgent } from "../domain-posture-agent/index.js";
+import { siteOf } from "../../lib/provenance/findings.js";
 import { synthesizeRisksOpportunities } from "../synthesis-agent/index.js";
 import { ReportAgent } from "../report-agent/index.js";
 import {
@@ -156,7 +158,12 @@ export class ResearchOrchestrator {
     // Public-record fusion sources — Pro/Team+ only. Wayback needs a
     // resolved website URL, which only exists once siteResult is in, so
     // this batch runs after the first Promise.all rather than alongside it.
-    const [sanctionsResult, waybackResult, nonprofitResult, littleSisResult] =
+    // Passive domain check (Feature 5): public records only, every plan.
+    const domain = siteHost ? siteOf(siteHost) : undefined;
+    const checkDomain = isEnabled("domain_posture");
+    if (checkDomain && !domain) cov.skip("domain", "No company website was found to check.");
+
+    const [sanctionsResult, waybackResult, nonprofitResult, littleSisResult, postureResult] =
       await Promise.all([
         proAccess
           ? cov.run("sanctions", () => this.sanctionsAgent.run(companyName), { matches: [], sources: [] }, (r) => r.matches.length)
@@ -172,6 +179,9 @@ export class ResearchOrchestrator {
           ? cov.run("littlesis", () => this.littleSisAgent.run(companyName, "company", deep),
             { matches: [], relationships: [], sources: [] }, (r) => r.matches.length)
           : Promise.resolve({ matches: [], relationships: [], sources: [] }),
+        checkDomain && domain
+          ? cov.run("domain", () => new DomainPostureAgent().run(domain), { sources: [] }, (r) => r.posture?.checks.length ?? 0, domain)
+          : Promise.resolve({ posture: undefined, sources: [] }),
       ]);
 
     const sources: Source[] = [
@@ -184,6 +194,7 @@ export class ResearchOrchestrator {
       ...waybackResult.sources,
       ...nonprofitResult.sources,
       ...littleSisResult.sources,
+      ...postureResult.sources,
     ];
 
     const bundle: ResearchBundle = {
@@ -203,6 +214,7 @@ export class ResearchOrchestrator {
       webArchive: waybackResult.summary.snapshotCount ? waybackResult.summary : undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
+      domainPosture: postureResult.posture,
     };
 
     // Risks/Opportunities is pure LLM synthesis with no heuristic

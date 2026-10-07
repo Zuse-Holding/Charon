@@ -234,6 +234,25 @@
 .fSingle { color: var(--cyan); }
 .fUnverified { color: var(--yellow); }
 .fError { color: var(--red); }
+
+/* Domain posture (Feature 5) */
+.postureFlag {
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;
+}
+.postureHead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.postureLabel { font-weight: 600; color: var(--text); }
+.postureDetail { color: var(--text); line-height: 1.5; }
+.postureImpact { color: var(--text); line-height: 1.5; }
+.postureImpact strong { color: var(--orange); font-weight: 600; }
+.postureSource { color: var(--cyan); text-decoration: none; font-size: 11.5px; overflow-wrap: break-word; }
+.postureSource:hover { text-decoration: underline; }
+.postureList { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+.postureRow { display: grid; grid-template-columns: max-content 140px 1fr; gap: 10px; align-items: baseline; }
+@media (max-width: 640px) {
+  .postureRow { grid-template-columns: max-content 1fr; }
+  .postureRow .postureDetail { grid-column: 1 / -1; }
+}
 .legacyBanner {
   border: 1px solid var(--yellow); color: var(--yellow); border-radius: 8px;
   padding: 10px 14px; font-size: 12.5px; margin-bottom: 20px;

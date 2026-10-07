@@ -1,6 +1,7 @@
 import { REPORT_DISCLAIMER } from "../../lib/disclaimer.js";
 import { pushProvenanceSection } from "../../lib/provenance/render.js";
 import { pushCoverageSection } from "../../lib/coverage/render.js";
+import { pushPostureSection } from "../domain-posture-agent/render.js";
 import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle, Source } from "../../types/research.js";
 
 /**
@@ -207,6 +208,7 @@ export class ReportAgent {
     // problem this task is fixing, so it's left as-is rather than also
     // getting a redundant Sources sub-list.
     this.pushPublicRecordsSection(lines, bundle);
+    pushPostureSection(lines, bundle.domainPosture);
     pushProvenanceSection(lines, bundle.provenance);
 
     this.pushFooter(lines);

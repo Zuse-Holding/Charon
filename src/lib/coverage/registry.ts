@@ -1,3 +1,5 @@
+import { isEnabled, type Flag } from "../flags.js";
+
 /**
  * Source registry for the coverage ledger (Feature 1). One entry per place
  * a report can look. Automated sources ("api") are run by the
@@ -11,7 +13,7 @@
 
 export const CATEGORIES = [
   "web", "news", "corporate filings", "courts", "liens", "sanctions",
-  "government contracts", "nonprofits", "relationships", "archives", "records requests",
+  "government contracts", "nonprofits", "relationships", "archives", "records requests", "domain records",
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 
@@ -35,6 +37,8 @@ export interface SourceDef {
   urlTemplate?: string;
   /** Why a deep_link source isn't searched automatically. */
   reason?: string;
+  /** Listed only while this feature flag is on. */
+  flag?: Flag;
 }
 
 const SERPER = "google.serper.dev";
@@ -70,6 +74,9 @@ export const SOURCES: SourceDef[] = [
   { id: "nonprofits", name: "ProPublica Nonprofit Explorer", jurisdiction: "US federal", category: "nonprofits", access: "api",
     reports: ["company", "person"], section: "Public Records", hosts: ["projects.propublica.org"],
     urlTemplate: "https://projects.propublica.org/nonprofits/search?q={q}" },
+  { id: "domain", name: "Domain records (RDAP, public DNS, TLS certificate)", jurisdiction: "Global", category: "domain records", access: "api",
+    reports: ["company"], section: "Domain Posture", hosts: ["data.iana.org", "cloudflare-dns.com"], flag: "domain_posture",
+    urlTemplate: "https://lookup.icann.org/en/lookup?name={q}" },
   { id: "littlesis", name: "LittleSis power map", jurisdiction: "US", category: "relationships", access: "api",
     reports: ["company", "person"], section: "Public Records", hosts: ["littlesis.org"],
     urlTemplate: "https://littlesis.org/search?q={q}" },
@@ -92,8 +99,8 @@ export const SOURCES: SourceDef[] = [
     urlTemplate: "https://bizfileonline.sos.ca.gov/search/ucc" },
 ];
 
-export function sourcesFor(report: ReportKind): SourceDef[] {
-  return SOURCES.filter((s) => s.reports.includes(report));
+export function sourcesFor(report: ReportKind, env: Record<string, string | undefined> = process.env): SourceDef[] {
+  return SOURCES.filter((s) => s.reports.includes(report) && (!s.flag || isEnabled(s.flag, env)));
 }
 
 export function sourceById(id: string): SourceDef {
