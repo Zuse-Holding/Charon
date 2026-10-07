@@ -38,10 +38,6 @@ export interface TierConfig {
   // validated on real cases. See the matching comment in
   // server/agent-server.ts's TierConfig.
   creatorAccess: boolean;
-  // Photo Identity Verification (1:1 face comparison) — Charon/internal-
-  // only, indefinitely (not a "for now" like creatorAccess above). See
-  // the matching comment in server/agent-server.ts's TierConfig.
-  identityVerificationAccess: boolean;
 }
 
 /** Basic-tier monthly quick-profile usage, from the billing-anniversary
@@ -113,7 +109,6 @@ const DEFAULT_CONFIG: TierConfig = {
   monthlyDeepDiveLimit: -1,
   publicRecordsAccess: false,
   creatorAccess: false,
-  identityVerificationAccess: false,
 };
 
 const TierContext = createContext<TierContextValue>({

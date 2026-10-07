@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "./server";
+import { createServerSupabaseClient, createServiceClient } from "./server";
 import { getAgentSecret } from "../agent-secret";
 import { trackEvent } from "../analytics";
 
@@ -91,11 +91,29 @@ export async function deleteRunForUser(id: string) {
   await supabase.from("kg_relationships").delete().eq("user_id", user.id).eq("source_run_id", id);
   await supabase.from("kg_entities").delete().eq("user_id", user.id).eq("source_run_id", id);
 
-  const { error } = await supabase
+  const { data: deleted, error } = await supabase
     .from("research_runs")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) throw error;
+  // findings/source_snapshots rows cascade with the run; the raw responses
+  // they point to live in storage and are removed here.
+  if (deleted && deleted.length > 0) await removeRunSnapshots(user.id, id);
+}
+
+/** Best-effort: a leftover object is unreachable (the bucket has no client
+ *  policies), so a failure here is logged, not raised. */
+async function removeRunSnapshots(userId: string, runId: string) {
+  try {
+    const storage = createServiceClient().storage.from("snapshots");
+    const prefix = `${userId}/${runId}`;
+    const { data } = await storage.list(prefix, { limit: 1000 });
+    const paths = (data ?? []).map((o: { name: string }) => `${prefix}/${o.name}`);
+    if (paths.length > 0) await storage.remove(paths);
+  } catch (err) {
+    console.error("[provenance] snapshot cleanup failed:", err instanceof Error ? err.message : err);
+  }
 }
 
 function normalizeRun(row: Record<string, unknown>) {

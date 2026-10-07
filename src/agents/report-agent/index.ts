@@ -1,3 +1,5 @@
+import { REPORT_DISCLAIMER } from "../../lib/disclaimer.js";
+import { pushProvenanceSection } from "../../lib/provenance/render.js";
 import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle, Source } from "../../types/research.js";
 
 /**
@@ -30,6 +32,13 @@ export class ReportAgent {
         lines.push(`${i + 1}. [${s.title ?? s.url}](${s.url})`);
       });
     }
+    lines.push(``);
+  }
+
+  /** Last section of every report type: the consumer-report disclaimer. */
+  private pushFooter(lines: string[]) {
+    lines.push(`## Disclaimer`);
+    lines.push(REPORT_DISCLAIMER);
     lines.push(``);
   }
 
@@ -196,35 +205,30 @@ export class ReportAgent {
     // problem this task is fixing, so it's left as-is rather than also
     // getting a redundant Sources sub-list.
     this.pushPublicRecordsSection(lines, bundle);
+    pushProvenanceSection(lines, bundle.provenance);
 
+    this.pushFooter(lines);
     return lines.join("\n");
   }
 
   /**
    * 7/20 public-record fusion sources (sanctions screening, Wayback
    * archive history, ProPublica nonprofit lookup, LittleSis power-
-   * mapping, ICIJ Offshore Leaks) — shared between company and person
+   * mapping) — shared between company and person
    * reports since every source but Wayback applies to both. Renders
    * nothing at all when none of the fields are present, so Basic/Free
    * reports (which never populate these) don't show an empty section.
-   *
-   * offshoreLeaksMatches is checked with `!== undefined` rather than
-   * `.length > 0` like the others — ICIJ (Charon-only) sets it to `[]`
-   * when it ran and found nothing above the relevance floor, vs.
-   * `undefined` when it never ran at all (see orchestrator's `deep`
-   * gate). That distinction is what lets the section below show an
-   * explicit "no matches" line instead of silently vanishing.
+
    */
   private pushPublicRecordsSection(
     lines: string[],
-    bundle: Pick<ResearchBundle, "sanctionsMatches" | "webArchive" | "nonprofitFilings" | "powerMapConnections" | "offshoreLeaksMatches">
+    bundle: Pick<ResearchBundle, "sanctionsMatches" | "webArchive" | "nonprofitFilings" | "powerMapConnections">
   ) {
     const hasAny =
       (bundle.sanctionsMatches && bundle.sanctionsMatches.length > 0) ||
       bundle.webArchive ||
       (bundle.nonprofitFilings && bundle.nonprofitFilings.length > 0) ||
-      (bundle.powerMapConnections && bundle.powerMapConnections.length > 0) ||
-      bundle.offshoreLeaksMatches !== undefined;
+      (bundle.powerMapConnections && bundle.powerMapConnections.length > 0);
     if (!hasAny) return;
 
     lines.push(`## Public Records`);
@@ -261,17 +265,6 @@ export class ReportAgent {
       lines.push(``);
     }
 
-    if (bundle.offshoreLeaksMatches !== undefined) {
-      lines.push(`**Offshore Leaks Database** _(possible matches — ICIJ reconciliation confidence score, not a confirmed hit)_`);
-      if (bundle.offshoreLeaksMatches.length === 0) {
-        lines.push(`- No offshore leaks matches found above the relevance threshold.`);
-      } else {
-        for (const o of bundle.offshoreLeaksMatches) {
-          lines.push(`- [${o.name}](${o.url})${o.entityType ? ` (${o.entityType})` : ""}${o.score !== undefined ? ` · score ${o.score}` : ""}`);
-        }
-      }
-      lines.push(``);
-    }
   }
 
   /**
@@ -384,7 +377,9 @@ export class ReportAgent {
     this.pushSectionSources(lines, bundle.sources, ["news"]);
 
     this.pushPublicRecordsSection(lines, bundle);
+    pushProvenanceSection(lines, bundle.provenance);
 
+    this.pushFooter(lines);
     return lines.join("\n");
   }
 
@@ -476,6 +471,7 @@ export class ReportAgent {
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["verdict"]);
 
+    this.pushFooter(lines);
     return lines.join("\n");
   }
 
@@ -661,6 +657,7 @@ export class ReportAgent {
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["news"]);
 
+    this.pushFooter(lines);
     return lines.join("\n");
   }
 
@@ -765,6 +762,7 @@ export class ReportAgent {
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["news"]);
 
+    this.pushFooter(lines);
     return lines.join("\n");
   }
 }

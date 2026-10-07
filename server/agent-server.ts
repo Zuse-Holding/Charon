@@ -15,7 +15,6 @@ import { OpenCorporatesAgent } from "../src/agents/opencorporates-agent/index.js
 import { OpenFecAgent } from "../src/agents/openfec-agent/index.js";
 import { CourtListenerAgent } from "../src/agents/courtlistener-agent/index.js";
 import { HandleResolverAgent } from "../src/agents/handle-resolver-agent/index.js";
-import { FaceVerifyAgent } from "../src/agents/face-verify-agent/index.js";
 import { LittleSisRelationshipEntry } from "../src/agents/littlesis-agent/index.js";
 import { MuckRockAgent } from "../src/agents/muckrock-agent/index.js";
 import { runCreatorSnapshotAgent } from "../src/agents/creator-snapshot-agent/index.js";
@@ -26,6 +25,9 @@ import { upsertStatewideExecutives } from "../src/database/statewide-executives.
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { parsePersonQuery } from "../src/lib/nlp.js";
 import { withCostTracking } from "../src/lib/cost-tracking.js";
+import { persistProvenance } from "../src/lib/provenance/store.js";
+import type { Snapshot } from "../src/lib/provenance/snapshots.js";
+import type { ProvenanceRecord } from "../src/lib/provenance/build.js";
 import { trackEvent } from "../src/lib/analytics.js";
 import { sendEmail } from "../src/lib/email/send.js";
 import { welcomeEmail, capReachedEmail } from "../src/lib/email/copy.js";
@@ -36,12 +38,10 @@ const PORT = process.env.PORT ?? process.env.AGENT_PORT ?? 4000;
 
 const ALLOWED_ORIGIN = process.env.FRONTEND_URL ?? "http://localhost:3000";
 app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
-// 12mb (not the default 100kb) so /person-research/verify-photo's base64-
-// encoded photo uploads (up to 5MB raw each, per Rekognition's own inline-
-// image limit — base64 inflates that ~33%) don't 413 before ever reaching
-// the route's own size check. No other route sends a body remotely this
-// large; this is a safe app-wide cap, not a route-specific carve-out.
-app.use(express.json({ limit: "12mb" }));
+// 1mb (express's default is 100kb). The 12mb cap existed only for photo
+// uploads to the removed face-comparison route; no route sends bodies
+// anywhere near 1mb.
+app.use(express.json({ limit: "1mb" }));
 
 // Refuses to start rather than silently falling back to the well-known
 // default that used to live here — that default was committed in this
@@ -137,8 +137,7 @@ interface TierConfig {
   // 7/20 public-record fusion sources (sanctions screening, Wayback
   // archive history, ProPublica nonprofit lookup, LittleSis power-
   // mapping) — Pro/Team+ per the roadmap ask; Basic/Free don't get
-  // these. Separate from charonProtocol, which gates the further-still
-  // ICIJ Offshore Leaks source on top of this.
+  // these. Separate from charonProtocol (internal only).
   publicRecordsAccess: boolean;
   // Creator / market-signal research (docs/next-verticals-scoping.md
   // item #1, general v1) — Charon/internal-only for now while output
@@ -147,14 +146,6 @@ interface TierConfig {
   // radius than a paid-tier upsell before it's been proven out). Revisit
   // once it's been run against enough real names to trust the signal.
   creatorAccess: boolean;
-  // Photo Identity Verification (1:1 face comparison via AWS Rekognition,
-  // src/agents/face-verify-agent) — Charon/internal-only, same posture as
-  // personResearchAccess/muckrockAccess: a standalone on-demand tool, not
-  // part of the automatic research bundle. Not a Pro/Team upsell candidate
-  // — this stays internal-only indefinitely, not just "for now" like
-  // creatorAccess above, given what it processes (see the agent's doc
-  // comment on why this is deliberately narrow).
-  identityVerificationAccess: boolean;
 }
 
 // Phase 1 fair-use soft caps — env-configurable per the spec, rather than
@@ -166,31 +157,31 @@ const RATE_LIMIT_FREE_PER_HOUR = Number(process.env.RATE_LIMIT_FREE_PER_HOUR ?? 
 const RATE_LIMIT_PAID_PER_HOUR = Number(process.env.RATE_LIMIT_PAID_PER_HOUR ?? 30);
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true, identityVerificationAccess: true },
+  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
   // Team is not sold (Phase 1 task 1.6) — left exactly as-is otherwise;
   // may be relabeled/reworked once the multi-seat workspace feature
   // (docs/team-features-scoping.md) actually exists.
-  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false, identityVerificationAccess: false },
+  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false },
   // Pro: quick-profile and Deep Dive caps are both monthly fair-use soft
   // caps now, not unlimited/daily — dailyDeepDiveLimit set to -1 since
   // monthlyDeepDiveLimit replaces it for this tier specifically.
-  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: PRO_MONTHLY_RESEARCH_LIMIT, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: PRO_MONTHLY_DEEP_DIVE_LIMIT, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false, identityVerificationAccess: false },
+  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: PRO_MONTHLY_RESEARCH_LIMIT, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: PRO_MONTHLY_DEEP_DIVE_LIMIT, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false },
   // Basic: PDF export added (Phase 1 task 1.6 — was withheld before).
-  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: true, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: false, creatorAccess: false, identityVerificationAccess: false },
+  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: true, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: false, creatorAccess: false },
   // Free (Phase 1): the real default for new signups now (see getUserTier
   // below) — 3 quick profiles LIFETIME, not recurring, hence
   // dailyResearchLimit/monthlyResearchLimit both -1 here and the cap
   // living entirely in lifetimeResearchLimit. 1 watchlist entity, no
   // Deep Dive, no export.
-  free:     { dailyResearchLimit: -1, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 1, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: 3, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_FREE_PER_HOUR, publicRecordsAccess: false, creatorAccess: false, identityVerificationAccess: false },
+  free:     { dailyResearchLimit: -1, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 1, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: 3, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_FREE_PER_HOUR, publicRecordsAccess: false, creatorAccess: false },
   // Time-boxed tier for external demo/partner accounts (limited partners,
   // investor trials, etc). Deliberately mirrors "team" limits and features
   // so the demo shows the platform at full strength — the ONLY things it
-  // withholds are politicalAccess, creatorAccess, charonProtocol, and
-  // identityVerificationAccess, which stay off regardless of what tier
+  // withholds are politicalAccess, creatorAccess and charonProtocol,
+  // which stay off regardless of what tier
   // gets requested for these accounts. Expiry enforced via
   // profiles.trial_expires_at, checked in getUserTier below.
-  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false, identityVerificationAccess: false },
+  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false },
 };
 
 /**
@@ -246,7 +237,6 @@ const EXPIRED_CONFIG: TierConfig = {
   monthlyResearchLimit: 0, lifetimeResearchLimit: 0, monthlyDeepDiveLimit: 0,
   hourlyResearchLimit: 0,
   publicRecordsAccess: false, creatorAccess: false,
-  identityVerificationAccess: false,
 };
 
 function getTierConfig(tier: Tier | "expired"): TierConfig {
@@ -297,34 +287,6 @@ async function logPersonSearch(userId: string, subject: string, ipAddress?: stri
   });
   if (error) {
     console.error("[person-search-audit] insert error:", JSON.stringify(error));
-  }
-}
-
-/**
- * Identity Verification audit log — every /person-research/verify-photo
- * call gets one row, success or failure, same "log the request itself,
- * not just the outcome" posture as logPersonSearch below. Deliberately
- * stores no image bytes (there's no column for them) — just enough to
- * answer "who ran a comparison, on what, when" if this ever needs
- * review. See supabase/schema.sql's identity_verification_audit table.
- */
-async function logIdentityVerification(
-  userId: string,
-  subjectName: string | null,
-  match: boolean,
-  confidence: number | undefined,
-  ipAddress?: string
-) {
-  const { error } = await supabase.from("identity_verification_audit").insert({
-    id: randomUUID(),
-    user_id: userId,
-    subject_name: subjectName,
-    match,
-    confidence: confidence ?? null,
-    ip_address: ipAddress ?? null,
-  });
-  if (error) {
-    console.error("[identity-verification-audit] insert error:", JSON.stringify(error));
   }
 }
 
@@ -753,6 +715,9 @@ app.post("/research", async (req, res) => {
     // as real Knowledge Graph edges once the run completes. Only company/
     // person research call LittleSis at all.
     let littleSisRelationships: LittleSisRelationshipEntry[] | undefined;
+    // Raw source responses, present only when FEATURE_PROVENANCE is on
+    // (company/person research). Stored after the report is saved.
+    let snapshots: Snapshot[] | undefined;
 
     const egg = findEasterEgg(subject);
 
@@ -771,9 +736,8 @@ app.post("/research", async (req, res) => {
       const orchestrator = new ResearchOrchestrator();
       // Charon Protocol (internal tier only): deeper sourcing on person/
       // political research, on top of the unlimited quotas internal
-      // already gets everywhere else in this file. Also gates the ICIJ
-      // Offshore Leaks source (7/20 public-record fusion) on company/
-      // person reports, and LittleSis relationship-pulling below.
+      // already gets everywhere else in this file. Also gates LittleSis
+      // relationship-pulling below.
       const deep = tier === "internal";
       // 7/20 public-record fusion — sanctions screening, Wayback archive
       // history, ProPublica nonprofit lookup, LittleSis power-mapping.
@@ -784,11 +748,13 @@ app.post("/research", async (req, res) => {
         const result = await orchestrator.researchCompany(subject, proAccess, deep);
         bundle = result.bundle; report = result.report;
         littleSisRelationships = result.littleSisRelationships;
+        snapshots = result.snapshots;
         outPath = join(REPORTS_DIR, `${slugify(subject)}.md`);
       } else if (type === "person") {
         const result = await orchestrator.researchPerson(subject, deep, personAffiliation, proAccess);
         bundle = result.bundle; report = result.report;
         littleSisRelationships = result.littleSisRelationships;
+        snapshots = result.snapshots;
         outPath = join(REPORTS_DIR, "people", `${slugify(subject)}.md`);
       } else if (type === "political") {
         // Was a stub that silently ran regular person research and
@@ -838,6 +804,15 @@ app.post("/research", async (req, res) => {
     }
 
     res.json({ ok: true, runId, reportPath: outPath, tier, charon: config.charonProtocol });
+
+    // Provenance (Feature 2): store the raw responses and findings behind
+    // this report. Runs after the response so it never delays or fails it.
+    const provenance = (bundle as { provenance?: ProvenanceRecord }).provenance;
+    if (snapshots && provenance) {
+      persistProvenance(supabase, { userId, runId, snapshots, findings: provenance.findings })
+        .then((n) => console.log(`[provenance] run ${runId}: stored ${n.snapshots} snapshots, ${n.findings} findings`))
+        .catch((err) => console.error(`[provenance] run ${runId}: storing failed:`, err instanceof Error ? err.message : err));
+    }
 
     // Task 4.1 — priorLifetimeUsage was read before this run's row existed,
     // so 0 here means this run is the account's first ever (not just first
@@ -1128,79 +1103,6 @@ app.post("/creator-discovery/review", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[creator-discovery/review] Error:", message);
-    res.status(500).json({ error: message });
-  }
-});
-
-const MAX_VERIFY_IMAGE_BYTES = 5 * 1024 * 1024; // Rekognition's own limit for inline (Bytes) images
-
-/**
- * Accepts either a raw base64 string or a `data:image/...;base64,...`
- * data URL (what browser FileReader.readAsDataURL produces, which is
- * what IdentityVerifyModal sends) and returns decoded bytes, or null if
- * it's missing, malformed, or over Rekognition's 5MB inline-image cap.
- */
-function decodeUploadedImage(raw: unknown): Uint8Array | null {
-  if (typeof raw !== "string" || raw.length === 0) return null;
-  const base64 = raw.startsWith("data:") ? raw.slice(raw.indexOf(",") + 1) : raw;
-  try {
-    const bytes = Buffer.from(base64, "base64");
-    if (bytes.length === 0 || bytes.length > MAX_VERIFY_IMAGE_BYTES) return null;
-    return bytes;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Photo Identity Verification (Charon) — 1:1 face comparison between two
- * photos an analyst uploads directly (not URLs — see
- * IdentityVerifyModal), to check whether they're the same person. Whole
- * endpoint 403s below internal tier, same posture as /person-research/deep
- * and /muckrock/search: there's no reduced version of this for other
- * tiers. Every call is logged to identity_verification_audit regardless
- * of outcome — see logIdentityVerification and the doc comment on
- * FaceVerifyAgent for why this stays narrow (no crawling, no storage of
- * the images themselves, no bulk mode).
- */
-app.post("/person-research/verify-photo", async (req, res) => {
-  if (!authCheck(req, res)) return;
-
-  const { userId, subjectName, imageA, imageB } = req.body;
-  if (!userId || !imageA || !imageB) {
-    res.status(400).json({ error: "userId, imageA, and imageB required" });
-    return;
-  }
-
-  const tier = await getUserTier(userId);
-  if (tier !== "internal") {
-    return tierDenied(res, "Photo Identity Verification is a Charon-tier feature.", undefined, { userId, cap: "charon_identity_verification" });
-  }
-
-  const bytesA = decodeUploadedImage(imageA);
-  const bytesB = decodeUploadedImage(imageB);
-  if (!bytesA || !bytesB) {
-    res.status(400).json({ error: "Both photos must be a valid image under 5MB (JPEG or PNG)." });
-    return;
-  }
-
-  try {
-    const result = await new FaceVerifyAgent().run(bytesA, bytesB);
-
-    const ipAddress = (req.headers["x-forwarded-for"] as string) ?? req.socket.remoteAddress;
-    logIdentityVerification(userId, subjectName ?? null, result.match, result.confidence, ipAddress).catch((err) =>
-      console.error("[identity-verification-audit] failed:", err)
-    );
-
-    res.json({
-      generatedAt: new Date().toISOString(),
-      match: result.match,
-      confidence: result.confidence,
-      notes: result.notes,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : JSON.stringify(err);
-    console.error("[person-research/verify-photo] Error:", message);
     res.status(500).json({ error: message });
   }
 });

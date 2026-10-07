@@ -264,37 +264,6 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notification_preferences JSONB NOT
   DEFAULT '{"watchlistRefresh": true, "weeklyDigest": false, "productUpdates": true}'::jsonb;
 
 -- ============================================================
--- Identity Verification audit (Charon-only, src/agents/face-verify-agent)
--- Mirrors person_search_audit's shape/intent (that table's own CREATE
--- TABLE isn't captured in this file either — see the "Auto-create
--- profiles row on signup" block above for why). One row per
--- /person-research/verify-photo call, success or failure, so there's a
--- record of who ran a face comparison and when — deliberately NO column
--- for the photos themselves; see FaceVerifyAgent's doc comment for why
--- this tool never persists the images it compares.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS identity_verification_audit (
-  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  subject_name TEXT,
-  match        BOOLEAN     NOT NULL,
-  confidence   NUMERIC,
-  ip_address   TEXT,
-  created_at   TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE identity_verification_audit ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users manage own identity verification audit rows"
-  ON identity_verification_audit FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE INDEX IF NOT EXISTS idx_identity_verification_audit_user_date
-  ON identity_verification_audit (user_id, created_at DESC);
-
--- ============================================================
 -- Creator snapshot tracking (creator-snapshot-agent)
 -- `creators` isn't captured elsewhere in this file either (see the
 -- "Auto-create profiles row on signup" block above for why that keeps
@@ -531,3 +500,85 @@ CREATE INDEX IF NOT EXISTS idx_report_issues_user_date
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS day7_email_sent_at TIMESTAMPTZ;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_cap_reached_email_at TIMESTAMPTZ;
+
+-- ============================================================
+-- Retire Photo Identity Verification (2026-10-05)
+-- The face-comparison tool and its audit log were removed: biometric
+-- matching is out of scope for Metis (provenance & trust spec). Run once
+-- in the Supabase SQL editor; this deletes the audit rows.
+-- ============================================================
+
+DROP TABLE IF EXISTS identity_verification_audit;
+
+-- ============================================================
+-- Provenance on every finding (Feature 2), 2026-10-05
+-- Every finding in a company or person report records where it came from:
+-- the source and link, when it was retrieved, how (api / scrape /
+-- manual_entry / ai_extracted), the SHA-256 of the raw response, and
+-- whether two independent sources agree (confirmed / single_source /
+-- unverified). Raw responses live in the private "snapshots" bucket at
+-- {user_id}/{run_id}/{sha256}; the app writes them with the service role.
+--
+-- Required fields are NOT NULL and checked here as well as in code
+-- (src/lib/provenance/findings.ts), so no path can store a finding
+-- without a source URL or retrieval time.
+--
+-- Written only while FEATURE_PROVENANCE=on on the research server. Run
+-- this block BEFORE turning that flag on. Reports created before it have
+-- no findings rows and are shown as unverified.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS source_snapshots (
+  run_id        UUID        NOT NULL REFERENCES research_runs(id) ON DELETE CASCADE,
+  sha256        TEXT        NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+  user_id       UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  url           TEXT        NOT NULL CHECK (length(url) > 0),
+  host          TEXT        NOT NULL,
+  retrieved_at  TIMESTAMPTZ NOT NULL,
+  status        INTEGER     NOT NULL,
+  content_type  TEXT,
+  bytes         INTEGER     NOT NULL CHECK (bytes >= 0),
+  -- true = a stand-in record of what an AI step produced, for a claim no
+  -- fetched response contained
+  generated     BOOLEAN     NOT NULL DEFAULT false,
+  storage_path  TEXT        NOT NULL,
+  PRIMARY KEY (run_id, sha256)
+);
+
+CREATE TABLE IF NOT EXISTS findings (
+  id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id             UUID        NOT NULL REFERENCES research_runs(id) ON DELETE CASCADE,
+  user_id            UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  section            TEXT        NOT NULL CHECK (length(section) > 0),
+  claim              TEXT        NOT NULL CHECK (length(claim) > 0),
+  source_name        TEXT        NOT NULL CHECK (length(source_name) > 0),
+  source_url         TEXT        NOT NULL CHECK (source_url ~ '^https?://'),
+  retrieved_at       TIMESTAMPTZ NOT NULL,
+  retrieval_method   TEXT        NOT NULL CHECK (retrieval_method IN ('api', 'scrape', 'manual_entry', 'ai_extracted')),
+  snapshot_hash      TEXT        NOT NULL CHECK (snapshot_hash ~ '^[0-9a-f]{64}$'),
+  verification       TEXT        NOT NULL CHECK (verification IN ('confirmed', 'single_source', 'unverified')),
+  supporting_hashes  TEXT[]      NOT NULL DEFAULT '{}',
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- a finding's snapshot must exist for the same run
+  FOREIGN KEY (run_id, snapshot_hash) REFERENCES source_snapshots (run_id, sha256) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_findings_run ON findings (run_id);
+CREATE INDEX IF NOT EXISTS idx_source_snapshots_user ON source_snapshots (user_id);
+
+ALTER TABLE source_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE findings         ENABLE ROW LEVEL SECURITY;
+
+-- Read-only for the owner; only the service role writes.
+DROP POLICY IF EXISTS "Users read own source snapshots" ON source_snapshots;
+CREATE POLICY "Users read own source snapshots"
+  ON source_snapshots FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users read own findings" ON findings;
+CREATE POLICY "Users read own findings"
+  ON findings FOR SELECT USING (auth.uid() = user_id);
+
+-- Private bucket, no client policies: raw responses are reachable only
+-- through the service role.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('snapshots', 'snapshots', false)
+ON CONFLICT (id) DO UPDATE SET public = false;

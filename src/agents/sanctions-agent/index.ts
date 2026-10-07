@@ -18,7 +18,7 @@ import { SanctionsMatch, Source } from "../../types/research.js";
  * A match here is not an accusation — sanctions lists include historical/
  * delisted entries and name collisions happen constantly (common names,
  * transliteration variants). Always surfaced as "possible sanctions list
- * match," never asserted as fact — same posture as icij-agent.
+ * match," never asserted as fact.
  */
 
 const CSL_BASE = "https://api.trade.gov/consolidated_screening_list/search";

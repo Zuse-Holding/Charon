@@ -1,3 +1,5 @@
+import type { ProvenanceRecord } from "../lib/provenance/build.js";
+
 // Core data models shared across agents.
 // These map directly to the spec's per-agent output shapes, plus a Source
 // type for citation tracking (built now so Sprint 2's citation engine has
@@ -186,12 +188,13 @@ export interface PersonResearchBundle {
   sources: Source[];
   corporateAffiliations?: CorporateAffiliationEntry[];
   foiaRequests?: FoiaRequestEntry[];
-  // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess),
-  // except offshoreLeaksMatches which is Charon/internal-only (deep mode).
+  // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess).
   sanctionsMatches?: SanctionsMatch[];
   nonprofitFilings?: NonprofitFilingEntry[];
   powerMapConnections?: PowerMapEntry[];
-  offshoreLeaksMatches?: OffshoreLeakMatch[];
+  /** Per-finding provenance (Feature 2). Present only when the
+   *  FEATURE_PROVENANCE flag was on for the run. */
+  provenance?: ProvenanceRecord;
 }
 
 // --- Deep Dive types ---
@@ -237,13 +240,14 @@ export interface ResearchBundle {
   opportunities?: string[];
   federalSpending?: FederalSpendingEntry[];
   insiderActivity?: Form4Entry[];
-  // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess),
-  // except offshoreLeaksMatches which is Charon/internal-only.
+  // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess).
   sanctionsMatches?: SanctionsMatch[];
   webArchive?: WebArchiveSummary;
   nonprofitFilings?: NonprofitFilingEntry[];
   powerMapConnections?: PowerMapEntry[];
-  offshoreLeaksMatches?: OffshoreLeakMatch[];
+  /** Per-finding provenance (Feature 2). Present only when the
+   *  FEATURE_PROVENANCE flag was on for the run. */
+  provenance?: ProvenanceRecord;
 }
 
 // --- Political research types (Round 2, item 1) ---
@@ -479,23 +483,6 @@ export interface PowerMapEntry {
 
 export interface LittleSisAgentResult {
   matches: PowerMapEntry[];
-  sources: Source[];
-}
-
-// --- ICIJ Offshore Leaks (7/20 public-record fusion) — Charon-tier only.
-// Reconciliation API match candidates against Pandora/Paradise/Panama/
-// Bahamas/Offshore Leaks. No key required, but these are fuzzy-match
-// candidates, not confirmed hits — always presented as "possible
-// matches," never asserted as fact. See src/agents/icij-agent.
-export interface OffshoreLeakMatch {
-  name: string;
-  entityType?: string;   // reconciliation schema type: Entity/Officer/Intermediary/Address/Other
-  score?: number;         // reconciliation API match confidence, 0-100
-  url: string;
-}
-
-export interface IcijAgentResult {
-  matches: OffshoreLeakMatch[];
   sources: Source[];
 }
 
