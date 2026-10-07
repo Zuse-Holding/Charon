@@ -7,11 +7,12 @@
  *   FEATURE_COVERAGE=on     source coverage ledger (Feature 1)
  *   FEATURE_ENTITY_RESOLUTION=on  identifier-based entity resolution (Feature 3)
  *   FEATURE_DOMAIN_POSTURE=on     passive domain posture check (Feature 5)
+ *   FEATURE_SELF_EXCLUSION=on     self-exclusion list (Feature 6)
  *
  * Server-side only. The web app reads its own NEXT_PUBLIC_FEATURE_* copy
  * where the UI needs to know (see web/lib/flags.ts).
  */
-export type Flag = "provenance" | "coverage" | "entity_resolution" | "domain_posture";
+export type Flag = "provenance" | "coverage" | "entity_resolution" | "domain_posture" | "self_exclusion";
 
 export function isEnabled(flag: Flag, env: Record<string, string | undefined> = process.env): boolean {
   const value = env[`FEATURE_${flag.toUpperCase()}`]?.trim().toLowerCase();

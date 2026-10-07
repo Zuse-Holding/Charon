@@ -22,6 +22,7 @@ import { runCreatorDiscoveryAgent, listCandidates, promoteCandidate, rejectCandi
 import { findEasterEgg } from "../src/easter-eggs/index.js";
 import { saveEntityExtraction, saveLittleSisRelationships } from "../src/database/knowledge-graph.js";
 import { recordsFromBundle } from "../src/lib/entities/records.js";
+import { notAvailable, registerExclusionRoutes, searchBlocked } from "./exclusion-routes.js";
 import { upsertStatewideExecutives } from "../src/database/statewide-executives.js";
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { parsePersonQuery } from "../src/lib/nlp.js";
@@ -586,6 +587,11 @@ app.post("/research", async (req, res) => {
     personAffiliation = parsed.affiliation;
   }
 
+  // Self-exclusion (Feature 6): a search naming an excluded email, phone
+  // or name + date of birth gets a neutral answer, before anything is
+  // counted or logged.
+  if (await searchBlocked(supabase, rawSubject)) return notAvailable(res);
+
   const tier = await getUserTier(userId);
   const config = getTierConfig(tier);
 
@@ -896,6 +902,7 @@ app.post("/person-research/deep", async (req, res) => {
     res.status(400).json({ error: "userId and name required" });
     return;
   }
+  if (await searchBlocked(supabase, name)) return notAvailable(res);
 
   const tier = await getUserTier(userId);
   if (tier !== "internal") {
@@ -948,6 +955,7 @@ app.post("/muckrock/search", async (req, res) => {
     res.status(400).json({ error: "userId and query required" });
     return;
   }
+  if (await searchBlocked(supabase, query)) return notAvailable(res);
 
   const tier = await getUserTier(userId);
   if (tier !== "internal") {
@@ -1119,6 +1127,7 @@ app.post("/deep-dive", async (req, res) => {
     res.status(400).json({ error: "company and userId required" });
     return;
   }
+  if (await searchBlocked(supabase, company)) return notAvailable(res);
 
   const tier = await getUserTier(userId);
   const config = getTierConfig(tier);
@@ -1491,5 +1500,7 @@ app.post("/admin/statewide-executives/refresh", async (req, res) => {
 });
 
 app.get("/health", (_, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));
+
+registerExclusionRoutes(app, { supabase, authCheck, getUserTier, checkHourlyBucket, frontendUrl: ALLOWED_ORIGIN });
 
 app.listen(PORT, () => { console.log(`SELINE Agent Server running on port ${PORT}`); });

@@ -697,3 +697,33 @@ $$;
 
 REVOKE ALL ON FUNCTION kg_decide_match(UUID, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION kg_decide_match(UUID, TEXT) TO authenticated;
+
+-- ============================================================
+-- Self-exclusion list (Feature 6): run before FEATURE_SELF_EXCLUSION.
+-- Identifiers are stored only as keyed hashes (HMAC-SHA256 with
+-- EXCLUSION_HASH_KEY on the agent server). Service role only: no client
+-- policies, so the browser can neither read the list nor write to it.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS exclusion_entries (
+  id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  kind              TEXT        NOT NULL CHECK (kind IN ('email', 'phone', 'name_dob')),
+  identifier_hash   TEXT        NOT NULL CHECK (identifier_hash ~ '^[0-9a-f]{64}$'),
+  -- masked, e.g. "j•••@g•••" or "•••• 00"; never the identifier
+  hint              TEXT        NOT NULL CHECK (length(hint) BETWEEN 1 AND 64),
+  status            TEXT        NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active')),
+  verify_token_hash TEXT        CHECK (verify_token_hash ~ '^[0-9a-f]{64}$'),
+  verify_expires_at TIMESTAMPTZ,
+  verify_attempts   INT         NOT NULL DEFAULT 0 CHECK (verify_attempts >= 0),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  activated_at      TIMESTAMPTZ,
+  CHECK ((status = 'active') = (activated_at IS NOT NULL)),
+  UNIQUE (owner_user_id, identifier_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_exclusions_active_hash ON exclusion_entries (identifier_hash) WHERE status = 'active';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_exclusions_token ON exclusion_entries (verify_token_hash) WHERE verify_token_hash IS NOT NULL;
+
+ALTER TABLE exclusion_entries ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON exclusion_entries FROM anon, authenticated;
