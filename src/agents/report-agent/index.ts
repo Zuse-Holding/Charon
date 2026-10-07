@@ -1,5 +1,6 @@
 import { REPORT_DISCLAIMER } from "../../lib/disclaimer.js";
 import { pushProvenanceSection } from "../../lib/provenance/render.js";
+import { pushCoverageSection } from "../../lib/coverage/render.js";
 import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle, Source } from "../../types/research.js";
 
 /**
@@ -58,6 +59,7 @@ export class ReportAgent {
     );
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["overview"]);
+    pushCoverageSection(lines, bundle.coverage);
 
     lines.push(`## Company Overview`);
     lines.push(`- **Website:** ${bundle.company.website ?? "Unknown"}`);
@@ -296,6 +298,7 @@ export class ReportAgent {
     );
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["bio"]);
+    pushCoverageSection(lines, bundle.coverage);
 
     // Quick facts row
     const facts: string[] = [];

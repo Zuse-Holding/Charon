@@ -61,6 +61,86 @@ function downloadFindingsCsv(rows: FindingRow[]) {
   URL.revokeObjectURL(url);
 }
 
+// Coverage ledger (Feature 1): the "Source Coverage" section that
+// src/lib/coverage/render.ts writes, one source per line:
+//   - [not_searched] PACER federal court records | US federal | courts | Paid accounts only. | [Search by hand](https://...)
+// Change both files together.
+const COVERAGE_TITLE = "Source Coverage";
+const COVERAGE_LINE = /^\[(results|no_results|not_searched|error)\] (.+?) \| (.+?) \| (.+?) \| (.+?) \| (?:\[(.+?)\]\((.+?)\)|-)$/;
+
+type CoverageStatus = "results" | "no_results" | "not_searched" | "error";
+interface CoverageRow {
+  status: CoverageStatus;
+  name: string;
+  jurisdiction: string;
+  category: string;
+  detail: string;
+  url?: string;
+}
+
+const COVERAGE_LABEL: Record<CoverageStatus, { label: string; symbol: string; className: string }> = {
+  results: { label: "Results", symbol: "✓", className: "fConfirmed" },
+  no_results: { label: "No matches", symbol: "○", className: "fSingle" },
+  not_searched: { label: "Not searched", symbol: "–", className: "fUnverified" },
+  error: { label: "Error", symbol: "✕", className: "fError" },
+};
+
+function parseCoverage(content: string[]): { summary: string; rows: CoverageRow[] } {
+  const summary = (content.find((l) => l.trim().startsWith("_")) ?? "").trim().replace(/^_|_$/g, "");
+  const rows: CoverageRow[] = [];
+  for (const line of content) {
+    const m = line.trim().replace(/^- /, "").match(COVERAGE_LINE);
+    if (m) {
+      rows.push({ status: m[1] as CoverageStatus, name: m[2], jurisdiction: m[3], category: m[4], detail: m[5].replace(/^Error: /, ""), url: m[7] });
+    }
+  }
+  return { summary, rows };
+}
+
+function CoverageSection({ content, onRetry }: { content: string[]; onRetry?: () => void }) {
+  const { summary, rows } = parseCoverage(content);
+  const hasErrors = rows.some((r) => r.status === "error");
+  return (
+    <div className={styles.provenance}>
+      {summary && <p className={styles.provSummary}>{summary}</p>}
+      {hasErrors && onRetry && (
+        <button type="button" className={styles.provCsv} onClick={onRetry}>
+          Run this report again
+        </button>
+      )}
+      {rows.length > 0 && (
+        <details className={styles.provDetails} open={hasErrors}>
+          <summary>Show what was checked at each of the {rows.length} sources</summary>
+          <table className={styles.provTable}>
+            <thead>
+              <tr><th>Status</th><th>Source</th><th>Jurisdiction</th><th>Type</th><th>Details</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const s = COVERAGE_LABEL[r.status];
+                return (
+                  <tr key={i}>
+                    <td data-label="Status"><span className={`${styles.fBadge} ${styles[s.className]}`}>{s.symbol} {s.label}</span></td>
+                    <td data-label="Source">{r.name}</td>
+                    <td data-label="Jurisdiction">{r.jurisdiction}</td>
+                    <td data-label="Type">{r.category}</td>
+                    <td data-label="Details">
+                      {r.detail}
+                      {r.url && (
+                        <> <a href={r.url} target="_blank" rel="noopener noreferrer">Search by hand ↗</a></>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function ProvenanceSection({ content }: { content: string[] }) {
   const { summary, rows } = parseFindings(content);
   return (
@@ -102,6 +182,8 @@ function ProvenanceSection({ content }: { content: string[] }) {
 
 interface ReportViewerProps {
   markdown: string;
+  /** Re-runs the whole report. Offered when a source failed. */
+  onRetry?: () => void;
 }
 
 interface Section {
@@ -218,10 +300,11 @@ function getPlainText(content: string[]): string {
     .trim();
 }
 
-function renderSection(section: Section) {
+function renderSection(section: Section, onRetry?: () => void) {
   const { title, content } = section;
 
   if (title === PROVENANCE_TITLE) return <ProvenanceSection content={content} />;
+  if (title === COVERAGE_TITLE) return <CoverageSection content={content} onRetry={onRetry} />;
 
   if (isPlaceholder(content)) {
     return (
@@ -398,7 +481,7 @@ function renderSection(section: Section) {
   return <p className={styles.summaryText}>{getPlainText(content)}</p>;
 }
 
-export default function ReportViewer({ markdown }: ReportViewerProps) {
+export default function ReportViewer({ markdown, onRetry }: ReportViewerProps) {
   const sections = parseMarkdown(markdown);
   // Reports from before per-finding provenance carry no Findings section:
   // say so plainly rather than let them read as checked.
@@ -416,7 +499,7 @@ export default function ReportViewer({ markdown }: ReportViewerProps) {
         return (
           <div key={i} className={styles.section}>
             <div className={styles.sectionLabel}>{section.title}</div>
-            {renderSection({ title: section.title, content: body })}
+            {renderSection({ title: section.title, content: body }, onRetry)}
             {renderSectionSources(sourceLines, unverified)}
           </div>
         );
