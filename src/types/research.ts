@@ -1,6 +1,7 @@
 import type { ProvenanceRecord } from "../lib/provenance/build.js";
 import type { CoverageEntry } from "../lib/coverage/recorder.js";
 import type { DomainPosture } from "../agents/domain-posture-agent/index.js";
+import type { RelatedGraph } from "../lib/expansion/engine.js";
 
 // Core data models shared across agents.
 // These map directly to the spec's per-agent output shapes, plus a Source
@@ -259,6 +260,9 @@ export interface ResearchBundle {
   /** Passive domain check of the company website (Feature 5). Present
    *  only when FEATURE_DOMAIN_POSTURE was on and a website was found. */
   domainPosture?: DomainPosture;
+  /** Related-entities graph from public filings (Feature 4). Present only
+   *  when FEATURE_RELATED_ENTITIES was on. */
+  relatedEntities?: RelatedGraph;
 }
 
 // --- Political research types (Round 2, item 1) ---

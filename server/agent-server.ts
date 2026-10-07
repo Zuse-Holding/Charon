@@ -752,7 +752,8 @@ app.post("/research", async (req, res) => {
       const proAccess = config.publicRecordsAccess;
 
       if (type === "company") {
-        const result = await orchestrator.researchCompany(subject, proAccess, deep);
+        const relatedHops = Number.isFinite(Number(req.body.relatedHops)) ? Number(req.body.relatedHops) : undefined;
+        const result = await orchestrator.researchCompany(subject, proAccess, deep, { relatedHops });
         bundle = result.bundle; report = result.report;
         littleSisRelationships = result.littleSisRelationships;
         snapshots = result.snapshots;

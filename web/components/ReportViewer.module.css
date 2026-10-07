@@ -235,6 +235,18 @@
 .fUnverified { color: var(--yellow); }
 .fError { color: var(--red); }
 
+/* Related entities (Feature 4) */
+.relBar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.relTabs { display: flex; gap: 4px; }
+.relTab, .relTabOn { background: transparent; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+.relTab { border: 1px solid var(--border); color: var(--text); }
+.relTabOn { border: 1px solid var(--orange); color: var(--orange); font-weight: 600; }
+.relGraph { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,0.01); }
+.relLabel { font-size: 10px; fill: var(--text); font-family: var(--font-mono); }
+.relLegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: var(--muted); }
+.relLegendItem { display: inline-flex; align-items: center; gap: 5px; }
+@media (max-width: 640px) { .relLabel { font-size: 17px; } }
+
 /* Domain posture (Feature 5) */
 .postureFlag {
   border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
