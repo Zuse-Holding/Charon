@@ -194,6 +194,7 @@ export default function Landing() {
         {[
           { num: "7", label: "Parallel agents per run" },
           { num: "10", label: "Sections in Deep Dive" },
+          { num: "3", label: "Research types: company, person, product" },
         ].map((s) => (
           <div key={s.label} className={styles.statItem}>
             <span className={styles.statNum}>{s.num}</span>
