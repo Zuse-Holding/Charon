@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { isEnabled } from "../lib/flags";
 import styles from "./ReportViewer.module.css";
 
@@ -229,6 +230,180 @@ function PostureSection({ content }: { content: string[] }) {
   );
 }
 
+// Related entities (Feature 4): the "Related Entities" section that
+// src/agents/related-entities-agent/render.ts writes:
+//   - node n0 | company | ACME LLC | NY 123 | 0 | https://...
+//   - edge n0 > n1 | chairman or CEO | hard | single_source | [New York Department of State filing](https://...) | 2026-10-07
+// Change both files together.
+const RELATED_TITLE = "Related Entities";
+const NODE_LINE = /^node (n\d+) \| (company|person|agent|address) \| (.+?) \| (.+?) \| (\d) \| (.+)$/;
+const EDGE_LINE = /^edge (n\d+) > (n\d+) \| (.+?) \| (hard|weak) \| (confirmed|single_source|unverified) \| \[(.+?)\]\((.+?)\) \| (\d{4}-\d{2}-\d{2})$/;
+
+type NodeKind = "company" | "person" | "agent" | "address";
+interface RelNode { id: string; kind: NodeKind; label: string; identifier?: string; hop: number; url?: string }
+interface RelEdge { from: string; to: string; relation: string; strength: "hard" | "weak"; verification: string; sourceName: string; sourceUrl: string; retrieved: string }
+
+const NODE_STYLE: Record<NodeKind, { color: string; label: string }> = {
+  company: { color: "var(--orange)", label: "Company" },
+  person: { color: "var(--cyan)", label: "Person" },
+  agent: { color: "var(--yellow)", label: "Registered agent" },
+  address: { color: "var(--green)", label: "Address" },
+};
+
+function parseRelated(content: string[]): { summary: string; nodes: RelNode[]; edges: RelEdge[] } {
+  const summary = (content.find((l) => l.trim().startsWith("_")) ?? "").trim().replace(/^_|_$/g, "");
+  const nodes: RelNode[] = [];
+  const edges: RelEdge[] = [];
+  for (const line of content) {
+    const l = line.trim().replace(/^- /, "");
+    const n = l.match(NODE_LINE);
+    if (n) {
+      nodes.push({ id: n[1], kind: n[2] as NodeKind, label: n[3], identifier: n[4] === "-" ? undefined : n[4], hop: Number(n[5]), url: n[6] === "-" ? undefined : n[6] });
+      continue;
+    }
+    const e = l.match(EDGE_LINE);
+    if (e) edges.push({ from: e[1], to: e[2], relation: e[3], strength: e[4] as "hard" | "weak", verification: e[5], sourceName: e[6], sourceUrl: e[7], retrieved: e[8] });
+  }
+  return { summary, nodes, edges };
+}
+
+/** Rings by hop: the target in the middle, each node near its parent. */
+function layout(nodes: RelNode[], edges: RelEdge[], w: number, h: number): Map<string, { x: number; y: number }> {
+  const pos = new Map<string, { x: number; y: number; a: number }>();
+  const cx = w / 2, cy = h / 2;
+  const roots = nodes.filter((n) => n.hop === 0);
+  roots.forEach((n, i) => pos.set(n.id, { x: cx + (i - (roots.length - 1) / 2) * 90, y: cy, a: 0 }));
+  const maxHop = Math.max(0, ...nodes.map((n) => n.hop));
+  const ringGap = Math.min(w, h) / 2 / (maxHop + 0.6);
+  for (let hop = 1; hop <= maxHop; hop++) {
+    const ring = nodes.filter((n) => n.hop === hop);
+    const parentAngle = (n: RelNode) => {
+      const e = edges.find((x) => x.to === n.id && pos.has(x.from)) ?? edges.find((x) => x.from === n.id && pos.has(x.to));
+      const p = e ? pos.get(e.to === n.id ? e.from : e.to) : undefined;
+      return p ? p.a : 0;
+    };
+    const sorted = [...ring].sort((a, b) => parentAngle(a) - parentAngle(b));
+    sorted.forEach((n, i) => {
+      const a = hop === 1 ? (2 * Math.PI * i) / Math.max(1, sorted.length) - Math.PI / 2
+        : parentAngle(n) + ((i % 2 ? 1 : -1) * Math.ceil(i / 2) * 0.05);
+      const r = ringGap * hop;
+      pos.set(n.id, { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), a });
+    });
+    if (hop > 1) {
+      // spread this ring evenly, keeping parent order
+      sorted.forEach((n, i) => {
+        const a = (2 * Math.PI * i) / Math.max(1, sorted.length) - Math.PI / 2;
+        const keep = pos.get(n.id)!;
+        const blended = sorted.length > 6 ? a : keep.a;
+        const r = ringGap * hop;
+        pos.set(n.id, { x: cx + r * Math.cos(blended), y: cy + r * Math.sin(blended), a: blended });
+      });
+    }
+  }
+  return pos;
+}
+
+function Shape({ kind, x, y, r }: { kind: NodeKind; x: number; y: number; r: number }) {
+  const fill = NODE_STYLE[kind].color;
+  if (kind === "company") return <rect x={x - r} y={y - r} width={2 * r} height={2 * r} rx={2} fill={fill} />;
+  if (kind === "agent") return <polygon points={`${x},${y - r * 1.2} ${x + r * 1.2},${y} ${x},${y + r * 1.2} ${x - r * 1.2},${y}`} fill={fill} />;
+  if (kind === "address") return <polygon points={`${x},${y - r * 1.2} ${x + r * 1.1},${y + r * 0.9} ${x - r * 1.1},${y + r * 0.9}`} fill={fill} />;
+  return <circle cx={x} cy={y} r={r} fill={fill} />;
+}
+
+function downloadRelatedCsv(nodes: RelNode[], edges: RelEdge[]) {
+  const label = (id: string) => nodes.find((n) => n.id === id)?.label ?? id;
+  const header = ["from", "relation", "to", "to_identifier", "link_strength", "verification", "source_name", "source_url", "retrieved_at"];
+  const body = edges.map((e) => [label(e.from), e.relation, label(e.to), nodes.find((n) => n.id === e.to)?.identifier ?? "",
+    e.strength, e.verification, e.sourceName, e.sourceUrl, e.retrieved].map(csvCell).join(","));
+  const blob = new Blob([[header.join(","), ...body].join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "related-entities.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function RelatedSection({ content }: { content: string[] }) {
+  const { summary, nodes, edges } = parseRelated(content);
+  const [view, setView] = useState<"graph" | "table">("graph");
+  const W = 640, H = 440;
+  const pos = layout(nodes, edges, W, H);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const short = (s: string) => (s.length > 24 ? `${s.slice(0, 23)}…` : s);
+  return (
+    <div className={styles.provenance}>
+      {summary && <p className={styles.provSummary}>{summary}</p>}
+      <div className={styles.relBar}>
+        <div className={styles.relTabs} role="tablist">
+          <button type="button" role="tab" aria-selected={view === "graph"} className={view === "graph" ? styles.relTabOn : styles.relTab} onClick={() => setView("graph")}>Graph</button>
+          <button type="button" role="tab" aria-selected={view === "table"} className={view === "table" ? styles.relTabOn : styles.relTab} onClick={() => setView("table")}>Table</button>
+        </div>
+        <button type="button" className={styles.provCsv} onClick={() => downloadRelatedCsv(nodes, edges)}>Download links (CSV)</button>
+      </div>
+      {view === "graph" ? (
+        <>
+          <svg viewBox={`0 0 ${W} ${H}`} className={styles.relGraph} role="img" aria-label={`Related entities graph: ${nodes.length} nodes, ${edges.length} links`}>
+            {edges.map((e, i) => {
+              const a = pos.get(e.from), b = pos.get(e.to);
+              if (!a || !b) return null;
+              return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--muted)" strokeWidth={e.strength === "hard" ? 1.6 : 1}
+                strokeDasharray={e.strength === "weak" ? "5 4" : undefined}><title>{`${byId.get(e.from)?.label} — ${e.relation} — ${byId.get(e.to)?.label} (${e.strength === "hard" ? "stated in the filing" : "name or address match"})`}</title></line>;
+            })}
+            {nodes.map((n) => {
+              const p = pos.get(n.id);
+              if (!p) return null;
+              return (
+                <g key={n.id}>
+                  <Shape kind={n.kind} x={p.x} y={p.y} r={n.hop === 0 ? 9 : 6} />
+                  <text x={p.x} y={p.y + (n.hop === 0 ? 22 : 17)} textAnchor="middle" className={styles.relLabel}>{short(n.label)}</text>
+                  <title>{`${NODE_STYLE[n.kind].label}: ${n.label}${n.identifier ? ` (${n.identifier})` : ""}`}</title>
+                </g>
+              );
+            })}
+          </svg>
+          <div className={styles.relLegend}>
+            {(Object.keys(NODE_STYLE) as NodeKind[]).map((k) => (
+              <span key={k} className={styles.relLegendItem}>
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><Shape kind={k} x={7} y={7} r={5} /></svg>
+                {NODE_STYLE[k].label}
+              </span>
+            ))}
+            <span className={styles.relLegendItem}>── stated in the filing</span>
+            <span className={styles.relLegendItem}>- - - name or address match, not followed</span>
+          </div>
+        </>
+      ) : (
+        <table className={styles.provTable}>
+          <thead>
+            <tr><th>From</th><th>Link</th><th>To</th><th>Strength</th><th>Source</th><th>Retrieved</th></tr>
+          </thead>
+          <tbody>
+            {edges.map((e, i) => {
+              const to = byId.get(e.to);
+              return (
+                <tr key={i}>
+                  <td data-label="From">{byId.get(e.from)?.label}</td>
+                  <td data-label="Link">{e.relation}</td>
+                  <td data-label="To">{to?.label}{to?.identifier ? <span className={styles.provMono}> · {to.identifier}</span> : null}</td>
+                  <td data-label="Strength">
+                    <span className={`${styles.fBadge} ${e.strength === "hard" ? styles.fSingle : styles.fUnverified}`}>
+                      {e.strength === "hard" ? "● In the filing" : "! Name/address match"}
+                    </span>
+                  </td>
+                  <td data-label="Source"><a href={e.sourceUrl} target="_blank" rel="noopener noreferrer">{e.sourceName} ↗</a></td>
+                  <td data-label="Retrieved" className={styles.provMono}>{e.retrieved}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function ProvenanceSection({ content }: { content: string[] }) {
   const { summary, rows } = parseFindings(content);
   return (
@@ -394,6 +569,7 @@ function renderSection(section: Section, onRetry?: () => void) {
   if (title === PROVENANCE_TITLE) return <ProvenanceSection content={content} />;
   if (title === COVERAGE_TITLE) return <CoverageSection content={content} onRetry={onRetry} />;
   if (title === POSTURE_TITLE) return <PostureSection content={content} />;
+  if (title === RELATED_TITLE) return <RelatedSection content={content} />;
 
   if (isPlaceholder(content)) {
     return (

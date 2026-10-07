@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Related-entities expansion (Feature 4): behind `FEATURE_RELATED_ENTITIES`
+- Company reports gain a "Related Entities" section: a graph (with a table view and CSV export) of the target's officers, registered agent and addresses from its own filing, and the other companies that share them.
+- Links stated in the target's filing are hard; other companies found by officer name, agent name or address are weak: drawn dashed, labeled as a name or address match, and never followed. Hop limit 2 by default, configurable per search (`relatedHops` on the research request), capped at 3.
+- Mass registered agents and their office addresses are excluded from link-building (a maintained list in `src/lib/expansion/mass-agents.ts`, plus any agent or address shared by more than 25 filings), so a commercial agent never pulls in its other clients. Officer names on more than 25 filings are too common to link.
+- Every edge carries its source filing, retrieval date and verification (Feature 2); identifiers on the self-exclusion list (Feature 6) are never followed.
+- Source today: New York Department of State filings via the state's open data portal (free; `NY_OPEN_DATA_APP_TOKEN` optional). OpenCorporates (needs a paid API token) and SEC EDGAR (blocked from the build machine) were checked and not used yet; other states plug in as further providers.
+- Setup: set `FEATURE_RELATED_ENTITIES=on` on the agent server, after Feature 6 is on for users. No database change.
+
 ### Self-exclusion list (Feature 6): behind `FEATURE_SELF_EXCLUSION`
 - Subscribers add their own email, phone number, or name with date of birth at Settings → Self-exclusion (`/settings/self-exclusion`). An entry takes effect only after an ownership check: email by a confirmation link sent to that address, phone by an SMS code (Twilio Verify), name and date of birth by the owner's statement plus a link sent to their account email.
 - Limits: 5 entries for individual plans, 25 for Team. Removal is one click and immediate. Unconfirmed entries expire after 24 hours; codes lock after 5 wrong tries.

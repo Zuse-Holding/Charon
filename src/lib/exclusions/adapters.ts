@@ -1,6 +1,6 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail } from "../email/send.js";
-import type { EntryRow, ExclusionKind, ExclusionStore, Messenger } from "./index.js";
+import { ExclusionGuard, hashKey, type EntryRow, type ExclusionKind, type ExclusionStore, type Messenger } from "./index.js";
 
 /** exclusion_entries in Supabase (service role only; see schema.sql). */
 export class SupabaseExclusionStore implements ExclusionStore {
@@ -133,4 +133,22 @@ export class LiveMessenger implements Messenger {
       return false;
     }
   }
+}
+
+let envGuard: ExclusionGuard | null | undefined;
+
+/** The guard with the service-role client and key from the environment;
+ *  undefined (and logged once) when either is missing. */
+export function guardFromEnv(env: Record<string, string | undefined> = process.env): ExclusionGuard | undefined {
+  if (envGuard !== undefined) return envGuard ?? undefined;
+  try {
+    const url = env.NEXT_PUBLIC_SUPABASE_URL ?? env.SUPABASE_URL;
+    const key = env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) throw new Error("Supabase credentials missing");
+    envGuard = new ExclusionGuard(new SupabaseExclusionStore(createClient(url, key)), hashKey(env));
+  } catch (err) {
+    console.error("[exclusions] guard unavailable, expansion won't check the list:", err instanceof Error ? err.message : err);
+    envGuard = null;
+  }
+  return envGuard ?? undefined;
 }

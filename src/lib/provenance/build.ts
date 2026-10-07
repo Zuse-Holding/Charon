@@ -119,6 +119,14 @@ export function buildCompanyProvenance(b: ResearchBundle, snapshots: Snapshot[])
     c.push({ section: "Public Records", claim: `First archived ${b.webArchive.firstSnapshot.timestamp.slice(0, 8)}`,
       terms: [b.webArchive.firstSnapshot.timestamp], method: "api", recordUrl: b.webArchive.firstSnapshot.url, sourceName: "Internet Archive" });
   }
+  const nodeLabel = new Map((b.relatedEntities?.nodes ?? []).map((n) => [n.id, n.label]));
+  for (const e of b.relatedEntities?.edges ?? []) {
+    const claim = `${clean(nodeLabel.get(e.from) ?? "")} — ${clean(e.relation)} — ${clean(nodeLabel.get(e.to) ?? "")}`;
+    // A link stated in the filing is read straight from it; a name or
+    // address match is the platform's inference, so it stays unverified.
+    c.push({ section: "Related Entities", claim, terms: [], method: "api", recordUrl: e.sourceUrl, sourceName: e.sourceName,
+      direct: e.strength === "hard" });
+  }
   for (const d of b.domainPosture?.checks ?? []) {
     if (d.status === "unknown") continue;
     c.push({ section: "Domain Posture", claim: `${d.label}: ${clean(d.detail)}`, terms: [], method: "api",

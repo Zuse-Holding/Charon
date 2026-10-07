@@ -17,6 +17,8 @@ import { WaybackAgent } from "../wayback-agent/index.js";
 import { ProPublicaNonprofitAgent } from "../propublica-nonprofit-agent/index.js";
 import { LittleSisAgent, LittleSisRelationshipEntry } from "../littlesis-agent/index.js";
 import { DomainPostureAgent } from "../domain-posture-agent/index.js";
+import { RelatedEntitiesAgent } from "../related-entities-agent/index.js";
+import { guardFromEnv } from "../../lib/exclusions/adapters.js";
 import { siteOf } from "../../lib/provenance/findings.js";
 import { synthesizeRisksOpportunities } from "../synthesis-agent/index.js";
 import { ReportAgent } from "../report-agent/index.js";
@@ -108,7 +110,7 @@ export class ResearchOrchestrator {
    * @param deep Charon Protocol (internal tier only) — passed through to
    *   LittleSis for relationship pulling.
    */
-  async researchCompany(companyName: string, proAccess = false, deep = false): Promise<{
+  async researchCompany(companyName: string, proAccess = false, deep = false, options: { relatedHops?: number } = {}): Promise<{
     bundle: ResearchBundle;
     report: string;
     // Charon/internal-only (deep) — LittleSis relationships (board/officer
@@ -121,7 +123,7 @@ export class ResearchOrchestrator {
   }> {
     const cov = new CoverageRecorder(isEnabled("coverage"), "company", companyName);
     const { value, snapshots } = await recordSnapshots(isEnabled("provenance"), () =>
-      this.gatherCompany(companyName, proAccess, deep, cov));
+      this.gatherCompany(companyName, proAccess, deep, cov, options.relatedHops));
     const { bundle, littleSisRelationships } = value;
     bundle.coverage = cov.result();
     const stored = attachProvenance(bundle, snapshots, buildCompanyProvenance);
@@ -129,7 +131,7 @@ export class ResearchOrchestrator {
     return { bundle, report, littleSisRelationships, snapshots: stored };
   }
 
-  private async gatherCompany(companyName: string, proAccess: boolean, deep: boolean, cov: CoverageRecorder): Promise<{
+  private async gatherCompany(companyName: string, proAccess: boolean, deep: boolean, cov: CoverageRecorder, relatedHops?: number): Promise<{
     bundle: ResearchBundle;
     littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
@@ -163,7 +165,17 @@ export class ResearchOrchestrator {
     const checkDomain = isEnabled("domain_posture");
     if (checkDomain && !domain) cov.skip("domain", "No company website was found to check.");
 
-    const [sanctionsResult, waybackResult, nonprofitResult, littleSisResult, postureResult] =
+    // Related entities (Feature 4): public filings, every plan. Anything
+    // on the self-exclusion list (Feature 6) is never followed.
+    const guard = isEnabled("self_exclusion") ? guardFromEnv() : undefined;
+    const related = isEnabled("related_entities")
+      ? cov.run("related", () => new RelatedEntitiesAgent().run(companyName, {
+          hops: relatedHops,
+          mayFollow: guard ? async (_kind, value) => !(await guard.blocksQuery(value)) : undefined,
+        }), { sources: [] }, (r) => r.graph ? r.graph.nodes.length - 1 : 0)
+      : Promise.resolve({ graph: undefined, sources: [] });
+
+    const [sanctionsResult, waybackResult, nonprofitResult, littleSisResult, postureResult, relatedResult] =
       await Promise.all([
         proAccess
           ? cov.run("sanctions", () => this.sanctionsAgent.run(companyName), { matches: [], sources: [] }, (r) => r.matches.length)
@@ -182,6 +194,7 @@ export class ResearchOrchestrator {
         checkDomain && domain
           ? cov.run("domain", () => new DomainPostureAgent().run(domain), { sources: [] }, (r) => r.posture?.checks.length ?? 0, domain)
           : Promise.resolve({ posture: undefined, sources: [] }),
+        related,
       ]);
 
     const sources: Source[] = [
@@ -195,6 +208,7 @@ export class ResearchOrchestrator {
       ...nonprofitResult.sources,
       ...littleSisResult.sources,
       ...postureResult.sources,
+      ...relatedResult.sources,
     ];
 
     const bundle: ResearchBundle = {
@@ -215,6 +229,7 @@ export class ResearchOrchestrator {
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
       domainPosture: postureResult.posture,
+      relatedEntities: relatedResult.graph,
     };
 
     // Risks/Opportunities is pure LLM synthesis with no heuristic
