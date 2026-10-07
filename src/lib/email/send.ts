@@ -24,12 +24,15 @@ interface SendEmailOptions {
   subject: string;
   text: string;
   replyTo?: string;
+  /** Keep the address out of logs (e.g. self-exclusion confirmations). */
+  redactRecipient?: boolean;
 }
 
 export async function sendEmail(opts: SendEmailOptions): Promise<{ sent: boolean }> {
   const resend = getClient();
+  const who = opts.redactRecipient ? "(redacted)" : opts.to;
   if (!resend) {
-    console.warn(`[email] RESEND_API_KEY not set — not sending "${opts.subject}" to ${opts.to}`);
+    console.warn(`[email] RESEND_API_KEY not set — not sending "${opts.subject}" to ${who}`);
     return { sent: false };
   }
   try {
@@ -41,12 +44,12 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{ sent: boolean
       replyTo: opts.replyTo,
     });
     if (error) {
-      console.error(`[email] send failed for "${opts.subject}" to ${opts.to}:`, error);
+      console.error(`[email] send failed for "${opts.subject}" to ${who}:`, error);
       return { sent: false };
     }
     return { sent: true };
   } catch (err) {
-    console.error(`[email] send threw for "${opts.subject}" to ${opts.to}:`, err);
+    console.error(`[email] send threw for "${opts.subject}" to ${who}:`, err);
     return { sent: false };
   }
 }

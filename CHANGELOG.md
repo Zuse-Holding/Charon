@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Self-exclusion list (Feature 6): behind `FEATURE_SELF_EXCLUSION`
+- Subscribers add their own email, phone number, or name with date of birth at Settings → Self-exclusion (`/settings/self-exclusion`). An entry takes effect only after an ownership check: email by a confirmation link sent to that address, phone by an SMS code (Twilio Verify), name and date of birth by the owner's statement plus a link sent to their account email.
+- Limits: 5 entries for individual plans, 25 for Team. Removal is one click and immediate. Unconfirmed entries expire after 24 hours; codes lock after 5 wrong tries.
+- Identifiers are stored only as HMAC-SHA256 with a server-side key, plus a masked hint (e.g. `j•••@g•••`). The table has no browser access at all.
+- A search that names an excluded email, phone number, or name with date of birth (research, Charon person lookup, MuckRock search, deep dive) returns a neutral "This search isn't available." before anything is counted or logged. `ExclusionGuard.followable()` is the hook Feature 4's expansion must use to skip excluded identifiers.
+- Setup, in this order: run the self-exclusion block at the end of `supabase/schema.sql`; on the agent server set `EXCLUSION_HASH_KEY` (once, 32+ random characters), `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`, and confirm `FRONTEND_URL` and `RESEND_API_KEY` are set; then `FEATURE_SELF_EXCLUSION=on` (agent server) and `NEXT_PUBLIC_FEATURE_SELF_EXCLUSION=on` (web).
+
 ### Passive domain posture check (Feature 5): behind `FEATURE_DOMAIN_POSTURE`
 - Company reports gain a "Domain Posture" card for the company's website domain, built from public records only: the registry's RDAP record (found through IANA's bootstrap file), public DNS over HTTPS, and the certificate from one ordinary HTTPS handshake. No scanning or probing.
 - Flags: expiry within 90 days, registered to an individual, no transfer lock, SPF missing or ending in +all, DMARC missing or p=none, no CAA (low), certificate expiring within 30 days. Each flag carries a plain-English line on why it matters to a buyer. A privacy-protected registrant is reported as "registrant hidden", not flagged; a failed lookup is "unknown", never a flag.
