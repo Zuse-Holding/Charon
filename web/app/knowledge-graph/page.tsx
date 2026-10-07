@@ -5,6 +5,8 @@ import Topbar from "../../components/Topbar";
 import styles from "./page.module.css";
 import KGQueryPanel from "../../components/KGQueryPanel";
 import KGSearchBox from "../../components/KGSearchBox";
+import { KGEntityTrust, KGMatchReview } from "../../components/KGEntityTrust";
+import { isEnabled } from "../../lib/flags";
 
 interface Entity {
   id: string;
@@ -488,6 +490,7 @@ export default function KnowledgeGraph() {
                 onWheel={handleWheel}
               />
 
+              {isEnabled("entity_resolution") && <KGMatchReview />}
               {selected && (
                 <div className={styles.nodePanel}>
                   <div className={styles.nodePanelHeader}>
@@ -496,6 +499,7 @@ export default function KnowledgeGraph() {
                     <button className={styles.closeBtn} onClick={() => setSelected(null)}>✕</button>
                   </div>
                   <div className={styles.nodeType}>{selected.type.toUpperCase()}</div>
+                  {isEnabled("entity_resolution") && <KGEntityTrust entityId={selected.id} />}
                   <div className={styles.nodeRels}>
                     {relationships
                       .filter(r => r.from_entity_id === selected.id || r.to_entity_id === selected.id)

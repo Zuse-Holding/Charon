@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Identifier-based entity resolution (Feature 3): behind `FEATURE_ENTITY_RESOLUTION`
+- Knowledge Graph entities merge only when they share a hard identifier: an EIN (from ProPublica nonprofit filings) or a state entity number together with its state (from OpenCorporates company links). Each identifier is stored with the source that supplied it.
+- A shared name alone never merges. The new entity is flagged as a possible match, with "Merge them" and "Keep separate" buttons; each decision is logged with who made it and when (`kg_match_reviews`).
+- Same name with different entity numbers from the same state stays separate and is labeled distinct. The database refuses to merge them even if asked. Same-named companies from different states are flagged for review, since one company can be registered in several states.
+- Business names are normalized for matching (legal suffixes, punctuation and case removed) but never used as a merge key.
+- Setup, in this order: deploy this code; run the entity resolution block at the end of `supabase/schema.sql` (running it before the deploy breaks graph writes, because the old code relies on the constraint it drops); then set `FEATURE_ENTITY_RESOLUTION=on` (agent server) and `NEXT_PUBLIC_FEATURE_ENTITY_RESOLUTION=on` (web). The block drops the old one-entity-per-name constraint; with the flag off, the graph still dedupes by name in code, exactly as before.
+
 ### Source coverage ledger (Feature 1): behind `FEATURE_COVERAGE`
 - Company and person reports list every source for that report type with one of four statuses: results (with a count and the section they're in), no matches (with the query used), not searched (with the reason and a link to search by hand), or error.
 - A source registry (`src/lib/coverage/registry.ts`) records each source's name, jurisdiction, category, access method and deep-link template. Sources that can't be automated (PACER, California and Delaware business searches, California UCC liens, CourtListener for now) are always listed.

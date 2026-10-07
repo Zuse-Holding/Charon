@@ -582,3 +582,118 @@ CREATE POLICY "Users read own findings"
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('snapshots', 'snapshots', false)
 ON CONFLICT (id) DO UPDATE SET public = false;
+
+-- ============================================================
+-- Entity resolution (Feature 3): run before FEATURE_ENTITY_RESOLUTION.
+-- Safe to run with the flag off: the writer no longer relies on the old
+-- (user_id, name, type) constraint, so dropping it changes nothing until
+-- the flag is on.
+-- ============================================================
+
+-- Two entities may now share a name (e.g. same-named LLCs in different
+-- states). Identity comes from hard identifiers below, not the name.
+ALTER TABLE kg_entities DROP CONSTRAINT IF EXISTS kg_entities_user_id_name_type_key;
+CREATE INDEX IF NOT EXISTS idx_kg_entities_user_type_name ON kg_entities (user_id, type, name);
+
+CREATE TABLE IF NOT EXISTS kg_entity_identifiers (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  entity_id     UUID        NOT NULL REFERENCES kg_entities(id) ON DELETE CASCADE,
+  kind          TEXT        NOT NULL CHECK (kind IN ('state_entity_number', 'ein', 'ucc_filing', 'license', 'court_party_id')),
+  -- state, board or court that issued it; '' for national identifiers (EIN)
+  issuer        TEXT        NOT NULL DEFAULT '',
+  value         TEXT        NOT NULL CHECK (length(value) > 0),
+  source_name   TEXT        NOT NULL CHECK (length(source_name) > 0),
+  source_url    TEXT        NOT NULL CHECK (source_url ~ '^https?://'),
+  retrieved_at  TIMESTAMPTZ NOT NULL,
+  source_run_id UUID        REFERENCES research_runs(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- an entity number or license means nothing without its issuer
+  CHECK ((kind = 'ein') = (issuer = '')),
+  -- one entity per identifier: this is the merge key
+  UNIQUE (user_id, kind, issuer, value)
+);
+CREATE INDEX IF NOT EXISTS idx_kg_identifiers_entity ON kg_entity_identifiers (entity_id);
+
+-- Name-only matches awaiting a person's decision, and the log of that
+-- decision. Names are copied so the log survives a merge or delete.
+CREATE TABLE IF NOT EXISTS kg_match_reviews (
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  entity_id      UUID        REFERENCES kg_entities(id) ON DELETE SET NULL,
+  entity_name    TEXT        NOT NULL,
+  candidate_id   UUID        REFERENCES kg_entities(id) ON DELETE SET NULL,
+  candidate_name TEXT        NOT NULL,
+  status         TEXT        NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'rejected', 'distinct')),
+  reason         TEXT        NOT NULL CHECK (reason IN ('name_only', 'conflicting_identifiers')),
+  decided_by     UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+  decided_at     TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (entity_id IS NULL OR entity_id <> candidate_id),
+  CHECK ((status IN ('confirmed', 'rejected')) = (decided_at IS NOT NULL)),
+  UNIQUE (entity_id, candidate_id)
+);
+CREATE INDEX IF NOT EXISTS idx_kg_reviews_user_status ON kg_match_reviews (user_id, status);
+
+ALTER TABLE kg_entity_identifiers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kg_match_reviews      ENABLE ROW LEVEL SECURITY;
+
+-- Read-only for the owner. The service role writes; decisions go through
+-- kg_decide_match below, so the log can't be edited by hand.
+DROP POLICY IF EXISTS "Users read own identifiers" ON kg_entity_identifiers;
+CREATE POLICY "Users read own identifiers"
+  ON kg_entity_identifiers FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users read own match reviews" ON kg_match_reviews;
+CREATE POLICY "Users read own match reviews"
+  ON kg_match_reviews FOR SELECT USING (auth.uid() = user_id);
+
+-- Confirm or reject a possible match, atomically, as the signed-in user.
+-- Confirm folds the newer entity into the existing one (relationships and
+-- identifiers move over) and is refused when their identifiers conflict.
+CREATE OR REPLACE FUNCTION kg_decide_match(p_review_id UUID, p_decision TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  uid UUID := auth.uid();
+  r   kg_match_reviews%ROWTYPE;
+BEGIN
+  IF uid IS NULL THEN RAISE EXCEPTION 'Not signed in'; END IF;
+  IF p_decision NOT IN ('confirmed', 'rejected') THEN RAISE EXCEPTION 'Decision must be confirmed or rejected'; END IF;
+
+  SELECT * INTO r FROM kg_match_reviews WHERE id = p_review_id AND user_id = uid FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Match not found'; END IF;
+  IF r.status <> 'pending' THEN RAISE EXCEPTION 'This match was already decided'; END IF;
+
+  IF p_decision = 'confirmed' THEN
+    IF r.entity_id IS NULL OR r.candidate_id IS NULL THEN RAISE EXCEPTION 'One of these entities no longer exists'; END IF;
+    IF EXISTS (
+      SELECT 1 FROM kg_entity_identifiers a JOIN kg_entity_identifiers b
+        ON a.kind = b.kind AND a.issuer = b.issuer AND a.value <> b.value
+      WHERE a.entity_id = r.entity_id AND b.entity_id = r.candidate_id
+    ) THEN
+      RAISE EXCEPTION 'These records have different identifiers from the same issuer, so they are different entities';
+    END IF;
+
+    UPDATE kg_relationships SET from_entity_id = r.candidate_id WHERE user_id = uid AND from_entity_id = r.entity_id;
+    UPDATE kg_relationships SET to_entity_id   = r.candidate_id WHERE user_id = uid AND to_entity_id   = r.entity_id;
+    DELETE FROM kg_relationships WHERE user_id = uid AND from_entity_id = to_entity_id;
+    UPDATE kg_entity_identifiers SET entity_id = r.candidate_id WHERE user_id = uid AND entity_id = r.entity_id;
+  END IF;
+
+  UPDATE kg_match_reviews SET status = p_decision, decided_by = uid, decided_at = NOW() WHERE id = r.id;
+
+  IF p_decision = 'confirmed' THEN
+    -- other open suggestions about the entity that no longer exists
+    DELETE FROM kg_match_reviews
+      WHERE user_id = uid AND status = 'pending' AND id <> r.id
+        AND (entity_id = r.entity_id OR candidate_id = r.entity_id);
+    DELETE FROM kg_entities WHERE id = r.entity_id AND user_id = uid;
+  END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION kg_decide_match(UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION kg_decide_match(UUID, TEXT) TO authenticated;
