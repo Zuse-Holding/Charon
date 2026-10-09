@@ -7,6 +7,7 @@ import EmptyState from "../../components/EmptyState";
 import PersonResearchModal from "../../components/PersonResearchModal";
 import MuckRockSearchModal from "../../components/MuckRockSearchModal";
 import OnboardingChecklist from "../../components/OnboardingChecklist";
+import { Skeleton, SkeletonRow } from "../../components/Skeleton";
 import { useTier } from "../../lib/tier-context";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -63,6 +64,20 @@ function freshnessStatus(iso: string | null): "fresh" | "warn" | "stale" {
   if (hrs < 24) return "fresh";
   if (hrs < 72) return "warn";
   return "stale";
+}
+
+// Ghost card shown in a panel until its first fetch resolves — same
+// footprint as a real S.card row so the panel doesn't jump on load.
+function GhostCards({ count = 3 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} aria-hidden style={{ ...S.card, display: "block" }}>
+          <SkeletonRow index={i} />
+        </div>
+      ))}
+    </>
+  );
 }
 
 const DOT: Record<string, string> = {
@@ -171,6 +186,12 @@ export default function DashboardPage() {
   const [intel, setIntel] = useState<IntelItem[]>([]);
   const [recentRuns, setRecentRuns] = useState<Run[]>([]);
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
+  // Per-panel "first fetch finished" flags — panels show ghost rows until
+  // theirs resolves, so empty states don't flash before data arrives.
+  const [loaded, setLoaded] = useState({ watchlist: false, intel: false, runs: false, admin: false });
+  const markLoaded = useCallback((key: keyof typeof loaded) => {
+    setLoaded(prev => (prev[key] ? prev : { ...prev, [key]: true }));
+  }, []);
   const [time, setTime] = useState(new Date());
   const [showPersonResearch, setShowPersonResearch] = useState(false);
   const [showMuckRock, setShowMuckRock] = useState(false);
@@ -197,29 +218,37 @@ export default function DashboardPage() {
 
   // Load watchlist
   const loadWatchlist = useCallback(async () => {
-    const res = await fetch("/api/watchlist");
-    if (res.ok) setWatchlist(await res.json());
-  }, []);
+    try {
+      const res = await fetch("/api/watchlist");
+      if (res.ok) setWatchlist(await res.json());
+    } finally { markLoaded("watchlist"); }
+  }, [markLoaded]);
 
   // Load intel feed
   const loadIntel = useCallback(async () => {
-    const res = await fetch("/api/intel-feed");
-    if (res.ok) setIntel(await res.json());
-  }, []);
+    try {
+      const res = await fetch("/api/intel-feed");
+      if (res.ok) setIntel(await res.json());
+    } finally { markLoaded("intel"); }
+  }, [markLoaded]);
 
   // Load recent runs
   const loadRuns = useCallback(async () => {
-    const res = await fetch("/api/runs");
-    if (res.ok) setRecentRuns(await res.json());
-  }, []);
+    try {
+      const res = await fetch("/api/runs");
+      if (res.ok) setRecentRuns(await res.json());
+    } finally { markLoaded("runs"); }
+  }, [markLoaded]);
 
   // Load admin stats (Charon tier only)
   const hasAdminAccess = can("adminAccess");
   const loadAdminStats = useCallback(async () => {
     if (!hasAdminAccess) return;
-    const res = await fetch("/api/admin/stats");
-    if (res.ok) setAdminStats(await res.json());
-  }, [hasAdminAccess]);
+    try {
+      const res = await fetch("/api/admin/stats");
+      if (res.ok) setAdminStats(await res.json());
+    } finally { markLoaded("admin"); }
+  }, [hasAdminAccess, markLoaded]);
 
   useEffect(() => {
     loadWatchlist();
@@ -260,16 +289,19 @@ export default function DashboardPage() {
           ...(isMobile ? { flexDirection: "column" as const, alignItems: "flex-start", gap: 4 } : {}),
         }}>
           <div>
-            <div style={S.greetingTitle}>
+            {/* Clock-derived text differs between server render and hydration. */}
+            <div style={S.greetingTitle} suppressHydrationWarning>
               {getGreeting(time.getHours())}{displayName ? `, ${displayName.split(" ")[0]}` : ""}
             </div>
             <div style={S.greetingSub}>
-              {recentRuns.length > 0
+              {!loaded.runs
+                ? <Skeleton width={220} height={10} style={{ marginTop: 4 }} />
+                : recentRuns.length > 0
                 ? `${recentRuns.length} report${recentRuns.length === 1 ? "" : "s"} on record. Here's what's new.`
                 : "Here's your workspace."}
             </div>
           </div>
-          <div style={S.greetingDate}>
+          <div style={S.greetingDate} suppressHydrationWarning>
             {time.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
           </div>
         </div>
@@ -285,7 +317,7 @@ export default function DashboardPage() {
             </button>
           )}
           {!isMobile && (
-            <div style={{ marginLeft: "auto", fontSize: 11, color: "#374151", alignSelf: "center", fontFamily: "monospace" }}>
+            <div style={{ marginLeft: "auto", fontSize: 11, color: "#374151", alignSelf: "center", fontFamily: "monospace" }} suppressHydrationWarning>
               {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </div>
           )}
@@ -296,11 +328,13 @@ export default function DashboardPage() {
           {/* ── DASHBOARD TAB ── */}
           {tab === "dashboard" && (
             <>
-              <OnboardingChecklist
-                hasResearch={recentRuns.length > 0}
-                hasWatchlistItem={watchlist.length > 0}
-                hasDisplayName={!!displayName && displayName.trim().length > 0}
-              />
+              {loaded.runs && loaded.watchlist && (
+                <OnboardingChecklist
+                  hasResearch={recentRuns.length > 0}
+                  hasWatchlistItem={watchlist.length > 0}
+                  hasDisplayName={!!displayName && displayName.trim().length > 0}
+                />
+              )}
 
               {/* Row 1: Brief + Watchlist */}
               <div style={{ ...S.row, ...(isMobile ? { flexDirection: "column" as const } : {}) }}>
@@ -310,7 +344,8 @@ export default function DashboardPage() {
                     Morning Brief
                     <span style={S.badge("#E8A020")}>{new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
                   </div>
-                  {briefItems.length === 0 && (
+                  {!(loaded.runs && loaded.watchlist) && <GhostCards count={2} />}
+                  {loaded.runs && loaded.watchlist && briefItems.length === 0 && (
                     <EmptyState
                       size="compact"
                       icon="◈"
@@ -343,9 +378,10 @@ export default function DashboardPage() {
                 <div style={S.panel("#2DD4BF")}>
                   <div style={S.panelTitle}>
                     Watchlist
-                    <span style={S.badge("#2DD4BF")}>{watchlist.length} entities</span>
+                    <span style={S.badge("#2DD4BF")}>{loaded.watchlist ? `${watchlist.length} entities` : "…"}</span>
                   </div>
-                  {watchlist.length === 0 && (
+                  {!loaded.watchlist && <GhostCards count={3} />}
+                  {loaded.watchlist && watchlist.length === 0 && (
                     <EmptyState
                       size="compact"
                       icon="◎"
@@ -393,7 +429,8 @@ export default function DashboardPage() {
                     Intelligence Feed
                     <span style={S.badge("#4A90D9")}>live</span>
                   </div>
-                  {intel.length === 0 && (
+                  {!loaded.intel && <GhostCards count={3} />}
+                  {loaded.intel && intel.length === 0 && (
                     <EmptyState size="compact" icon="◆" title="Feed is quiet" description="No intel items yet." />
                   )}
                   {intel.slice(0, 6).map((item) => (
@@ -415,7 +452,8 @@ export default function DashboardPage() {
                 {/* Recent Research */}
                 <div style={{ ...S.panel("#6B7A99"), flex: isMobile ? "1 1 auto" : "0 0 35%" }}>
                   <div style={S.panelTitle}>Recent Research</div>
-                  {recentRuns.length === 0 && (
+                  {!loaded.runs && <GhostCards count={4} />}
+                  {loaded.runs && recentRuns.length === 0 && (
                     <EmptyState size="compact" icon="⊞" title="No research yet" description="Run your first query above." />
                   )}
                   {recentRuns.slice(0, 8).map((run) => (
@@ -494,7 +532,7 @@ export default function DashboardPage() {
               <div style={{ ...S.row, ...(isMobile ? { flexWrap: "wrap" as const } : {}) }}>
                 <div style={{ ...S.stat("#34D399"), ...(isMobile ? { flex: "1 1 45%" } : {}) }}>
                   <div style={S.statLabel}>Total Users</div>
-                  <div style={S.statValue("#34D399")}>{adminStats?.totalUsers ?? "—"}</div>
+                  <div style={S.statValue("#34D399")}>{loaded.admin ? (adminStats?.totalUsers ?? "—") : <Skeleton width={48} height={28} />}</div>
                 </div>
                 <div style={{ ...S.stat("#E8A020"), ...(isMobile ? { flex: "1 1 45%" } : {}) }}>
                   <div style={S.statLabel}>Researches Today</div>
@@ -505,11 +543,11 @@ export default function DashboardPage() {
                 </div>
                 <div style={{ ...S.stat("#4A90D9"), ...(isMobile ? { flex: "1 1 45%" } : {}) }}>
                   <div style={S.statLabel}>Deep Dives Today</div>
-                  <div style={S.statValue("#4A90D9")}>{adminStats?.deepDivesToday ?? "—"}</div>
+                  <div style={S.statValue("#4A90D9")}>{loaded.admin ? (adminStats?.deepDivesToday ?? "—") : <Skeleton width={48} height={28} />}</div>
                 </div>
                 <div style={{ ...S.stat("#F87171"), ...(isMobile ? { flex: "1 1 45%" } : {}) }}>
                   <div style={S.statLabel}>Deep Dives Running</div>
-                  <div style={S.statValue("#F87171")}>{adminStats?.deepDivesRunning ?? 0}</div>
+                  <div style={S.statValue("#F87171")}>{loaded.admin ? (adminStats?.deepDivesRunning ?? "—") : <Skeleton width={48} height={28} />}</div>
                   <div style={S.statSub}>right now</div>
                 </div>
               </div>
@@ -531,11 +569,16 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   ))}
-                  {!adminStats && (
-                    <div style={{ fontSize: 12, color: "#374151" }}>
-                      Loading…
+                  {!loaded.admin && [0, 1, 2, 3].map((i) => (
+                    <div key={i} aria-hidden style={{
+                      display: "flex", justifyContent: "space-between",
+                      alignItems: "center", padding: "10px 0",
+                      borderBottom: "1px solid #1C2333",
+                    }}>
+                      <Skeleton width={[60, 48, 72, 54][i]} height={11} />
+                      <Skeleton width={24} height={16} />
                     </div>
-                  )}
+                  ))}
                 </div>
 
                 {/* All recent runs */}

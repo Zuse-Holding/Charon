@@ -171,3 +171,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.navSpinner { margin-left: auto; display: inline-flex; }
+.navSpinner > span { margin-right: 0; }

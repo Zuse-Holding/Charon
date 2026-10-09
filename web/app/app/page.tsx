@@ -11,6 +11,7 @@ import ReportIssueForm from "../../components/ReportIssueForm";
 import ErrorBoundary from "../../components/ErrorBoundary";
 import ResearchSkeleton from "../../components/ResearchSkeleton";
 import EmptyState from "../../components/EmptyState";
+import { Skeleton, SkeletonText, Spinner } from "../../components/Skeleton";
 import { trackClientEvent } from "../../lib/analytics-client";
 import styles from "./page.module.css";
 
@@ -52,9 +53,14 @@ function Dashboard() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [runs, setRuns]           = useState<Run[]>([]);
+  // True until the first /api/runs response — the feed and report panel
+  // show ghosts instead of "No research yet" / the empty splash, which
+  // otherwise flash before the most recent report auto-selects.
+  const [initialLoading, setInitialLoading] = useState(true);
   const [selected, setSelected]   = useState<Run | null>(null);
   const [report, setReport]       = useState<string>("");
   const [loading, setLoading]     = useState(false);
+  const [rerunning, setRerunning] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("summary");
   const [deepDiveState, setDeepDiveState] = useState<DeepDiveState>("idle");
@@ -101,9 +107,14 @@ function Dashboard() {
   }, []);
 
   useEffect(() => {
-    loadRuns().then(async (data) => {
-      if (data.length > 0) await selectRun(data[0]);
-    });
+    loadRuns()
+      .then((data) => {
+        // selectRun flips `loading` on synchronously, so the report panel
+        // hands off from the initial ghost straight to the report ghost.
+        if (data.length > 0) selectRun(data[0]);
+      })
+      .catch(() => {})
+      .finally(() => setInitialLoading(false));
     checkPendingRun();
   }, [loadRuns, checkPendingRun]);
 
@@ -251,10 +262,19 @@ function Dashboard() {
           <div className={styles.feed}>
             <div className={styles.feedHeader}>
               <span className={styles.panelTitle}>Recent Research</span>
-              <span className={styles.count}>{runs.length}</span>
+              <span className={styles.count}>{initialLoading ? "…" : runs.length}</span>
             </div>
             <div className={styles.feedList}>
-              {runs.length === 0 && (
+              {initialLoading && !pending && [0, 1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className={styles.feedItem} aria-hidden style={{ cursor: "default" }}>
+                  <div className={styles.itemHeader}>
+                    <Skeleton width={52} height={15} />
+                    <Skeleton width={`${[50, 38, 58, 44, 54, 40][i]}%`} height={11} />
+                  </div>
+                  <Skeleton width={90} height={8} style={{ marginTop: 8, opacity: 0.6 }} />
+                </div>
+              ))}
+              {!initialLoading && runs.length === 0 && (
                 <EmptyState size="compact" icon="◎" title="No research yet" description="Run your first query above." />
               )}
               {pending && (
@@ -294,6 +314,15 @@ function Dashboard() {
             {pending ? (
               <div className={styles.reportBody} style={{ paddingTop: 32 }}>
                 <ResearchSkeleton subject={pending.subject} type={pending.type} />
+              </div>
+            ) : initialLoading ? (
+              <div className={styles.reportBody} aria-hidden style={{ paddingTop: 32 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <Skeleton width={58} height={16} />
+                  <Skeleton width={220} height={24} />
+                </div>
+                <Skeleton width={160} height={9} style={{ marginBottom: 32 }} />
+                <SkeletonText lines={7} />
               </div>
             ) : !selected ? (
               <div className={styles.emptyState}>
@@ -344,12 +373,12 @@ function Dashboard() {
 </button>
                     <button
                       className={styles.actionBtn}
-                      disabled={loading}
+                      disabled={rerunning}
                       onClick={async () => {
-                        if (!selected || loading) return;
+                        if (!selected || rerunning) return;
                         const currentSubject = selected.subject;
                         const currentType = selected.type;
-                        setLoading(true);
+                        setRerunning(true);
                         try {
                           await fetch("/api/research", {
                             method: "POST",
@@ -361,11 +390,11 @@ function Dashboard() {
                           const updated = data.find(r => r.subject === currentSubject && r.type === currentType);
                           if (updated) await selectRun(updated);
                         } finally {
-                          setLoading(false);
+                          setRerunning(false);
                         }
                       }}
                     >
-                      {loading ? "Running..." : "Re-run"}
+                      {rerunning ? <><Spinner size={10} /> Running...</> : "Re-run"}
                     </button>
                     <button
                       className={`${styles.actionBtn} ${styles.primary}`}
@@ -458,10 +487,15 @@ function Dashboard() {
                   {deepDiveState !== "confirming" && deepDiveState !== "running" && (
                     <>
                       {activeTab === "summary" && (
-                        loading ? (
-                          <div className={styles.reportLoading}>
-                            <span className={styles.loadingDot} />
-                            Loading report...
+                        // A re-run replaces this report: show its progress
+                        // rather than the old version or an empty panel.
+                        rerunning && selected ? (
+                          <ResearchSkeleton subject={selected.subject} type={selected.type} />
+                        ) : loading ? (
+                          <div aria-busy style={{ paddingTop: 8 }}>
+                            <SkeletonText lines={7} />
+                            <div style={{ height: 28 }} />
+                            <SkeletonText lines={5} />
                           </div>
                         ) : (
                           <ErrorBoundary>

@@ -5,6 +5,7 @@ import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import EntityTag from "../../components/EntityTag";
 import EmptyState from "../../components/EmptyState";
+import { Skeleton, Spinner } from "../../components/Skeleton";
 import styles from "./page.module.css";
 
 interface Run {
@@ -21,10 +22,15 @@ export default function Reports() {
   const [filter, setFilter]     = useState<string>("all");
   const [search, setSearch]     = useState("");
   const [rerunning, setRerunning] = useState<string | null>(null);
+  const [loaded, setLoaded]     = useState(false);
 
   async function load() {
-    const res = await fetch("/api/runs");
-    if (res.ok) setRuns(await res.json());
+    try {
+      const res = await fetch("/api/runs");
+      if (res.ok) setRuns(await res.json());
+    } finally {
+      setLoaded(true);
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -84,7 +90,7 @@ export default function Reports() {
               ))}
             </div>
             <span className={styles.resultCount}>
-              {filtered.length} report{filtered.length !== 1 ? "s" : ""}
+              {loaded ? `${filtered.length} report${filtered.length !== 1 ? "s" : ""}` : "Loading…"}
             </span>
           </div>
 
@@ -99,7 +105,21 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 && (
+                {!loaded && [0, 1, 2, 3, 4].map((i) => (
+                  <tr key={`ghost-${i}`} aria-hidden>
+                    <td><Skeleton width={58} height={16} /></td>
+                    <td><Skeleton width={[180, 130, 220, 150, 200][i]} height={12} /></td>
+                    <td><Skeleton width={120} height={9} /></td>
+                    <td>
+                      <div className={styles.rowActions}>
+                        <Skeleton width={56} height={24} />
+                        <Skeleton width={60} height={24} />
+                        <Skeleton width={56} height={24} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {loaded && filtered.length === 0 && (
                   <tr>
                     <td colSpan={4} className={styles.empty}>
                       <EmptyState
@@ -141,7 +161,7 @@ export default function Reports() {
                           onClick={() => rerun(run)}
                           disabled={rerunning === run.id}
                         >
-                          {rerunning === run.id ? "Running..." : "Re-run"}
+                          {rerunning === run.id ? <><Spinner size={10} /> Running...</> : "Re-run"}
                         </button>
                         <button
                           className={`${styles.rowBtn} ${styles.danger}`}

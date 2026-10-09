@@ -1,10 +1,12 @@
 "use client";
 import Link from "next/link";
+import { useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "../lib/supabase/client";
 import { useResearch } from "../lib/research-context";
 import { useTier } from "../lib/tier-context";
 import { BUSINESS_INTELLIGENCE_PATH, DILIGENCE_URL } from "../lib/products";
+import { Spinner } from "./Skeleton";
 import styles from "./Sidebar.module.css";
 
 const NAV = [
@@ -45,6 +47,18 @@ export default function Sidebar() {
   // for the account holder themselves rather than displayed at a glance.
   const badge = tier && tier !== "internal" ? TIER_BADGE[tier] : undefined;
 
+  // Nav items are click-handlers rather than <Link>s, so there's no
+  // built-in feedback between the click and the next page rendering.
+  // Run the push in a transition and spin the clicked item until it lands.
+  const [navPending, startNav] = useTransition();
+  const [navTarget, setNavTarget] = useState<string | null>(null);
+  function go(href: string) {
+    if (href === pathname) return;
+    setNavTarget(href);
+    startNav(() => router.push(href));
+  }
+  const isLoading = (href: string) => navPending && navTarget === href;
+
   return (
     <aside className={styles.sidebar}>
       <div className={styles.logo} onClick={() => router.push(BUSINESS_INTELLIGENCE_PATH)} style={{ cursor: "pointer" }}>
@@ -57,11 +71,15 @@ export default function Sidebar() {
         {NAV.map((item) => (
           <div
             key={item.href}
-            className={`${styles.navItem} ${pathname === item.href ? styles.active : ""}`}
-            onClick={() => router.push(item.href)}
+            className={`${styles.navItem} ${pathname === item.href || isLoading(item.href) ? styles.active : ""}`}
+            onClick={() => go(item.href)}
+            onMouseEnter={() => router.prefetch(item.href)}
           >
             <span className={styles.icon}>{item.icon}</span>
             {item.label}
+            {isLoading(item.href) && (
+              <span className={styles.navSpinner}><Spinner size={10} color="var(--orange)" label={`Opening ${item.label}`} /></span>
+            )}
           </div>
         ))}
         <div className={styles.navLabel}>PRODUCTS</div>
@@ -73,11 +91,15 @@ export default function Sidebar() {
         {SYSTEM_NAV.map((item) => (
           <div
             key={item.href}
-            className={`${styles.navItem} ${pathname === item.href ? styles.active : ""}`}
-            onClick={() => router.push(item.href)}
+            className={`${styles.navItem} ${pathname === item.href || isLoading(item.href) ? styles.active : ""}`}
+            onClick={() => go(item.href)}
+            onMouseEnter={() => router.prefetch(item.href)}
           >
             <span className={styles.icon}>{item.icon}</span>
             {item.label}
+            {isLoading(item.href) && (
+              <span className={styles.navSpinner}><Spinner size={10} color="var(--orange)" label={`Opening ${item.label}`} /></span>
+            )}
           </div>
         ))}
       </nav>

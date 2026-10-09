@@ -5,6 +5,7 @@ import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import EntityTag from "../../components/EntityTag";
 import EmptyState from "../../components/EmptyState";
+import { Skeleton, SkeletonRow, Spinner } from "../../components/Skeleton";
 import { useTier } from "../../lib/tier-context";
 import styles from "./page.module.css";
 
@@ -60,6 +61,7 @@ export default function Watchlist() {
   const router = useRouter();
   const { can } = useTier();
   const [entries, setEntries] = useState<WatchEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [snapshotting, setSnapshotting] = useState(false);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
@@ -74,8 +76,12 @@ export default function Watchlist() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch("/api/watchlist");
-    if (res.ok) setEntries(await res.json());
+    try {
+      const res = await fetch("/api/watchlist");
+      if (res.ok) setEntries(await res.json());
+    } finally {
+      setLoaded(true);
+    }
   }
 
   async function loadCandidates(status: "pending" | "rejected") {
@@ -208,7 +214,7 @@ export default function Watchlist() {
                 onClick={runSnapshotNow}
                 disabled={snapshotting}
               >
-                {snapshotting ? "Running snapshot..." : "↻ Run snapshot now"}
+                {snapshotting ? <><Spinner size={10} /> Running snapshot...</> : "↻ Run snapshot now"}
               </button>
             )}
           </div>
@@ -240,7 +246,7 @@ export default function Watchlist() {
                       </button>
                     </div>
                     <button className={styles.snapshotBtn} onClick={runDiscoveryNow} disabled={discoveryRunning}>
-                      {discoveryRunning ? "Running discovery..." : "↻ Run discovery now"}
+                      {discoveryRunning ? <><Spinner size={10} /> Running discovery...</> : "↻ Run discovery now"}
                     </button>
                   </div>
 
@@ -248,7 +254,13 @@ export default function Watchlist() {
                   {discoveryMessage && <div className={styles.signalPending}>{discoveryMessage}</div>}
 
                   {discoveryLoading ? (
-                    <div className={styles.signalPending}>Loading…</div>
+                    <div className={styles.discoveryList}>
+                      {[0, 1, 2].map((i) => (
+                        <div key={i} className={styles.discoveryRow} aria-hidden>
+                          <SkeletonRow index={i} style={{ flex: 1 }} />
+                        </div>
+                      ))}
+                    </div>
                   ) : candidates.length === 0 ? (
                     <div className={styles.signalPending}>
                       {discoveryStatus === "pending" ? "No pending candidates — run discovery to look for some." : "Nothing rejected yet."}
@@ -290,7 +302,24 @@ export default function Watchlist() {
             </div>
           )}
 
-          {entries.length === 0 ? (
+          {!loaded ? (
+            <div className={styles.grid}>
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className={styles.card} aria-hidden>
+                  <div className={styles.cardHeader}>
+                    <Skeleton width={58} height={16} />
+                    <Skeleton width={`${[45, 35, 50, 40][i]}%`} height={13} />
+                  </div>
+                  <Skeleton height={3} style={{ margin: "14px 0 12px" }} />
+                  <Skeleton width="60%" height={9} />
+                  <div className={styles.cardFooter}>
+                    <Skeleton width={78} height={26} />
+                    <Skeleton width={68} height={26} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : entries.length === 0 ? (
             <EmptyState
               icon="◎"
               title="Your Watchlist is empty"
@@ -368,7 +397,7 @@ export default function Watchlist() {
                         onClick={() => refresh(entry)}
                         disabled={refreshing === entry.id}
                       >
-                        {refreshing === entry.id ? "Refreshing..." : "↻ Refresh"}
+                        {refreshing === entry.id ? <><Spinner size={10} /> Refreshing...</> : "↻ Refresh"}
                       </button>
                       <button
                         className={`${styles.cardBtn} ${styles.removeBtn}`}
