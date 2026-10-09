@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { MarketingShell } from "../../../components/marketing/MarketingShell";
 import shellStyles from "../../../components/marketing/MarketingShell.module.css";
+import { PRODUCTS } from "../../../lib/products";
 import { getAllResourcePosts, getResourcePost } from "../../../lib/resources";
 import styles from "./post.module.css";
 
@@ -36,7 +37,9 @@ function formatDate(iso: string) {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  // Frontmatter dates are plain YYYY-MM-DD, which parse as UTC midnight; format
+  // in UTC too, or US time zones show the day before.
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
 export default async function ResourcePostPage({
@@ -47,13 +50,15 @@ export default async function ResourcePostPage({
   const { slug } = await params;
   const post = getResourcePost(slug);
   if (!post) notFound();
+  const { name: productName, cta } = PRODUCTS[post.product];
+  const ctaExternal = cta.href.startsWith("http");
 
   return (
     <MarketingShell>
       <div className={styles.header}>
         <Link href="/resources" className={styles.back}>← All resources</Link>
         <div className={styles.meta}>
-          <span>{post.category}</span>
+          <span>{productName} · {post.category}</span>
           <span>{formatDate(post.date)} · {post.readTime}</span>
         </div>
         <h1 className={styles.title}>{post.title}</h1>
@@ -67,10 +72,14 @@ export default async function ResourcePostPage({
       <div className={styles.ctaBox}>
         <div className={styles.ctaInner}>
           <div className={styles.ctaText}>
-            <strong>See it on a real company.</strong>
-            Start free — no sales call required.
+            <strong>{cta.title}</strong>
+            {cta.body}
           </div>
-          <Link href="/login?mode=signup" className={shellStyles.ctaPrimary}>Start Free →</Link>
+          {ctaExternal ? (
+            <a href={cta.href} className={shellStyles.ctaPrimary}>{cta.label}</a>
+          ) : (
+            <Link href={cta.href} className={shellStyles.ctaPrimary}>{cta.label}</Link>
+          )}
         </div>
       </div>
     </MarketingShell>

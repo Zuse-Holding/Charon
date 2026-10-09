@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { isProductId, type ProductId } from "./products";
 
 export type ResourcePost = {
   slug: string;
@@ -8,6 +9,7 @@ export type ResourcePost = {
   date: string;
   category: string;
   readTime: string;
+  product: ProductId;
   body: string;
 };
 
@@ -43,6 +45,8 @@ export function getAllResourcePosts(): ResourcePost[] {
       date: data.date ?? "",
       category: data.category ?? "Guide",
       readTime: data.readTime ?? "5 min read",
+      // Posts written before the hub default to Business Intelligence.
+      product: isProductId(data.product) ? data.product : "intel",
       body,
     };
   });
