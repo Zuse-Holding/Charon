@@ -209,7 +209,9 @@
 .higherLimitsNote a { color: #ff6b2b; text-decoration: none; }
 .higherLimitsNote a:hover { text-decoration: underline; }
 .pricingGrid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; text-align: left;
+  /* One column per plan in PRICING (page.tsx); 4 columns left an empty slot
+     and pushed the 3 cards off center. */
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: left;
 }
 .planCard {
   background: #0a0a14; border: 1px solid rgba(255,255,255,0.06);
@@ -280,9 +282,13 @@
   .featuresGrid { grid-template-columns: 1fr; }
   .pricingSection { padding: 40px 20px 60px; }
   .pricingGrid { grid-template-columns: 1fr 1fr; }
+  .pricingGrid > :last-child:nth-child(odd) {
+    grid-column: 1 / -1; justify-self: center; width: calc(50% - 6px);
+  }
 }
 
 @media (max-width: 480px) {
   .pricingGrid { grid-template-columns: 1fr; }
+  .pricingGrid > :last-child:nth-child(odd) { width: auto; justify-self: stretch; }
   .heroTitle { font-size: 28px; }
 }
