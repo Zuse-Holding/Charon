@@ -19,7 +19,7 @@ export async function GET() {
     supabase.from("agent_runs").select("*").order("started_at", { ascending: false }).limit(50),
     supabase.from("leads").select("id", { count: "exact", head: true }).gte("created_at", todayStart.toISOString()),
     supabase.from("approval_queue").select("id", { count: "exact", head: true }).eq("status", "pending"),
-    supabase.from("deadlines").select("title, due_date").eq("status", "open").order("due_date", { ascending: true }).limit(1),
+    supabase.from("deadlines").select("title, due_date").eq("status", "open").order("due_date", { ascending: true }).limit(5),
   ]);
 
   const latestByJob: Record<AgentJob, AgentRunRow | null> = Object.fromEntries(
@@ -29,14 +29,12 @@ export async function GET() {
     if (!latestByJob[row.job]) latestByJob[row.job] = row;
   }
 
-  const deadline = deadlinesRes.data?.[0] ?? null;
-  const nextDeadline = deadline
-    ? {
-        title: deadline.title as string,
-        dueDate: deadline.due_date as string,
-        daysOut: Math.ceil((new Date(deadline.due_date as string).getTime() - Date.now()) / 86_400_000),
-      }
-    : null;
+  const upcomingDeadlines = ((deadlinesRes.data as { title: string; due_date: string }[] | null) ?? []).map((d) => ({
+    title: d.title,
+    dueDate: d.due_date,
+    daysOut: Math.ceil((new Date(d.due_date).getTime() - Date.now()) / 86_400_000),
+  }));
+  const nextDeadline = upcomingDeadlines[0] ?? null;
 
   return NextResponse.json({
     agentRuns: {
@@ -47,6 +45,7 @@ export async function GET() {
     leadsToday: leadsRes.count ?? 0,
     approvalQueueOpen: queueRes.count ?? 0,
     nextDeadline,
+    upcomingDeadlines,
     // Sentry/Vercel aren't wired in this repo (no creds in .env.local.example) —
     // static zero until those integrations actually exist.
     sentryIssues: { bugWatcherOpenCount: 0 },

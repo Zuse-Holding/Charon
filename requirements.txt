@@ -1,6 +1,7 @@
 # Agent core (agents/selene.py, agents/mcp_tools.py)
 supabase
 mcp[cli]
+httpx          # Gmail API (agents/gmail.py, agents/gmail_send.py)
 
 # Interactive chat loop (agents/selene_chat.py) — Groq/Ollama, unrelated to
 # the claude -p path above

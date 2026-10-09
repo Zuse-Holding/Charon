@@ -4,12 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import styles from "./ops.module.css";
 import { subscribeToAgentRuns } from "../../lib/realtime";
 import type { AgentJob, AgentRunRow, AgentRunStatus } from "@/lib/supabase/types";
+import { formatMoney } from "@/lib/format";
 import ApprovalQueue from "./ApprovalQueue";
 import SeleneStatusRing from "./AgentRunStatus";
 import FinanceView from "./FinanceView";
 import DeadlinesView from "./DeadlinesView";
 import LeadsView from "./LeadsView";
 import PersonalView from "./PersonalView";
+import ContractsView from "./ContractsView";
+import InvoicesView from "./InvoicesView";
+import UsageView from "./UsageView";
+import MemoryView from "./MemoryView";
 
 // ── Static data (ported from zuse-intel-ops-live-v3.html, wired to schema.sql) ──
 //
@@ -61,9 +66,13 @@ const DEFAULT_PARTICLE_COLOR = "#4de3ff"; // was #ff3b30 pre-Tron-blue swap
 
 // Venture assignment: Zuse Holdings = the parent company's own business
 // dealings, exactly what Selene OS (agents/selene.py) runs. Metis Analytics
-// = the product and its own ops. Telehealth Platform has no nodes yet —
-// every existing node dims out when it's selected, which is correct: there's
-// nothing wired to it for now.
+// = its three products (Intelligence — the original build, which every
+// existing metis node belongs to — plus Diligence and Committee, the trading
+// platform, which also houses Moneyball — neither wired yet) and shared
+// platform ops. The Trading Bots venture is retired: the Committee app
+// replaces it. Telehealth Platform has
+// no nodes yet — every existing node dims out when it's selected,
+// which is correct: there's nothing wired to them for now.
 const NODE_VENTURE: Record<string, "zuse" | "metis" | "telehealth"> = {
   bug: "metis", deploy: "metis", supabase: "metis", briefing: "metis", political: "metis", kg: "metis",
   oaktree: "zuse", formation: "zuse", inbox: "zuse", finance: "zuse", leads: "zuse", brief: "zuse",
@@ -81,7 +90,7 @@ const JOB_LABEL: Record<AgentJob, string> = {
   compliance: "Compliance clock", brief: "Weekly brief",
 };
 
-const VIEW_TABS = ["business", "queue", "finance", "deadlines", "leads", "personal", "folders", "team", "usage", "memory"];
+const VIEW_TABS = ["business", "queue", "finance", "deadlines", "contracts", "invoices", "leads", "personal", "usage", "memory", "folders", "team"];
 
 interface TermLine { text: string; dim?: boolean; cursor?: boolean; }
 
@@ -142,6 +151,21 @@ function describeRun(row: AgentRunRow): { text: string; tone: FeedTone } {
   return { text: `Selene: ${label} — nothing needed`, tone: "ok" };
 }
 
+type DeadlineSummary = { title: string; dueDate: string; daysOut: number };
+
+// No agent has ever run yet (see agents/selene.py's module docstring — the
+// cron box isn't wired up), so last10 agent_runs is always empty in
+// production right now. Rather than leave the feed panel blank, fall back
+// to the one real, always-available data source: the compliance clock
+// (pure code, no LLM — CLAUDE.md non-negotiable #3), which already has
+// seeded deadlines. Once real runs exist, describeRun-based items take
+// over automatically since this is only used when last10 is empty.
+function describeDeadline(d: DeadlineSummary): { text: string; tone: FeedTone } {
+  const tone: FeedTone = d.daysOut <= 7 ? "bad" : d.daysOut <= 30 ? "pending" : "ok";
+  const days = d.daysOut < 0 ? `${Math.abs(d.daysOut)}d overdue` : `${d.daysOut}d out`;
+  return { text: `Compliance clock: ${d.title} — ${days}`, tone };
+}
+
 function bubbleFor(row: AgentRunRow): string | null {
   const label = JOB_LABEL[row.job] ?? row.job;
   if (row.status === "failed") {
@@ -163,6 +187,31 @@ export default function OpsClient() {
   const [activeVenture, setActiveVenture] = useState("zuse");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [feedOpen, setFeedOpen] = useState(true);
+
+  // ── Metis revenue (Stripe, read-only — /api/ops/revenue) ───────────────
+  type ProductKey = "intelligence" | "diligence" | "committee" | "other";
+  type RevenueState =
+    | { status: "loading" }
+    | { status: "connected"; mrr: Record<ProductKey, number>; last30: Record<ProductKey, number>; oneOff30: number; subscriptions: Record<ProductKey, number> }
+    | { status: "error"; error: string };
+  const [revenue, setRevenue] = useState<RevenueState>({ status: "loading" });
+
+  function fetchRevenue() {
+    setRevenue({ status: "loading" });
+    fetch("/api/ops/revenue")
+      .then(res => res.json())
+      .then(data => setRevenue(data.connected ? { status: "connected", ...data } : { status: "error", error: data.error ?? "Stripe sync failed." }))
+      .catch(() => setRevenue({ status: "error", error: "Couldn't reach the revenue route." }));
+  }
+
+  // Fetch on page load regardless of which venture is active, so the top
+  // bar's MRR is filled in without opening Metis first.
+  useEffect(() => {
+    fetchRevenue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const totalMrr = revenue.status === "connected" ? Object.values(revenue.mrr).reduce((a, b) => a + b, 0) : null;
 
   // On phones/tablets the sidebar + feed panel stack above/below the node
   // canvas and, expanded, push it out of view entirely. Start collapsed
@@ -522,12 +571,23 @@ export default function OpsClient() {
 
         if (data.nextDeadline) setNextDeadline(data.nextDeadline);
 
-        setFeed(
-          last10.map((row: AgentRunRow) => {
-            const { text, tone } = describeRun(row);
-            return { id: feedIdSeq++, text, ts: fmtTs(row.finished_at ?? row.started_at), tone };
-          })
-        );
+        if (last10.length > 0) {
+          setFeed(
+            last10.map((row: AgentRunRow) => {
+              const { text, tone } = describeRun(row);
+              return { id: feedIdSeq++, text, ts: fmtTs(row.finished_at ?? row.started_at), tone };
+            })
+          );
+        } else {
+          const upcomingDeadlines: DeadlineSummary[] = data.upcomingDeadlines ?? [];
+          setFeed(
+            upcomingDeadlines.map((d) => {
+              const { text, tone } = describeDeadline(d);
+              const dueLabel = new Date(d.dueDate).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+              return { id: feedIdSeq++, text, ts: dueLabel, tone };
+            })
+          );
+        }
       })
       .catch(() => { /* leave defaults on failure */ });
 
@@ -579,9 +639,13 @@ export default function OpsClient() {
     <div className={styles.opsRoot}>
       <div className={styles.topbar}>
         <div className={styles.brand}>
-          <div className={styles.logo}>ZUSE<span>::</span>INTEL OPS</div>
+          <div className={styles.logo}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- fixed-size brand mark, not content imagery; next/image's overhead isn't worth it here */}
+            <img src="/zuse-holdings-logo.svg" alt="Zuse Holdings" className={styles.logoMark} />
+            <span className={styles.logoSuffix}>INTEL OPS</span>
+          </div>
           <div className={styles.status}><div className={styles.dot}></div><span className={styles.statusText}> SELENE · CONNECTED</span></div>
-          <SeleneStatusRing />
+          <SeleneStatusRing onClick={() => setActiveTab("queue")} />
         </div>
         <div className={styles.viewTabs}>
           {VIEW_TABS.map(tab => (
@@ -599,6 +663,10 @@ export default function OpsClient() {
           <div className={`${styles.metricMini} ${styles.tasks}`}><div className={styles.label}>TASKS</div><div className={styles.val}>{tasksToday}</div></div>
           <div className={`${styles.metricMini} ${styles.hideOnTiny}`}><div className={styles.label}>UPTIME</div><div className={styles.val}>{uptime}</div></div>
           <div className={`${styles.metricMini} ${styles.time}`}><div className={styles.label}>TIME</div><div className={styles.val}>{clock}</div></div>
+          <div className={styles.metricMini} title={revenue.status === "error" ? revenue.error : "Monthly recurring revenue, all Metis products (Stripe)"}>
+            <div className={styles.label}>MRR</div>
+            <div className={styles.val}>{totalMrr == null ? "—" : formatMoney(totalMrr).replace(/\.00$/, "")}</div>
+          </div>
           <div className={styles.metricMini} title="UCLA contract ends Jun 29, 2027">
             <div className={styles.label}>UCLA</div>
             <div className={styles.val}>{countdownLabel(daysUntil(UCLA_CONTRACT_END))}</div>
@@ -621,6 +689,14 @@ export default function OpsClient() {
           <LeadsView />
         ) : activeTab === "personal" ? (
           <PersonalView />
+        ) : activeTab === "contracts" ? (
+          <ContractsView />
+        ) : activeTab === "invoices" ? (
+          <InvoicesView onOpenQueue={() => setActiveTab("queue")} />
+        ) : activeTab === "usage" ? (
+          <UsageView />
+        ) : activeTab === "memory" ? (
+          <MemoryView />
         ) : activeTab !== "business" ? (
           <div className={styles.placeholderView}>
             <div className={styles.placeholderTitle}>{activeTab.toUpperCase()}</div>
@@ -658,7 +734,36 @@ export default function OpsClient() {
           {activeVenture === "metis" && (
           <>
           <div className={styles.sidebarSection}>
-            <div className={styles.groupLabel}>Products <span>4</span></div>
+            <div className={styles.groupLabel}>
+              Revenue
+              <span className={styles.count} style={{ cursor: "pointer" }} onClick={fetchRevenue} title="Refresh">↻</span>
+            </div>
+            {revenue.status === "loading" ? (
+              <div className={styles.sidebarEmpty}>Checking Stripe…</div>
+            ) : revenue.status === "error" ? (
+              <div className={styles.sidebarEmpty}>
+                Not connected — {revenue.error} Add a read-only restricted key as <code>STRIPE_RESTRICTED_KEY</code> to the server env, then hit ↻.
+              </div>
+            ) : (
+              <>
+                {([["intelligence", "Intelligence"], ["diligence", "Diligence"], ["committee", "Committee"], ["other", "Other"]] as [ProductKey, string][])
+                  .filter(([k]) => k !== "other" || revenue.mrr.other > 0 || revenue.last30.other > 0)
+                  .map(([k, label]) => (
+                    <div key={k} className={`${styles.strand} ${styles.nested}`} title={`${revenue.subscriptions[k]} active subscription(s)`}>
+                      <div className={styles.name}>{label}</div>
+                      <span className={`${styles.count} mono`}>
+                        {formatMoney(revenue.mrr[k])}/mo · {formatMoney(revenue.last30[k])} 30d
+                      </span>
+                    </div>
+                  ))}
+                {revenue.oneOff30 > 0 && (
+                  <div className={styles.sidebarEmpty}>Plus {formatMoney(revenue.oneOff30)} in one-off charges this month.</div>
+                )}
+              </>
+            )}
+          </div>
+          <div className={styles.sidebarSection}>
+            <div className={styles.groupLabel}>Metis Intelligence <span>4</span></div>
             <div className={`${styles.strand} ${styles.nested}`} onClick={() => flareNode("bug")}>
               <div className={styles.name}><span className={styles.icon}>➤</span>Bug Watcher</div><span className={styles.count}>{sidebarCounts.bug}</span>
             </div>
@@ -671,6 +776,17 @@ export default function OpsClient() {
             <div className={`${styles.strand} ${styles.nested}`} onClick={() => flareNode("kg")}>
               <div className={styles.name}><span className={styles.icon}>✦</span>Knowledge Graph</div><span className={styles.count}>{sidebarCounts.kg}</span>
             </div>
+          </div>
+          <div className={styles.sidebarSection}>
+            <div className={styles.groupLabel}>Metis Diligence</div>
+            <div className={styles.sidebarEmpty}>Nothing wired here yet — strands land as Diligence ships.</div>
+          </div>
+          <div className={styles.sidebarSection}>
+            <div className={styles.groupLabel}>Committee <span>beta</span></div>
+            <div className={`${styles.strand} ${styles.nested}`}>
+              <div className={styles.name}><span className={styles.icon}>▲</span>Moneyball</div><span className={styles.count}>bot</span>
+            </div>
+            <div className={styles.sidebarEmpty}>The trading platform. Name&apos;s still in beta. Moneyball runs inside it. Nothing wired here yet.</div>
           </div>
           <div className={styles.sidebarSection}>
             <div className={styles.groupLabel}>Platform <span>2</span></div>
@@ -766,7 +882,7 @@ export default function OpsClient() {
               })}
             </div>
 
-            <div className={`${styles.statCorner} ${styles.tl}`}>42,000 NEURONS · 2 VENTURES</div>
+            <div className={`${styles.statCorner} ${styles.tl}`}>42,000 NEURONS · 3 VENTURES</div>
             <div className={`${styles.statCorner} ${styles.tr}`}>NEURAL CORE · CONNECTED</div>
             <div className={`${styles.statCorner} ${styles.br}`}>ZUSE HOLDINGS LLC · CHARON ACTIVE</div>
 
@@ -809,19 +925,23 @@ export default function OpsClient() {
           </h3>
           <div className={`${styles.feedBody} ${feedOpen ? "" : styles.collapsed}`}>
           <div>
-            {feed.map(item => (
-              <div
-                key={item.id}
-                className={[
-                  styles.feedItem,
-                  item.tone === "ok" ? styles.toneOk : "",
-                  item.tone === "pending" ? styles.tonePending : "",
-                  item.tone === "bad" ? styles.toneBad : "",
-                ].filter(Boolean).join(" ")}
-              >
-                <span className={styles.t}>{item.text}</span><span className={styles.ts}>{item.ts}</span>
-              </div>
-            ))}
+            {feed.length === 0 ? (
+              <div className={styles.feedEmpty}>Nothing yet — I&apos;ll log runs and deadlines here as they happen.</div>
+            ) : (
+              feed.map(item => (
+                <div
+                  key={item.id}
+                  className={[
+                    styles.feedItem,
+                    item.tone === "ok" ? styles.toneOk : "",
+                    item.tone === "pending" ? styles.tonePending : "",
+                    item.tone === "bad" ? styles.toneBad : "",
+                  ].filter(Boolean).join(" ")}
+                >
+                  <span className={styles.t}>{item.text}</span><span className={styles.ts}>{item.ts}</span>
+                </div>
+              ))
+            )}
           </div>
           <div className={styles.terminalBox}>
             {terminal.map((line, i) => (

@@ -10,6 +10,8 @@ import { formatMoney, formatDate } from "@/lib/format";
 // so "runway" isn't shown here: that needs a cash-balance figure the schema
 // doesn't track yet. Burn/category/venture splits are the real Phase 1 asks.
 
+// "trading" is retired (Committee replaced the Trading Bots venture). It stays
+// a valid Venture so older rows tagged with it still load.
 const VENTURES: Venture[] = ["zuse", "metis", "charon", "lounge", "kairos", "personal_mixed"];
 const CATEGORY_SUGGESTIONS = ["software", "domains", "hardware", "filing_fees", "api", "hosting", "other"];
 
