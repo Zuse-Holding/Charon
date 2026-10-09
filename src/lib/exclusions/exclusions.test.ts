@@ -33,6 +33,8 @@ class FakeMessenger implements Messenger {
   links: { to: string; link: string }[] = [];
   sms: string[] = [];
   code = "123456";
+  smsReady = true;
+  smsAvailable() { return this.smsReady; }
   async sendLink(to: string, _k: unknown, link: string) { this.links.push({ to, link }); return true; }
   async startSms(phone: string) { this.sms.push(phone); return true; }
   async checkSms(_p: string, code: string) { return code === this.code; }
@@ -92,6 +94,18 @@ describe("adding and confirming", () => {
     assert.equal((await svc.confirmCode("u1", id, "4155550100", "123456")).ok, true);
     assert.equal(store.rows[0].status, "active");
     assert.equal(await guard.blocksQuery("call 415.555.0100"), true);
+  });
+
+  it("phone isn't offered or accepted until SMS is set up", async () => {
+    const { svc, msg, store } = setup();
+    msg.smsReady = false;
+    assert.deepEqual(svc.kinds(), ["email", "name_dob"]);
+    const r = await svc.add("u1", "o@x.com", "pro", { kind: "phone", value: "+14155550100" });
+    assert.ok(!r.ok && /can't be added yet/.test(r.error));
+    assert.equal(store.rows.length, 0);
+    assert.equal(msg.sms.length, 0);
+    msg.smsReady = true;
+    assert.deepEqual(svc.kinds(), ["email", "phone", "name_dob"]);
   });
 
   it("phone: locks after too many wrong codes", async () => {

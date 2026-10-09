@@ -8,7 +8,8 @@ import { normalizePersonName } from "../entities/normalize.js";
  * gets a neutral "not available".
  *
  *   email      confirmed by a link sent to that address
- *   phone      confirmed by an SMS code (Twilio Verify)
+ *   phone      confirmed by an SMS code (Twilio Verify); offered only
+ *              while Twilio is configured, so it can't half-work
  *   name_dob   name plus date of birth; confirmed by a link sent to the
  *              subscriber's own account email, with their statement that
  *              it is them
@@ -188,6 +189,8 @@ export interface ExclusionStore {
 export interface Messenger {
   /** Sends the confirmation link; returns false if it couldn't. */
   sendLink(to: string, kind: ExclusionKind, link: string): Promise<boolean>;
+  /** False when SMS isn't set up: phone entries aren't offered at all. */
+  smsAvailable(): boolean;
   startSms(phone: string): Promise<boolean>;
   checkSms(phone: string, code: string): Promise<boolean>;
 }
@@ -223,6 +226,11 @@ export class ExclusionService {
     private now: () => Date = () => new Date(),
   ) {}
 
+  /** Which kinds this server can confirm right now. */
+  kinds(): ExclusionKind[] {
+    return this.messenger.smsAvailable() ? ["email", "phone", "name_dob"] : ["email", "name_dob"];
+  }
+
   async list(owner: string): Promise<PublicEntry[]> {
     await this.store.deleteExpiredPending(owner, this.now());
     return (await this.store.listForOwner(owner)).map(toPublic);
@@ -235,6 +243,7 @@ export class ExclusionService {
         : input.kind === "phone" ? "Enter the number with its country code, e.g. +1 415 555 0100."
         : "Enter a full name and a valid date of birth." };
     }
+    if (input.kind === "phone" && !this.messenger.smsAvailable()) return { ok: false, error: "Phone numbers can't be added yet." };
     if (input.kind === "name_dob" && !input.attest) return { ok: false, error: "Confirm that this name and date of birth are yours." };
     if (input.kind === "name_dob" && !accountEmail) return { ok: false, error: "Your account has no email address to confirm with." };
 

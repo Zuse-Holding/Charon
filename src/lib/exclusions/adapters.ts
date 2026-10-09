@@ -93,6 +93,10 @@ export class LiveMessenger implements Messenger {
     return sent;
   }
 
+  smsAvailable() {
+    return !!(this.env.TWILIO_ACCOUNT_SID && this.env.TWILIO_AUTH_TOKEN && this.env.TWILIO_VERIFY_SERVICE_SID);
+  }
+
   private twilio(path: string, body: Record<string, string>): Promise<Response> | undefined {
     const sid = this.env.TWILIO_ACCOUNT_SID, token = this.env.TWILIO_AUTH_TOKEN, service = this.env.TWILIO_VERIFY_SERVICE_SID;
     if (!sid || !token || !service) {
