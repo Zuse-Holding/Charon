@@ -28,6 +28,8 @@ export default function SelfExclusion() {
   const enabled = isEnabled("self_exclusion");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [limit, setLimit] = useState(5);
+  // Kinds the server can confirm right now (phone only once SMS is set up).
+  const [kinds, setKinds] = useState<Kind[]>(["email", "name_dob"]);
   const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState<Kind>("email");
   const [value, setValue] = useState("");
@@ -46,6 +48,7 @@ export default function SelfExclusion() {
       const data = await res.json();
       setEntries(data.entries ?? []);
       setLimit(data.limit ?? 5);
+      if (Array.isArray(data.kinds)) setKinds(data.kinds);
     }
     setLoading(false);
   }
@@ -118,7 +121,7 @@ export default function SelfExclusion() {
         <div className={base.content}>
           <h1 className={base.title}>Self-exclusion</h1>
           <p className={base.sub}>
-            Add your own email, phone number, or name with date of birth. Once you confirm it&apos;s yours, Metis won&apos;t
+            Add your own email{kinds.includes("phone") ? ", phone number," : ""} or name with date of birth. Once you confirm it&apos;s yours, Metis won&apos;t
             follow it when expanding research, for anyone on the platform, and a direct search for it shows &quot;not available&quot;.
             We store only a scrambled form, never the identifier itself.
           </p>
@@ -164,7 +167,7 @@ export default function SelfExclusion() {
                 <form className={base.group} onSubmit={add}>
                   <div className={base.groupLabel}>ADD AN IDENTIFIER</div>
                   <div className={styles.kinds} role="radiogroup" aria-label="Type">
-                    {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
+                    {(Object.keys(KIND_LABEL) as Kind[]).filter((k) => kinds.includes(k)).map((k) => (
                       <button key={k} type="button" role="radio" aria-checked={kind === k}
                         className={kind === k ? styles.kindOn : styles.kindOff} onClick={() => setKind(k)}>
                         {KIND_LABEL[k]}

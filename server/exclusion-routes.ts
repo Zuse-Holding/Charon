@@ -68,7 +68,7 @@ export function registerExclusionRoutes(app: express.Express, d: Deps) {
     try {
       const tier = await d.getUserTier(req.params.userId);
       const entries = await getService().list(req.params.userId);
-      res.json({ entries, limit: limitFor(tier) });
+      res.json({ entries, limit: limitFor(tier), kinds: getService().kinds() });
     } catch (err) { fail(res, err); }
   });
 

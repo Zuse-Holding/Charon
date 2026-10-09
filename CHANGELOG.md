@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Self-exclusion: phone entries only when SMS is set up
+- The Phone option appears, and the server accepts phone entries, only while `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_VERIFY_SERVICE_SID` are all set. Without them, self-exclusion runs with email and name plus date of birth, and turning Twilio on later adds Phone with no code change.
+
 ### Related-entities expansion (Feature 4): behind `FEATURE_RELATED_ENTITIES`
 - Company reports gain a "Related Entities" section: a graph (with a table view and CSV export) of the target's officers, registered agent and addresses from its own filing, and the other companies that share them.
 - Links stated in the target's filing are hard; other companies found by officer name, agent name or address are weak: drawn dashed, labeled as a name or address match, and never followed. Hop limit 2 by default, configurable per search (`relatedHops` on the research request), capped at 3.
