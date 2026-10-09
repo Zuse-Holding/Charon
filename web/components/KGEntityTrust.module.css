@@ -16,7 +16,7 @@
 
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .merge, .keep {
-  background: transparent; border-radius: 5px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer;
+  background: transparent; border-radius: 5px; padding: 4px 10px; font-size: 11px; font-weight: 500; cursor: pointer;
 }
 .merge { border: 1px solid var(--orange); color: var(--orange); }
 .keep { border: 1px solid var(--border); color: var(--text); }
@@ -29,7 +29,7 @@
 }
 .reviewToggle {
   width: 100%; text-align: left; background: transparent; border: none; color: var(--yellow);
-  font-size: 12px; font-weight: 600; padding: 8px 12px; cursor: pointer;
+  font-size: 12px; font-weight: 500; padding: 8px 12px; cursor: pointer;
 }
 .reviewList { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 12px; max-height: 320px; overflow-y: auto; }
 .note { font-size: 11px; color: var(--muted); line-height: 1.5; margin: 0; }
