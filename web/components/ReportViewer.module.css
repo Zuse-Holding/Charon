@@ -213,7 +213,7 @@
 .provSummary { font-size: 12.5px; color: var(--text); line-height: 1.6; }
 .provCsv {
   align-self: flex-start; background: transparent; border: 1px solid var(--border);
-  border-radius: 6px; padding: 6px 12px; color: var(--cyan); font-size: 11.5px; font-weight: 600; cursor: pointer;
+  border-radius: 6px; padding: 6px 12px; color: var(--cyan); font-size: 11.5px; font-weight: 500; cursor: pointer;
 }
 .provCsv:hover { border-color: var(--cyan); }
 .provDetails > summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 4px 0; }
@@ -227,7 +227,7 @@
 .provTable a:hover { text-decoration: underline; }
 .provMono { font-family: var(--font-mono); white-space: nowrap; }
 .fBadge {
-  display: inline-block; white-space: nowrap; font-size: 11px; font-weight: 600;
+  display: inline-block; white-space: nowrap; font-size: 11px; font-weight: 500; line-height: 1.5;
   padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor;
 }
 .fConfirmed { color: var(--green); }
@@ -240,7 +240,7 @@
 .relTabs { display: flex; gap: 4px; }
 .relTab, .relTabOn { background: transparent; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
 .relTab { border: 1px solid var(--border); color: var(--text); }
-.relTabOn { border: 1px solid var(--orange); color: var(--orange); font-weight: 600; }
+.relTabOn { border: 1px solid var(--orange); color: var(--orange); font-weight: 500; }
 .relGraph { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,0.01); }
 .relLabel { font-size: 10px; fill: var(--text); font-family: var(--font-mono); }
 .relLegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: var(--muted); }
@@ -253,10 +253,10 @@
   display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;
 }
 .postureHead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.postureLabel { font-weight: 600; color: var(--text); }
+.postureLabel { font-weight: 500; color: var(--text); }
 .postureDetail { color: var(--text); line-height: 1.5; }
 .postureImpact { color: var(--text); line-height: 1.5; }
-.postureImpact strong { color: var(--orange); font-weight: 600; }
+.postureImpact strong { color: var(--orange); font-weight: 500; }
 .postureSource { color: var(--cyan); text-decoration: none; font-size: 11.5px; overflow-wrap: break-word; }
 .postureSource:hover { text-decoration: underline; }
 .postureList { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
