@@ -4,6 +4,7 @@ import { createClient } from "../../lib/supabase/client";
 import { useTier } from "../../lib/tier-context";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
+import { Skeleton } from "../../components/Skeleton";
 import styles from "./page.module.css";
 
 // Internal accounts show "Charon" here (Charon Protocol) rather than the
@@ -205,7 +206,7 @@ export default function Settings() {
       { label: "Knowledge Graph", value: "Phase 1 — collecting", status: "active" },
     ]},
     { section: "ACCOUNT", items: [
-      { label: "Email", value: email || "Loading...",                    status: "" },
+      { label: "Email", value: email || null,                            status: "" },
       { label: "Plan",  value: tier ? (PLAN_LABEL[tier] ?? tier) : "—",  status: "active" },
     ]},
   ];
@@ -260,7 +261,7 @@ export default function Settings() {
               {group.items.map((item) => (
                 <div key={item.label} className={styles.row}>
                   <span className={styles.rowLabel}>{item.label}</span>
-                  <span className={styles.rowValue}>{item.value}</span>
+                  <span className={styles.rowValue}>{item.value ?? <Skeleton width={160} height={10} />}</span>
                   {item.status && (
                     <span className={`${styles.badge} ${styles[item.status]}`}>
                       {item.status.toUpperCase()}

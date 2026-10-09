@@ -19,6 +19,9 @@ interface Review {
   candidate_name: string;
   status?: "pending" | "distinct" | "rejected";
   reason: "name_only" | "conflicting_identifiers";
+  /** Set when a re-run of one report created this match against an
+   *  earlier run of the same report (see web/lib/kg-matches.ts). */
+  sameReportRun?: { id: string; subject: string; generatedAt: string } | null;
 }
 
 interface IdentifierRow {
@@ -76,6 +79,39 @@ function MatchActions({ review, onDone }: { review: Review; onDone: (merged: boo
   );
 }
 
+function MergeAllFromReport({ runId, subject, count }: { runId: string; subject: string; count: number }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function run() {
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/knowledge-graph/matches/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok || (data.failed?.length ?? 0) > 0) {
+      setError(data.error ?? `${data.failed?.length ?? "Some"} couldn't be merged. ${data.failed?.[0]?.error ?? ""}`.trim());
+      if ((data.merged ?? 0) > 0) setTimeout(() => window.location.reload(), 2500);
+      return;
+    }
+    window.location.reload();
+  }
+  return (
+    <div className={styles.group}>
+      <div className={styles.groupHead}>
+        Re-run of <strong>{subject}</strong>: {count} entit{count === 1 ? "y" : "ies"} matching the earlier run
+      </div>
+      <button type="button" className={styles.merge} disabled={busy} onClick={run}>
+        {busy ? "Merging…" : `Merge all ${count} from this report`}
+      </button>
+      {error && <div className={styles.error} role="alert">{error}</div>}
+    </div>
+  );
+}
+
 export function KGMatchReview() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [open, setOpen] = useState(false);
@@ -98,6 +134,10 @@ export function KGMatchReview() {
           <p className={styles.note}>
             These share a name but no ID number, so they&apos;re kept apart until you say they&apos;re the same.
           </p>
+          {[...new Map(reviews.filter((r) => r.sameReportRun).map((r) => [r.sameReportRun!.id, r.sameReportRun!])).values()].map((run) => (
+            <MergeAllFromReport key={run.id} runId={run.id} subject={run.subject}
+              count={reviews.filter((r) => r.sameReportRun?.id === run.id).length} />
+          ))}
           {reviews.map((r) => (
             <div key={r.id} className={styles.reviewItem}>
               <div className={styles.pair}>{r.entity_name} <span className={styles.muted}>and</span> {r.candidate_name}</div>

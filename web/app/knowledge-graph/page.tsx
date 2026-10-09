@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
+import { Skeleton, Spinner } from "../../components/Skeleton";
 import styles from "./page.module.css";
 import KGQueryPanel from "../../components/KGQueryPanel";
 import KGSearchBox from "../../components/KGSearchBox";
@@ -435,7 +436,7 @@ export default function KnowledgeGraph() {
               <h1 className={styles.title}>Knowledge Graph</h1>
               <div className={styles.subtitle}>
                 {loading
-                  ? "Loading..."
+                  ? <Skeleton width={210} height={10} style={{ marginTop: 4 }} />
                   : focusId
                     ? `Showing ${focusVisibleCount} of ${entities.length} entities · focused on ${focusName}`
                     : `${entities.length} entities · ${relationships.length} relationships`}
@@ -480,6 +481,16 @@ export default function KnowledgeGraph() {
           ) : (
             <div className={styles.graphArea}>
               <KGQueryPanel />
+              {loading && (
+                <div style={{
+                  position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  gap: 2, color: "var(--muted)", fontFamily: "var(--font-mono)", fontSize: 10,
+                  letterSpacing: "0.06em",
+                }}>
+                  <Spinner size={14} color="var(--orange)" /> Mapping your entities…
+                </div>
+              )}
               <canvas
                 ref={canvasRef}
                 className={styles.canvas}
@@ -569,7 +580,7 @@ export default function KnowledgeGraph() {
               { num: relationships.length,  label: "Relationships",  color: "var(--text)" },
             ].map(s => (
               <div key={s.label} className={styles.statCard}>
-                <div className={styles.statNum} style={{ color: s.color }}>{loading ? "—" : s.num}</div>
+                <div className={styles.statNum} style={{ color: s.color }}>{loading ? <Skeleton width={36} height={22} style={{ margin: "0 auto" }} /> : s.num}</div>
                 <div className={styles.statLabel}>{s.label}</div>
               </div>
             ))}
