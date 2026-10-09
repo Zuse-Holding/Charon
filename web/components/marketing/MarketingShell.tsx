@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DILIGENCE_URL } from "../../lib/products";
+import { COMMITTEE_URL, DILIGENCE_URL } from "../../lib/products";
 import styles from "./MarketingShell.module.css";
 
 const NAV_LINKS = [
@@ -41,6 +41,7 @@ export function SiteFooter() {
         <Link href="/pricing" className={styles.footerLink}>Pricing</Link>
         <Link href="/resources" className={styles.footerLink}>Resources</Link>
         <a href={DILIGENCE_URL} className={styles.footerLink}>Diligence</a>
+        <a href={COMMITTEE_URL} className={styles.footerLink}>Committee</a>
         <Link href="/privacy" className={styles.footerLink}>Privacy</Link>
         <Link href="/terms" className={styles.footerLink}>Terms</Link>
         <a href="mailto:support@metisanalytic.com" className={styles.footerLink}>support@metisanalytic.com</a>
