@@ -42,7 +42,7 @@ const ROWS = [
   },
   {
     label: "GETTING STARTED",
-    metis: "Sign up, first report in seconds",
+    metis: "Sign up and run your first report, no sales call",
     competitor: "Free tier is heavily capped; full plans require a paid subscription",
   },
 ];

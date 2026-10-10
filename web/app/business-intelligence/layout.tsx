@@ -4,9 +4,9 @@ import type { Metadata } from "next";
 // moved here when the root became the Metis product hub. The page itself
 // is a client component, so its metadata lives in this layout.
 export const metadata: Metadata = {
-  title: "Metis Business Intelligence",
+  title: "Metis Intelligence",
   description:
-    "AI-powered business intelligence research on any company, person, or product. Analyst-grade reports in seconds. Built for founders, operators, and BD teams.",
+    "Research any company, person or product. Every section of the report shows its sources. Built for founders, operators and BD teams.",
 };
 
 export default function BusinessIntelligenceLayout({ children }: { children: React.ReactNode }) {

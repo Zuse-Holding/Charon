@@ -44,8 +44,6 @@
   text-decoration: none; transition: opacity 0.15s;
 }
 .primary:hover { opacity: 0.88; }
-.secondary { font-size: 14px; color: #a0a0b0; text-decoration: none; }
-.secondary:hover { color: #e8e8f0; }
 
 @media (max-width: 1100px) {
   .products { grid-template-columns: 1fr 1fr; }

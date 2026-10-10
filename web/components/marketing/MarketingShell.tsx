@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { COMMITTEE_URL, DILIGENCE_URL } from "../../lib/products";
+import { BUSINESS_INTELLIGENCE_PATH, COMMITTEE_URL, DILIGENCE_URL } from "../../lib/products";
 import styles from "./MarketingShell.module.css";
 
 const NAV_LINKS = [
@@ -8,16 +8,19 @@ const NAV_LINKS = [
   { href: "/resources", label: "Resources" },
 ];
 
-export function SiteNav({ subtitle = "BUSINESS INTELLIGENCE" }: { subtitle?: string }) {
+// `hub` is the metisanalytic.com front door: a plain Metis wordmark and no
+// product nav, since the nav and sign-up buttons belong to Intelligence.
+export function SiteNav({ subtitle = "INTELLIGENCE", hub = false }: { subtitle?: string; hub?: boolean }) {
   return (
     <nav className={styles.nav}>
       <Link href="/" className={styles.navLogo}>
         <div className={styles.logoIcon} />
         <div>
           <div className={styles.logoMark}>METIS</div>
-          <div className={styles.logoSub}>{subtitle}</div>
+          {!hub && <div className={styles.logoSub}>{subtitle}</div>}
         </div>
       </Link>
+      {!hub && <>
       <div className={styles.navCenter}>
         {NAV_LINKS.map((l) => (
           <Link key={l.href} href={l.href} className={styles.navLink}>
@@ -29,16 +32,19 @@ export function SiteNav({ subtitle = "BUSINESS INTELLIGENCE" }: { subtitle?: str
         <Link href="/login" className={styles.btnGhost}>Sign In</Link>
         <Link href="/login?mode=signup" className={styles.ctaPrimary}>Start Free</Link>
       </div>
+      </>}
     </nav>
   );
 }
 
-export function SiteFooter() {
+export function SiteFooter({ hub = false }: { hub?: boolean }) {
   return (
     <footer className={styles.footer}>
       <span>© 2026 ZUSE HOLDINGS LLC</span>
       <div className={styles.footerLinks}>
-        <Link href="/pricing" className={styles.footerLink}>Pricing</Link>
+        {hub
+          ? <Link href={BUSINESS_INTELLIGENCE_PATH} className={styles.footerLink}>Intelligence</Link>
+          : <Link href="/pricing" className={styles.footerLink}>Pricing</Link>}
         <Link href="/resources" className={styles.footerLink}>Resources</Link>
         <a href={DILIGENCE_URL} className={styles.footerLink}>Diligence</a>
         <a href={COMMITTEE_URL} className={styles.footerLink}>Committee</a>
@@ -61,13 +67,13 @@ export function PageEffects() {
   );
 }
 
-export function MarketingShell({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
+export function MarketingShell({ children, subtitle, hub }: { children: React.ReactNode; subtitle?: string; hub?: boolean }) {
   return (
     <div className={styles.page}>
       <PageEffects />
-      <SiteNav subtitle={subtitle} />
+      <SiteNav subtitle={subtitle} hub={hub} />
       {children}
-      <SiteFooter />
+      <SiteFooter hub={hub} />
     </div>
   );
 }

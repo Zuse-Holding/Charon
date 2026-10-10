@@ -22,7 +22,7 @@ const ROWS = [
   },
   {
     label: "GETTING STARTED",
-    metis: "Sign up online, first report in seconds",
+    metis: "Sign up online and run your first report right away",
     competitor: "Contact sales, negotiate a contract, wait for onboarding and training",
   },
   {

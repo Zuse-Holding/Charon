@@ -55,12 +55,13 @@ const PLANS = [
     price: "$149",
     period: "/mo",
     forWho: "For small firms and deal teams",
-    value: "Everything in Pro, shared across a workspace — so the whole team is working off the same research instead of duplicating it.",
+    value: "Pro with higher daily limits. Team features (a shared workspace, team watchlists and API access) are in development and not included yet.",
     features: [
-      "Everything in Pro",
-      "Shared workspace (coming soon)",
-      "Team watchlists (coming soon)",
-      "API access (coming soon)",
+      "Pro features with higher limits",
+      "200 quick profiles a day",
+      "20 Deep Dive reports a day",
+      "Watchlist (50 entities)",
+      "Team features in development",
     ],
     cta: "Contact Us →",
     highlight: false,
@@ -69,13 +70,13 @@ const PLANS = [
 ];
 
 const COMPARE_ROWS: [string, string, string, string][] = [
-  ["Quick profiles / month", "25", "Unlimited", "Unlimited"],
-  ["Deep Dive reports", "—", "Full access", "Full access"],
-  ["Watchlist entities", "5", "Unlimited", "Unlimited"],
+  ["Quick profiles / month", "25", "Unlimited", "200 a day"],
+  ["Deep Dive reports", "—", "Full access", "20 a day"],
+  ["Watchlist entities", "5", "Unlimited", "50"],
   ["Knowledge Graph", "—", "Included", "Included"],
   ["Export formats", "Markdown", "Markdown + PDF", "Markdown + PDF"],
-  ["Shared workspace", "—", "—", "Coming soon"],
-  ["API access", "—", "—", "Coming soon"],
+  ["Shared workspace", "—", "—", "In development"],
+  ["API access", "—", "—", "In development"],
 ];
 
 const FAQS = [
@@ -99,7 +100,7 @@ export default function PricingPage() {
       <section className={styles.hero}>
         <h1 className={styles.title}>Simple pricing, no sales call.</h1>
         <p className={styles.sub}>
-          Pick a plan, start researching in seconds. Upgrade, downgrade, or cancel whenever — Basic and Pro are self-serve.
+          Pick a plan and start researching right away. Upgrade, downgrade, or cancel whenever — Basic and Pro are self-serve.
         </p>
       </section>
 

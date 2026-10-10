@@ -6,26 +6,59 @@ import { MarketingShell } from "../../components/marketing/MarketingShell";
 import { startCheckout, type SellablePlan } from "../../lib/checkout";
 import styles from "./landing.module.css";
 
-// Hook for scroll-triggered fade-in animations
+// Scroll-triggered fade-in. Sections render visible; only ones still below
+// the fold get hidden, and only once JS runs and the visitor hasn't asked for
+// reduced motion — so crawlers, link previews, headless screenshots and fast
+// scrollers never see a blank page.
 function useScrollFade() {
   useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             entry.target.classList.add(styles.visible);
+            observer.unobserve(entry.target);
           }
         });
       },
       { threshold: 0.1, rootMargin: "0px 0px -40px 0px" }
     );
 
-    const elements = document.querySelectorAll(`.${styles.fadeIn}`);
-    elements.forEach((el) => observer.observe(el));
+    document.querySelectorAll(`.${styles.fadeIn}`).forEach((el) => {
+      if (el.getBoundingClientRect().top < window.innerHeight) return;
+      el.classList.add(styles.fadePending);
+      observer.observe(el);
+    });
 
     return () => observer.disconnect();
   }, []);
 }
+
+// An excerpt of a real report (reports/stripe.md, generated 2026-10-05),
+// copied as written, including the section the pipeline couldn't source.
+const SAMPLE_REPORT = {
+  subject: "Stripe",
+  generated: "Oct 5, 2026",
+  sections: [
+    {
+      title: "Company overview",
+      rows: [["Founded", "2010"], ["Headquarters", "San Francisco and Dublin"], ["Industry", "Financial Infrastructure"]],
+      sources: ["stripe.com", "stripe.com/guides", "stripe.com/payments"],
+    },
+    {
+      title: "Competitors",
+      rows: [["Named", "PayPal · Square · Adyen · Braintree · Checkout.com"]],
+      sources: ["paddle.com", "tipalti.com", "memberful.com", "attrock.com", "reddit.com"],
+    },
+    {
+      title: "Risks",
+      rows: [["", "Direct competition from established payment processors like Adyen, PayPal, and Square threatens market share in financial infrastructure."]],
+      sources: [],
+    },
+  ],
+};
 
 const FEATURES = [
   {
@@ -71,7 +104,7 @@ const PRICING = [
     tier: "TEAM",
     price: "$149",
     period: "/mo",
-    features: ["Everything in Pro", "Shared workspace (coming soon)", "Team watchlists (coming soon)", "API access (coming soon)"],
+    features: ["Pro with higher limits", "200 quick profiles a day", "20 Deep Dives a day", "Team features in development"],
     cta: "Contact Us →",
     highlight: false,
     contactOnly: true,
@@ -116,13 +149,12 @@ export default function Landing() {
 
         <div className={styles.heroBadge}>
           <span className={styles.heroBadgeDot} />
-          INTELLIGENCE PLATFORM · ACTIVE
+          METIS INTELLIGENCE
         </div>
 
         <h1 className={styles.heroTitle}>
-          Research any entity.<br />
-          <span className={styles.heroAccent}>Analyst-grade</span> results<br />
-          in seconds.
+          Research any company, person or product.<br />
+          <span className={styles.heroAccent}>Every section shows its sources.</span>
         </h1>
 
         <p className={styles.heroSub}>
@@ -145,46 +177,35 @@ export default function Landing() {
         <div className={styles.heroNote}>NO SALES CALL · JUST ANSWERS</div>
       </section>
 
-      {/* TERMINAL PREVIEW */}
+      {/* SAMPLE REPORT */}
       <div className={`${styles.previewSection} ${styles.fadeIn}`}>
         <div className={styles.terminal}>
           <div className={styles.terminalHeader}>
-            <div className={styles.terminalDots}>
-              <span className={styles.dotRed} />
-              <span className={styles.dotYellow} />
-              <span className={styles.dotGreen} />
-            </div>
-            <div className={styles.terminalTitle}>METIS INTELLIGENCE ENGINE · v0.1</div>
+            <div className={styles.terminalTitle}>EXAMPLE · EXCERPT FROM A REAL REPORT</div>
           </div>
           <div className={styles.terminalBody}>
-            <div className={styles.termLine}>
-              <span className={styles.termPrompt}>◈</span>
-              <span className={styles.termCmd}>research --subject "Stripe" --type company</span>
+            <div className={styles.sampleSubject}>
+              <span>{SAMPLE_REPORT.subject} · company report</span>
+              <span className={styles.sampleDate}>Generated {SAMPLE_REPORT.generated}</span>
             </div>
-            <div className={styles.termLine}>
-              <span className={styles.termComment}># Running 7 agents in parallel...</span>
-            </div>
-            <div className={styles.termOutput}>
-              {[
-                ["FOUNDED", "2010 · San Francisco, CA"],
-                ["LEADERSHIP", "Patrick Collison (CEO) · John Collison (Pres)"],
-                ["VALUATION", "$70B · Series I"],
-                ["COMPETITORS", "PayPal · Adyen · Square · Braintree"],
-                ["RISK FLAGS", "Regulatory exposure (EU) · Margin pressure"],
-              ].map(([label, value]) => (
-                <div key={label} className={styles.termRow}>
-                  <span className={styles.termLabel}>{label}</span>
-                  <span className={`${styles.termValue} ${label === "VALUATION" ? styles.termPositive : label === "RISK FLAGS" ? styles.termNegative : ""}`}>
-                    {value}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className={styles.termLine}>
-              <span className={styles.termSuccess}>✓</span>
-              <span className={styles.termDone}>Report written · 7 agents</span>
-              <span className={styles.termCursor} />
-            </div>
+            {SAMPLE_REPORT.sections.map((section) => (
+              <div key={section.title} className={styles.termOutput}>
+                <div className={styles.sampleSection}>{section.title}</div>
+                {section.rows.map(([label, value]) => (
+                  <div key={value} className={styles.termRow}>
+                    {label && <span className={styles.termLabel}>{label.toUpperCase()}</span>}
+                    <span className={styles.termValue}>{value}</span>
+                  </div>
+                ))}
+                {section.sources.length > 0 ? (
+                  <div className={styles.sampleSources}>
+                    {section.sources.length} sources · {section.sources.join(" · ")}
+                  </div>
+                ) : (
+                  <div className={styles.sampleUnverified}>Unverified — no sources recorded for this section.</div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -259,7 +280,7 @@ export default function Landing() {
 
       {/* FINAL CTA */}
       <section className={`${styles.finalCta} ${styles.fadeIn}`}>
-        <h2 className={styles.finalCtaTitle}>Start researching in under a minute.</h2>
+        <h2 className={styles.finalCtaTitle}>Run your first report on a free account.</h2>
         <p className={styles.finalCtaSub}>No sales call. Just answers.</p>
         <button className={styles.btnHeroPrimary} onClick={() => router.push("/login?mode=signup")}>
           Create Free Account →

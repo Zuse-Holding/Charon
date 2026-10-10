@@ -176,7 +176,7 @@
   cursor: pointer;
   transition: all 0.15s;
 }
-.cancelBtn:hover { color: var(--text); border-color: var(--muted); }
+.cancelBtn:hover { color: var(--text); border-color: var(--muted-line); }
 
 /* Nav warning + saved note */
 .navWarning {
