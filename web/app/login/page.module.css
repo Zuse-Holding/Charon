@@ -74,7 +74,7 @@
   transition: border-color 0.15s;
   margin-bottom: 16px;
 }
-.googleBtn:hover { border-color: var(--muted); }
+.googleBtn:hover { border-color: var(--muted-line); }
 .googleBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .divider {

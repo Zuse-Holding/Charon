@@ -63,7 +63,7 @@
 }
 .logoSub {
   font-family: var(--font-mono);
-  font-size: 9px; color: rgba(255,107,43,0.5);
+  font-size: 9px; color: rgba(255,107,43,0.85);
   letter-spacing: 0.1em;
 }
 .navCenter {
@@ -106,7 +106,7 @@
 /* SHARED SECTION PRIMITIVES */
 .sectionLabel {
   font-family: var(--font-mono); font-size: 10px;
-  letter-spacing: 0.18em; color: rgba(255,107,43,0.6);
+  letter-spacing: 0.18em; color: rgba(255,107,43,0.85);
   text-align: center; margin-bottom: 16px; text-transform: uppercase;
 }
 .btnHeroPrimary {
@@ -132,11 +132,11 @@
   display: flex; justify-content: space-between; align-items: center;
   padding: 24px 48px;
   border-top: 1px solid rgba(255,107,43,0.1);
-  font-family: var(--font-mono); font-size: 10px; color: #2a2a3a;
+  font-family: var(--font-mono); font-size: 10px; color: var(--muted);
   letter-spacing: 0.06em; position: relative; z-index: 2;
 }
 .footerLinks { display: flex; gap: 20px; }
-.footerLink { color: #2a2a3a; text-decoration: none; transition: color 0.12s; }
+.footerLink { color: var(--muted); text-decoration: none; transition: color 0.12s; }
 .footerLink:hover { color: #ff6b2b; }
 
 @media (max-width: 768px) {

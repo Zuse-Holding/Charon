@@ -11,7 +11,8 @@
   --red:      #FF4455;
   --yellow:   #FFD447;
   --text:     #E8E8F0;
-  --muted:    #6B6B80;
+  --muted:    #8E8EA3; /* text: 6.2:1 on --bg, 5.4:1 on --surface (WCAG AA) */
+  --muted-line: #6B6B80; /* non-text only: hover borders, toggles */
   --sw:       220px;
   --font-display: 'Space Grotesk', sans-serif;
   --font-body:    'Inter', sans-serif;

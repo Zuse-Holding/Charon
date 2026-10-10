@@ -193,7 +193,7 @@ function LoginPage() {
         <div className={styles.card}>
           <div className={styles.logo}>
             <div className={styles.logoMark}>METIS</div>
-            <div className={styles.logoSub}>BUSINESS INTELLIGENCE PLATFORM</div>
+            <div className={styles.logoSub}>INTELLIGENCE</div>
           </div>
 
           <div className={styles.fields}>
@@ -242,7 +242,7 @@ function LoginPage() {
       <div className={styles.card}>
         <div className={styles.logo}>
           <div className={styles.logoMark}>METIS</div>
-          <div className={styles.logoSub}>BUSINESS INTELLIGENCE PLATFORM</div>
+          <div className={styles.logoSub}>INTELLIGENCE</div>
         </div>
 
         <div className={styles.tabRow}>

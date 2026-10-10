@@ -7,15 +7,15 @@ import { PastDueBanner } from "../components/PastDueBanner";
 export const metadata: Metadata = {
   // Absolute URLs for the generated social preview image (app/opengraph-image.tsx).
   metadataBase: new URL("https://metisanalytic.com"),
-  title: "Metis — Business Intelligence",
-  description: "AI-powered business intelligence research on any company, person, or product. Analyst-grade reports in seconds. Built for founders, operators, and BD teams.",
+  title: "Metis Intelligence",
+  description: "Research any company, person or product. Every section of the report shows its sources. Built for founders, operators and BD teams.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "Metis — Business Intelligence",
-    description: "AI-powered research on any company, person, or product. Analyst-grade reports in seconds.",
+    title: "Metis Intelligence",
+    description: "Research any company, person or product. Every section of the report shows its sources.",
     url: "https://metisanalytic.com",
     siteName: "Metis",
     type: "website",

@@ -63,7 +63,7 @@ export default function Sidebar() {
     <aside className={styles.sidebar}>
       <div className={styles.logo} onClick={() => router.push(BUSINESS_INTELLIGENCE_PATH)} style={{ cursor: "pointer" }}>
         <div className={styles.logoMark}>METIS</div>
-        <div className={styles.logoSub}>BUSINESS INTELLIGENCE</div>
+        <div className={styles.logoSub}>INTELLIGENCE</div>
       </div>
 
       <nav className={styles.nav}>

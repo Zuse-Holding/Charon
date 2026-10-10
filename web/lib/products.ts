@@ -12,7 +12,7 @@ export type ProductId = "intel" | "diligence" | "committee";
 // the call to action at the bottom of each post.
 export const PRODUCTS: Record<ProductId, { name: string; cta: { title: string; body: string; label: string; href: string } }> = {
   intel: {
-    name: "Business Intelligence",
+    name: "Intelligence",
     cta: { title: "See it on a real company.", body: "Start free. No sales call required.", label: "Start Free →", href: "/login?mode=signup" },
   },
   diligence: {
