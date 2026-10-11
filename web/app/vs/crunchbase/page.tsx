@@ -18,7 +18,7 @@ const ROWS = [
   {
     label: "PRICING MODEL",
     metis: "Flat, self-serve — $19 to $149/mo",
-    competitor: "Per-seat — Starter ~$49/user/mo, Pro ~$99/mo, Business ~$199/mo (billed annually for the lowest rate)",
+    competitor: "Per-seat — Pro about $49/user/mo billed annually (about $99 month to month), Business about $199/mo; Enterprise by sales quote",
   },
   {
     label: "WHAT YOU GET",
@@ -70,6 +70,7 @@ export default function CrunchbaseVsPage() {
       narrative={NARRATIVE}
       finalCtaTitle="Get the synthesis, not just the search results."
       finalCtaSub="Start free — no per-seat pricing."
+      pricesAsOf="2026-10-11"
     />
   );
 }
