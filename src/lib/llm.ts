@@ -7,17 +7,19 @@ import { recordLlmUsage } from "./cost-tracking.js";
  *
  * Provider priority for extractStructured():
  *   1. OpenRouter (if OPENROUTER_API_KEY set) — primary provider.
- *      - Tries up to 3 free models per call (DEFAULT_OPENROUTER_MODELS)
+ *      - Tries up to 3 paid models per call (DEFAULT_OPENROUTER_MODELS)
  *        via OpenRouter's `models` fallback array, so one congested
- *        upstream provider doesn't take down the whole request —
- *        confirmed live 2026-07-17 that 3 of 4 candidate free models
- *        were simultaneously rate-limited while one wasn't.
+ *        upstream provider doesn't take down the whole request.
+ *      - Every request is pinned to Zero Data Retention endpoints
+ *        (`provider: { zdr: true }`) — customer research never lands at a
+ *        provider that stores or trains on it.
  *      - Supports a second key via OPENROUTER_API_KEY_2 — round-robins
- *        between the two and retries on the other key on a 429, so two
- *        free-tier accounts' rate limits stack instead of one bucket.
- *   2. Groq (if GROQ_API_KEY set) — fallback. Fails fast (no retry) on a
- *      daily-token-limit 429 instead of burning ~48s on retries that
- *      can't succeed within a multi-minute wait.
+ *        between the two and retries on the other key on a 429.
+ *   2. Groq — only when LLM_PROVIDER resolves to "groq", which by default
+ *      means no OpenRouter key is set. Groq's self-serve tier is a free tier
+ *      (8K tokens/min, Developer upgrade unavailable), so it never serves
+ *      paid traffic as a silent fallback; set LLM_PROVIDER=groq to opt in.
+ *      Fails fast (no retry) on a daily-token-limit 429.
  *   3. Ollama (local) — final fallback for dev
  *
  * Every agent treats LLM extraction as OPTIONAL — if extractStructured()
@@ -26,8 +28,8 @@ import { recordLlmUsage } from "./cost-tracking.js";
  */
 
 // --- Config ---
-const LLM_PROVIDER = process.env.LLM_PROVIDER ??
-  (process.env.GROQ_API_KEY ? "groq" : "ollama");
+export const LLM_PROVIDER = process.env.LLM_PROVIDER ??
+  (process.env.OPENROUTER_API_KEY ? "openrouter" : process.env.GROQ_API_KEY ? "groq" : "ollama");
 
 // llama-3.3-70b-versatile / llama-3.1-8b-instant returned 404 model_not_found
 // on a live call as of 2026-09-22 — moved to enterprise-only access. Verified
@@ -344,6 +346,9 @@ async function extractViaOpenRouter<T>(
             },
             { role: "user", content: userContent },
           ],
+          // Only Zero Data Retention endpoints. All three default models have
+          // ZDR endpoints (checked live 2026-10-11: DeepInfra, Venice, Google).
+          provider: { zdr: true },
           temperature: 0.1,
           max_tokens: 1024,
           response_format: { type: "json_object" },
@@ -473,7 +478,7 @@ async function extractViaOllama<T>(
 
 /**
  * Extract structured data from text.
- * Tries OpenRouter first, falls back to Groq, then Ollama.
+ * Tries OpenRouter first, then Groq (only if LLM_PROVIDER is "groq"), then Ollama.
  * Returns null on any failure — callers always fall back to heuristics.
  */
 export async function extractStructured<T>(
