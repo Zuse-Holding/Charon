@@ -54,7 +54,7 @@ export function ComparisonPage({
         <p className={styles.sub}>{sub}</p>
         <div className={styles.heroCtas}>
           <Link href="/login?mode=signup" className={shellStyles.btnHeroPrimary}>
-            Start Free →
+            Get started →
           </Link>
         </div>
       </section>
@@ -101,7 +101,7 @@ export function ComparisonPage({
         <h2 className={styles.finalCtaTitle}>{finalCtaTitle}</h2>
         <p className={styles.finalCtaSub}>{finalCtaSub}</p>
         <Link href="/login?mode=signup" className={shellStyles.btnHeroPrimary}>
-          Create Free Account →
+          Create account →
         </Link>
         <div className={styles.finalCtaNote}>NO SALES CALL · JUST ANSWERS</div>
       </section>

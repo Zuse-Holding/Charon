@@ -185,10 +185,10 @@ export default function PricingPage() {
       </section>
 
       <section className={styles.finalCta}>
-        <h2 className={styles.finalCtaTitle}>Start free today.</h2>
+        <h2 className={styles.finalCtaTitle}>Start researching today.</h2>
         <p className={styles.finalCtaSub}>No sales call. Just answers.</p>
         <Link href="/login?mode=signup" className={shellStyles.btnHeroPrimary}>
-          Create Free Account →
+          Create account →
         </Link>
       </section>
     </MarketingShell>

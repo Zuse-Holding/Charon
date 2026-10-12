@@ -30,7 +30,7 @@ export function SiteNav({ subtitle = "INTELLIGENCE", hub = false }: { subtitle?:
       </div>
       <div className={styles.navRight}>
         <Link href="/login" className={styles.btnGhost}>Sign In</Link>
-        <Link href="/login?mode=signup" className={styles.ctaPrimary}>Start Free</Link>
+        <Link href="/login?mode=signup" className={styles.ctaPrimary}>Get started</Link>
       </div>
       </>}
     </nav>

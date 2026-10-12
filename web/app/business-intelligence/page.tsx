@@ -165,7 +165,7 @@ export default function Landing() {
 
         <div className={styles.heroCtas}>
           <button className={styles.btnHeroPrimary} onClick={() => router.push("/login?mode=signup")}>
-            Get Started Free →
+            Get started →
           </button>
           <button className={styles.btnHeroSecondary} onClick={() => {
             document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
@@ -280,10 +280,10 @@ export default function Landing() {
 
       {/* FINAL CTA */}
       <section className={`${styles.finalCta} ${styles.fadeIn}`}>
-        <h2 className={styles.finalCtaTitle}>Run your first report on a free account.</h2>
+        <h2 className={styles.finalCtaTitle}>Run your first report.</h2>
         <p className={styles.finalCtaSub}>No sales call. Just answers.</p>
         <button className={styles.btnHeroPrimary} onClick={() => router.push("/login?mode=signup")}>
-          Create Free Account →
+          Create account →
         </button>
       </section>
     </MarketingShell>

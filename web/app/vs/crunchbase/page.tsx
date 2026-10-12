@@ -69,7 +69,7 @@ export default function CrunchbaseVsPage() {
       rows={ROWS}
       narrative={NARRATIVE}
       finalCtaTitle="Get the synthesis, not just the search results."
-      finalCtaSub="Start free — no per-seat pricing."
+      finalCtaSub="Flat monthly pricing, no per-seat fees."
       pricesAsOf="2026-10-11"
     />
   );
