@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sessionUserId } from "../../../lib/exclusions";
 
 const SECTOR_QUERIES: Record<string, string> = {
   tech:       "tech startup funding acquisition product launch 2026",
@@ -78,6 +79,10 @@ async function fetchSectorNews(sector: string, apiKey: string, num: number) {
 }
 
 export async function GET(req: NextRequest) {
+  // Each call spends Serper credits, so only signed-in users get the feed.
+  if (!(await sessionUserId())) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
   const sector = req.nextUrl.searchParams.get("sector");
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) {

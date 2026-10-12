@@ -1,20 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFileSync, existsSync } from "node:fs";
+import { resolve, sep } from "node:path";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
+
+// Local dev only: reports the agent server wrote to ./reports. Never in
+// production, and never outside that folder, whatever path is passed.
+const REPORTS_DIR = resolve(process.cwd(), "..", "reports");
+function localReport(path: string | null): string | null {
+  if (process.env.NODE_ENV === "production" || !path) return null;
+  const full = resolve(path);
+  if (!full.startsWith(REPORTS_DIR + sep) || !full.endsWith(".md") || !existsSync(full)) return null;
+  return readFileSync(full, "utf-8");
+}
 
 export async function GET(req: NextRequest) {
   const path = req.nextUrl.searchParams.get("path");
   const subject = req.nextUrl.searchParams.get("subject");
 
-  // Try local filesystem first (works in dev)
-  if (path && existsSync(path)) {
-    const content = readFileSync(path, "utf-8");
-    return new NextResponse(content, { headers: { "Content-Type": "text/plain" } });
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return new NextResponse("Not signed in", { status: 401 });
+
+  const local = localReport(path);
+  if (local !== null) {
+    return new NextResponse(local, { headers: { "Content-Type": "text/plain" } });
   }
 
-  // Fall back to Supabase bundle (works in production on Vercel)
+  // The saved bundle. RLS on research_runs limits this to the user's own runs.
   try {
-    const supabase = await createServerSupabaseClient();
     
     // Try to find by subject or by report_path
     const query = supabase
