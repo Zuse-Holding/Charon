@@ -69,7 +69,7 @@ export default function PitchbookVsPage() {
       rows={ROWS}
       narrative={NARRATIVE}
       finalCtaTitle="Skip the sales quote."
-      finalCtaSub="Start free — self-serve pricing starting at $19/mo."
+      finalCtaSub="Self-serve pricing starting at $19/mo."
       pricesAsOf="2026-10-11"
     />
   );
