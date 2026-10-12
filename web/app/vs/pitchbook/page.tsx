@@ -18,7 +18,7 @@ const ROWS = [
   {
     label: "PRICING MODEL",
     metis: "Public, self-serve — $19 to $149/mo",
-    competitor: "Not published — sales quote only, typically $12,000–$70,000+/year depending on team size and modules",
+    competitor: "Not published — sales quote and annual contract only. Third-party estimates: about $12,000–$20,000/year for one user, with a median contract near $30,000/year",
   },
   {
     label: "GETTING STARTED",
@@ -43,7 +43,7 @@ const ROWS = [
   {
     label: "ADDING SEATS",
     metis: "Team plan at $149/mo, arranged by email; multi-seat workspaces are coming soon",
-    competitor: "Additional users typically add several thousand dollars per seat, per year",
+    competitor: "Additional seats are commonly quoted around $7,000 per seat, per year",
   },
 ];
 
@@ -70,6 +70,7 @@ export default function PitchbookVsPage() {
       narrative={NARRATIVE}
       finalCtaTitle="Skip the sales quote."
       finalCtaSub="Start free — self-serve pricing starting at $19/mo."
+      pricesAsOf="2026-10-11"
     />
   );
 }

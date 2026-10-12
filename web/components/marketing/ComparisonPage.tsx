@@ -24,6 +24,7 @@ export function ComparisonPage({
   narrative,
   finalCtaTitle,
   finalCtaSub,
+  pricesAsOf,
 }: {
   competitorName: string;
   badge: string;
@@ -34,7 +35,12 @@ export function ComparisonPage({
   narrative: NarrativeCard[];
   finalCtaTitle: string;
   finalCtaSub: string;
+  /** ISO date the competitor's prices were last checked, e.g. "2026-10-11". */
+  pricesAsOf: string;
 }) {
+  const asOfLabel = new Date(`${pricesAsOf}T00:00:00Z`).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
+  });
   return (
     <MarketingShell>
       <section className={styles.hero}>
@@ -74,6 +80,10 @@ export function ComparisonPage({
             </tbody>
           </table>
         </div>
+        <p className={styles.asOf}>
+          {competitorName} prices as of <time dateTime={pricesAsOf}>{asOfLabel}</time>, from public pricing pages and
+          third-party buyer data. They change, so check with {competitorName} for a current quote.
+        </p>
       </section>
 
       <section className={styles.narrative}>
