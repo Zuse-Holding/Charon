@@ -69,7 +69,7 @@ const FEATURES = [
   {
     num: "02",
     title: "Deep Dive Analysis",
-    desc: "10-section analyst-grade report: founding history, leadership red flags, funding history, market sizing, competitive context, and a clear strategic verdict.",
+    desc: "10-section report: founding history, leadership red flags, funding history, market sizing, competitive context, and a clear strategic verdict.",
   },
   {
     num: "03",
@@ -160,7 +160,7 @@ export default function Landing() {
         <p className={styles.heroSub}>
           Seven AI agents run in parallel to surface funding, leadership, competitors,
           and market signals — synthesized into one clean report.
-          Between Crunchbase and PitchBook. In price and depth.
+          Priced like a tool, reads like an analyst’s brief.
         </p>
 
         <div className={styles.heroCtas}>
@@ -241,8 +241,8 @@ export default function Landing() {
       {/* PRICING */}
       <section className={`${styles.pricingSection} ${styles.fadeIn}`}>
         <div className={styles.sectionLabel}>PRICING</div>
-        <h2 className={styles.pricingTitle}>Between Crunchbase and PitchBook.</h2>
-        <div className={styles.pricingCode}>// in price and depth</div>
+        <h2 className={styles.pricingTitle}>Priced like a tool.</h2>
+        <div className={styles.pricingCode}>// reads like an analyst’s brief</div>
         <div className={styles.pricingGrid}>
           {PRICING.map((plan) => (
             <div
