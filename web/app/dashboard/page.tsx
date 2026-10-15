@@ -33,8 +33,8 @@ interface Run {
   id: string;
   subject: string;
   type: string;
-  generated_at: string;
-  tier_at_run?: string;
+  generatedAt: string;
+  tier?: string | null;
 }
 
 interface AdminStats {
@@ -466,7 +466,7 @@ export default function DashboardPage() {
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: 12 }}>{run.subject}</div>
                         <div style={{ fontSize: 10, color: "#6B7A99", marginTop: 2 }}>
-                          {run.type} · {timeAgo(run.generated_at)}
+                          {run.type} · {timeAgo(run.generatedAt)}
                         </div>
                       </div>
                     </div>
@@ -542,7 +542,7 @@ export default function DashboardPage() {
                   <div style={S.statLabel}>Researches Today</div>
                   <div style={S.statValue("#E8A020")}>{adminStats?.runsToday ?? recentRuns.filter(r => {
                     const today = new Date(); today.setHours(0,0,0,0);
-                    return new Date(r.generated_at) >= today;
+                    return new Date(r.generatedAt) >= today;
                   }).length}</div>
                 </div>
                 <div style={{ ...S.stat("#4A90D9"), ...(isMobile ? { flex: "1 1 45%" } : {}) }}>
@@ -596,8 +596,8 @@ export default function DashboardPage() {
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: 12 }}>{run.subject}</div>
                         <div style={{ fontSize: 10, color: "#6B7A99", marginTop: 2 }}>
-                          {run.type} · {timeAgo(run.generated_at)}
-                          {run.tier_at_run && ` · ${run.tier_at_run}`}
+                          {run.type} · {timeAgo(run.generatedAt)}
+                          {run.tier && ` · ${run.tier}`}
                         </div>
                       </div>
                     </div>
