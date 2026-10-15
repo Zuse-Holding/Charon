@@ -537,16 +537,20 @@ function renderSectionSources(sourceLines: string[] | null, unverified: boolean)
     .filter(Boolean) as { text: string; url: string }[];
   if (links.length === 0) return null;
 
+  // Collapsed by default so citations don't break up the reading flow.
   return (
-    <div className={styles.sourcesList}>
-      {links.map((s, i) => (
-        <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className={styles.sourceItem}>
-          <span className={styles.sourceNum}>{i + 1}</span>
-          <span className={styles.sourceText}>{s.text}</span>
-          <span className={styles.sourceArrow}>↗</span>
-        </a>
-      ))}
-    </div>
+    <details className={styles.sourcesDetails}>
+      <summary>Sources ({links.length})</summary>
+      <div className={styles.sourcesList}>
+        {links.map((s, i) => (
+          <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className={styles.sourceItem}>
+            <span className={styles.sourceNum}>{i + 1}</span>
+            <span className={styles.sourceText}>{s.text}</span>
+            <span className={styles.sourceArrow}>↗</span>
+          </a>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -747,7 +751,13 @@ function renderSection(section: Section, onRetry?: () => void) {
 }
 
 export default function ReportViewer({ markdown, onRetry }: ReportViewerProps) {
-  const sections = parseMarkdown(markdown);
+  // Source Coverage is reference material, not findings: always render it
+  // last so it doesn't interrupt the report, wherever the agent wrote it.
+  const parsed = parseMarkdown(markdown);
+  const sections = [
+    ...parsed.filter((s) => s.title !== COVERAGE_TITLE),
+    ...parsed.filter((s) => s.title === COVERAGE_TITLE),
+  ];
   // Reports from before per-finding provenance carry no Findings section:
   // say so plainly rather than let them read as checked.
   const legacy = isEnabled("provenance") && sections.length > 0 && !sections.some((s) => s.title === PROVENANCE_TITLE);
