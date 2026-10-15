@@ -727,3 +727,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_exclusions_token ON exclusion_entries (ver
 
 ALTER TABLE exclusion_entries ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON exclusion_entries FROM anon, authenticated;
+
+-- ============================================================
+-- Acquisition spend (admin unit-economics metrics)
+-- Marketing/ad spend isn't in Stripe or anywhere else, so CAC needs it
+-- logged by hand from the admin tab (POST /admin/acquisition-spend on the
+-- agent server, Charon tier only). Service role only, same as the
+-- exclusion list: the browser never reads or writes this table directly.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS acquisition_spend (
+  id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  spent_on    DATE          NOT NULL,
+  amount_usd  NUMERIC(12,2) NOT NULL CHECK (amount_usd > 0),
+  channel     TEXT          NOT NULL CHECK (length(channel) BETWEEN 1 AND 64),
+  note        TEXT          CHECK (note IS NULL OR length(note) <= 280),
+  created_by  UUID          REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_acquisition_spend_spent_on ON acquisition_spend (spent_on DESC);
+
+ALTER TABLE acquisition_spend ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON acquisition_spend FROM anon, authenticated;

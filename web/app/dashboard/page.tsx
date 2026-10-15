@@ -8,6 +8,7 @@ import PersonResearchModal from "../../components/PersonResearchModal";
 import MuckRockSearchModal from "../../components/MuckRockSearchModal";
 import OnboardingChecklist from "../../components/OnboardingChecklist";
 import { Skeleton, SkeletonRow } from "../../components/Skeleton";
+import AdminMetrics from "../../components/AdminMetrics";
 import { useTier } from "../../lib/tier-context";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -528,6 +529,9 @@ export default function DashboardPage() {
           {/* ── ADMIN TAB (internal only) ── */}
           {tab === "admin" && hasAdminAccess && (
             <>
+              {/* Revenue and unit economics */}
+              <AdminMetrics isMobile={isMobile} />
+
               {/* Stat row */}
               <div style={{ ...S.row, ...(isMobile ? { flexWrap: "wrap" as const } : {}) }}>
                 <div style={{ ...S.stat("#34D399"), ...(isMobile ? { flex: "1 1 45%" } : {}) }}>
