@@ -7,31 +7,7 @@ import {
 } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractStructured, ProductEntityExtractionSchema, ProConsVerdictSchema } from "../../lib/llm.js";
-
-// Social, video and forum hosts: discussion, not news. Reddit is included
-// here (news-agent's list lacks it) because product searches surface it
-// far more than company searches do.
-const NEWS_NOISE_HOSTS = [
-  "youtube.com", "youtu.be", "facebook.com", "instagram.com", "tiktok.com",
-  "twitter.com", "x.com", "reddit.com", "pinterest.com", "quora.com",
-];
-// Vendor template galleries, help centers and docs match "<product> 2026"
-// searches but aren't news either.
-const NEWS_NOISE_PATH = /\/(templates?|help|support|docs)(\/|$)/i;
-// Same idea as a subdomain: support.apple.com, forums.macrumors.com.
-const NEWS_NOISE_SUBDOMAIN = /^(support|help|docs|forums?|community|discussions)\./i;
-
-export function isNewsNoise(url: string): boolean {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\./, "").toLowerCase();
-    return NEWS_NOISE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))
-      || NEWS_NOISE_SUBDOMAIN.test(host)
-      || NEWS_NOISE_PATH.test(u.pathname);
-  } catch {
-    return true;
-  }
-}
+import { isNewsNoise } from "../../lib/news-noise.js";
 
 /**
  * One Source per URL, tagged with every report section its search fed:

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isNewsNoise, tagSources } from "./index.js";
+import { tagSources } from "./index.js";
+import { isNewsNoise } from "../../lib/news-noise.js";
 import { ReportAgent } from "../report-agent/index.js";
 import type { ProductResearchBundle } from "../../types/research.js";
 
@@ -19,6 +20,7 @@ describe("isNewsNoise", () => {
     assert.equal(isNewsNoise("https://example.com/docs"), true);
     assert.equal(isNewsNoise("https://support.apple.com/en-us/106340"), true);
     assert.equal(isNewsNoise("https://forums.macrumors.com/threads/next-airpods-pro.1/"), true);
+    assert.equal(isNewsNoise("https://www.justjared.com/tags/chris-evans/"), true);
   });
 
   it("keeps real coverage, including hosts that only look similar", () => {
