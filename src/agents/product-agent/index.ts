@@ -8,6 +8,50 @@ import {
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractStructured, ProductEntityExtractionSchema, ProConsVerdictSchema } from "../../lib/llm.js";
 
+// Social, video and forum hosts: discussion, not news. Reddit is included
+// here (news-agent's list lacks it) because product searches surface it
+// far more than company searches do.
+const NEWS_NOISE_HOSTS = [
+  "youtube.com", "youtu.be", "facebook.com", "instagram.com", "tiktok.com",
+  "twitter.com", "x.com", "reddit.com", "pinterest.com", "quora.com",
+];
+// Vendor template galleries, help centers and docs match "<product> 2026"
+// searches but aren't news either.
+const NEWS_NOISE_PATH = /\/(templates?|help|support|docs)(\/|$)/i;
+// Same idea as a subdomain: support.apple.com, forums.macrumors.com.
+const NEWS_NOISE_SUBDOMAIN = /^(support|help|docs|forums?|community|discussions)\./i;
+
+export function isNewsNoise(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "").toLowerCase();
+    return NEWS_NOISE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))
+      || NEWS_NOISE_SUBDOMAIN.test(host)
+      || NEWS_NOISE_PATH.test(u.pathname);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * One Source per URL, tagged with every report section its search fed:
+ * a URL found by two searches backs both sections but is listed once.
+ */
+export function tagSources(groups: { results: { url: string; title?: string }[]; usedFor: string[] }[]): Source[] {
+  const byUrl = new Map<string, Source>();
+  for (const { results, usedFor } of groups) {
+    for (const r of results) {
+      const existing = byUrl.get(r.url);
+      if (existing) {
+        for (const tag of usedFor) if (!existing.usedFor.includes(tag)) existing.usedFor.push(tag);
+      } else {
+        byUrl.set(r.url, { url: r.url, title: r.title, retrievedAt: new Date().toISOString(), usedFor: [...usedFor] });
+      }
+    }
+  }
+  return [...byUrl.values()];
+}
+
 /**
  * Product Agent
  * Researches a specific product — specs, pricing, manufacturer/brand,
@@ -26,23 +70,25 @@ export class ProductAgent {
   async run(productName: string): Promise<ProductResearchBundle> {
     // Four parallel searches — including a dedicated brand/manufacturer
     // search so the LLM has explicit data to pull the parent company from.
-    const [overviewResults, specsResults, competitorResults, newsResults] =
+    // News asks for extra results (past year only) since noise is dropped below.
+    const currentYear = new Date().getFullYear();
+    const [overviewResults, specsResults, competitorResults, rawNewsResults] =
       await Promise.all([
         this.searcher.search(`${productName} manufacturer brand company made by`, 3),
         this.searcher.search(`${productName} specs price features review`, 5),
         this.searcher.search(`${productName} alternatives competitors vs comparison`, 5),
-        this.searcher.search(`${productName} news 2026`, 5),
+        this.searcher.search(`"${productName}" news ${currentYear}`, 10, "qdr:y"),
       ]);
+    const newsResults = rawNewsResults.filter((r) => !isNewsNoise(r.url)).slice(0, 5);
 
-    const sources: Source[] = [
-      ...overviewResults, ...specsResults,
-      ...competitorResults, ...newsResults,
-    ].map((r) => ({
-      url: r.url,
-      title: r.title,
-      retrievedAt: new Date().toISOString(),
-      usedFor: ["product"],
-    }));
+    // Tagged by the search each result came from, so every report section
+    // lists only the sources that actually fed it (report-agent generateProduct).
+    const sources = tagSources([
+      { results: overviewResults, usedFor: ["overview", "product-details"] },
+      { results: specsResults, usedFor: ["product-details", "specs"] },
+      { results: competitorResults, usedFor: ["competitors"] },
+      { results: newsResults, usedFor: ["news"] },
+    ]);
 
     // Fetch full page text for the top overview/specs results — richer
     // context than snippets for pulling out an accurate brand/spec list,
@@ -64,6 +110,9 @@ export class ProductAgent {
     ].filter(Boolean).join("\n\n");
     const competitorText = competitorResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n");
     const combinedText  = `OVERVIEW & BRAND:\n${overviewText}\n\nSPECS & PRICING:\n${specsText}`;
+    // The competitors list is extracted from this, so its section can cite
+    // the competitor search honestly.
+    const withCompetitors = `${combinedText}\n\nCOMPETITORS:\n${competitorText}`;
 
     const [extraction, risksResult] = await Promise.all([
       extractStructured(
@@ -78,7 +127,7 @@ Extract:
 - competitors: array of competing PRODUCTS (not companies) as {name, note} pairs
 
 Be specific about the brand — always identify the parent company.`,
-        combinedText,
+        withCompetitors,
         ProductEntityExtractionSchema
       ),
       extractStructured(
@@ -90,7 +139,7 @@ RULES:
 - verdict: one clear paragraph on who should buy this product and why. Mention the best use case and who it's not for. No filler phrases.
 
 Be specific and direct. If review data is thin, say so rather than padding.`,
-        combinedText + "\n\nCOMPETITORS:\n" + competitorText,
+        withCompetitors,
         ProConsVerdictSchema
       ),
     ]);
