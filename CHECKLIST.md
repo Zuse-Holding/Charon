@@ -3,6 +3,48 @@
 Things I found that need a decision, a dashboard click, or access I don't have —
 tracked here as they come up rather than left buried in commit messages.
 
+## Soft launch — before letting users in (added 2026-10-15)
+
+Pulled together from this checklist plus a check of Vercel's production
+env var *names* (values not read). Ordered by what hurts most if missed.
+
+- [ ] **Run one real live-mode purchase end to end.** Stripe has had no
+  activity since the live key was created, so checkout has never run with
+  real money. Vercel already has `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
+  and both `STRIPE_PRICE_*`. Buy Basic on a secondary account, confirm the
+  account's tier flips to Basic and the admin tab shows $19 MRR, then
+  cancel and refund in Stripe.
+- [ ] **Fix the password reset "Auth session missing" error.** Reproduced on
+  a secondary account 2026-10-15: the recovery link opens the "set new
+  password" form, then saving fails. Vercel logs show the recovery session
+  was valid at first; the cause isn't confirmed yet. Needs either the
+  Supabase Auth log entry for the `PUT /user` request (~6:42–6:44 PM PT
+  that day) or a retry in a fresh private window with the link opened in
+  that same window.
+- [ ] **Custom SMTP for Supabase auth emails** (Authentication → Emails).
+  Sign-up confirmation and password-reset emails otherwise go through
+  Supabase's built-in sender, which allows only a few emails an hour and
+  often lands in spam. Resend (below) works as the SMTP provider.
+- [ ] **Email for Metis's own messages:** `RESEND_API_KEY` and a verified
+  `EMAIL_FROM` on Railway (see "Transactional email" below). Not on Vercel,
+  which is fine: the agent server sends them.
+- [ ] **Confirm database backups** (see "DB backups" below).
+- [ ] **Rotate the Sentry and GitHub tokens** recorded in plain text in the
+  local `.claude/settings.local.json` (not committed), then delete those
+  two allow-rule lines.
+- [ ] **PostHog:** `POSTHOG_KEY` isn't set on Vercel (see "Analytics"
+  below). Without it the soft launch's sign-up → checkout funnel isn't
+  visible.
+- [ ] **Legal review** (see below): include person search with name +
+  location (#38). Location is used only to pick the right person and
+  reports never show addresses or contact details, but name + city is how
+  people-finder sites work.
+- [x] **Person search checked on a lower-profile real person** (name +
+  last workplace, 2026-10-15): results confirmed correct by Nick. Famous-name
+  tests (#37, #38) passed too. Known gap: one run inferred a current role
+  from a source's URL ("Vice Chancellor for Research" from a
+  `vcresearch.berkeley.edu` profile).
+
 ## Task 4.3 — already satisfied, confirmed not just assumed
 
 - [x] **Secret found in git history, listed exactly.** One: a Vercel OIDC
