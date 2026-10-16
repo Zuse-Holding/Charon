@@ -501,6 +501,7 @@ function Dashboard() {
                           <ErrorBoundary>
                             <ReportViewer
                               markdown={report}
+                              kind={selected?.type}
                               onRetry={selected ? () => runSuggestion(selected.subject, selected.type as "company" | "person" | "product") : undefined}
                             />
                             {selected && (
