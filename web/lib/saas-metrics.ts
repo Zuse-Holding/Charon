@@ -157,3 +157,87 @@ export async function fetchStripeBilling(stripe: Stripe, windowStartSec: number)
 
   return { subscriptions, netChargesUsd: netCents / 100, stripeFeesUsd: feeCents / 100 };
 }
+
+/** One account's usage in the window, from the agent server. */
+export interface AccountUsage {
+  userId: string;
+  name: string | null;
+  tier: string | null;
+  stripeCustomerId: string | null;
+  reports: number;
+  llmCostUsd: number;
+}
+
+export interface AccountEconomics {
+  name: string;
+  tier: string | null;
+  reports: number;
+  llmCostUsd: number; // scaled to 30 days
+  costPerReportUsd: number | null;
+  monthlyPriceUsd: number;
+  marginUsd: number;
+  // losing_money: pays something but costs more than it pays.
+  // not_paying: runs reports with no live subscription (free, trial, internal).
+  status: "ok" | "losing_money" | "not_paying";
+}
+
+export interface PastDueAccount {
+  name: string;
+  status: "past_due" | "unpaid";
+  monthlyAmountUsd: number;
+}
+
+const accountName = (a: Pick<AccountUsage, "name" | "userId">) => a.name?.trim() || `Account ${a.userId.slice(0, 8)}`;
+
+/** LLM cost per account against what its live Stripe subscriptions pay, costliest first. */
+export function computeAccountEconomics(
+  accounts: AccountUsage[],
+  subscriptions: SubscriptionFact[],
+  windowDays: number,
+): AccountEconomics[] {
+  const priceByCustomer = new Map<string, number>();
+  for (const s of subscriptions) {
+    if (!MRR_STATUSES.has(s.status)) continue;
+    priceByCustomer.set(s.customerId, (priceByCustomer.get(s.customerId) ?? 0) + s.monthlyAmountUsd);
+  }
+
+  return accounts
+    .filter((a) => a.reports > 0)
+    .map((a) => {
+      const llmCostUsd = a.llmCostUsd * (30 / windowDays);
+      const monthlyPriceUsd = a.stripeCustomerId ? priceByCustomer.get(a.stripeCustomerId) ?? 0 : 0;
+      const status: AccountEconomics["status"] =
+        monthlyPriceUsd === 0 ? "not_paying" : llmCostUsd > monthlyPriceUsd ? "losing_money" : "ok";
+      return {
+        name: accountName(a),
+        tier: a.tier,
+        reports: a.reports,
+        llmCostUsd,
+        costPerReportUsd: a.llmCostUsd / a.reports,
+        monthlyPriceUsd,
+        marginUsd: monthlyPriceUsd - llmCostUsd,
+        status,
+      };
+    })
+    .sort((x, y) => y.llmCostUsd - x.llmCostUsd);
+}
+
+/** Subscriptions behind on payment: revenue at risk of involuntary churn. */
+export function computePastDue(
+  subscriptions: SubscriptionFact[],
+  accounts: AccountUsage[],
+): { accounts: PastDueAccount[]; mrrAtRiskUsd: number } {
+  const byCustomer = new Map(accounts.filter((a) => a.stripeCustomerId).map((a) => [a.stripeCustomerId!, a]));
+  const behind = subscriptions
+    .filter((s): s is SubscriptionFact & { status: "past_due" | "unpaid" } => s.status === "past_due" || s.status === "unpaid")
+    .map((s) => {
+      const account = byCustomer.get(s.customerId);
+      return {
+        name: account ? accountName(account) : s.customerId,
+        status: s.status,
+        monthlyAmountUsd: s.monthlyAmountUsd,
+      };
+    })
+    .sort((x, y) => y.monthlyAmountUsd - x.monthlyAmountUsd);
+  return { accounts: behind, mrrAtRiskUsd: behind.reduce((t, a) => t + a.monthlyAmountUsd, 0) };
+}
