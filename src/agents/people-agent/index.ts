@@ -8,6 +8,15 @@ import {
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractRoleAndCompany, splitSentences } from "../../lib/nlp.js";
 import { PersonExtractionSchema, extractStructured } from "../../lib/llm.js";
+import { isNewsNoise } from "../../lib/news-noise.js";
+
+// Placeholder employers the extractor sometimes fills in ("Actor at
+// Various") instead of leaving the field out.
+const PLACEHOLDER_ORG = /^(various|various companies|multiple|several|n\/a|na|unknown|none|not specified|unspecified)$/i;
+
+export function isPlaceholderOrg(company: string | undefined): boolean {
+  return !!company && PLACEHOLDER_ORG.test(company.trim());
+}
 import {
   appendDomainExclusions,
   findOverride,
@@ -72,12 +81,15 @@ export class PeopleAgent {
 
     const [bioResultsRaw, newsResultsRaw, backgroundResultsRaw] = await Promise.all([
       this.searcher.search(appendDomainExclusions(`${searchSubject} current role position ${currentYear}`, override), resultCount),
-      this.searcher.search(appendDomainExclusions(`${searchSubject} news ${currentYear}`, override), resultCount),
+      // Twice the results needed: social, forum and tag-index pages are dropped below.
+      this.searcher.search(appendDomainExclusions(`${searchSubject} news ${currentYear}`, override), resultCount * 2),
       this.searcher.search(appendDomainExclusions(`${searchSubject} education net worth background biography`, override), bgResultCount),
     ]);
 
     const bioResults = bioResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
-    const newsResults = newsResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
+    const newsResults = newsResultsRaw
+      .filter((r) => !isRejectedDomain(r.url, override) && !isNewsNoise(r.url))
+      .slice(0, resultCount);
     const backgroundResults = backgroundResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
 
     // Filtering: when an affiliation was given, sources that actually
@@ -155,7 +167,9 @@ Extract these fields:
 RULES:
 - currentRole must reflect their position as of ${currentYear}. If a source says "former", do NOT list it as current.
 - If you cannot confidently determine a field, omit it rather than guessing.
-- Be specific — name actual companies, schools, dollar figures where available.`,
+- Be specific — name actual companies, schools, dollar figures where available.
+- Every careerHistory entry and currentCompany must name one real organization. Never use placeholders like "Various", "Multiple" or "N/A"; leave the entry out instead.
+- Don't name a company someone merely worked with as their employer. A freelance actor, athlete or artist appearing in a studio's or brand's projects isn't employed by it; for them, omit currentCompany unless they actually hold a role there (owner, executive, signed team, etc.).`,
         combinedText,
         PersonExtractionSchema
       );
@@ -164,16 +178,15 @@ RULES:
         usedLLM = true;
         if (llmResult.summary)        person.summary        = llmResult.summary;
         if (llmResult.currentRole)    person.currentRole    = llmResult.currentRole;
-        if (llmResult.currentCompany) person.currentCompany = llmResult.currentCompany;
+        if (llmResult.currentCompany && !isPlaceholderOrg(llmResult.currentCompany)) person.currentCompany = llmResult.currentCompany;
         if (llmResult.education)      person.education      = llmResult.education;
         if (llmResult.netWorth)       person.netWorth       = llmResult.netWorth;
         if (llmResult.knownFor)       person.knownFor       = llmResult.knownFor;
         if (llmResult.nationality)    person.nationality    = llmResult.nationality;
         if (llmResult.careerHistory) {
-          careerHistory = llmResult.careerHistory.map((c) => ({
-            title: c.title,
-            company: c.company,
-          }));
+          careerHistory = llmResult.careerHistory
+            .filter((c) => !isPlaceholderOrg(c.company))
+            .map((c) => ({ title: c.title, company: c.company }));
         }
       }
     }

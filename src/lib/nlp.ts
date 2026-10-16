@@ -87,6 +87,9 @@ const AFFILIATION_SEPARATORS = [" at ", " from ", " with ", " @ ", " - ", " — 
  *      Gated on the name being capitalized so an all-lowercase query
  *      (common when users don't bother with caps at all) isn't
  *      mis-split — ambiguous input is left alone rather than guessed.
+ *   4. Capitalized affiliation: from the third word on, an acronym or a
+ *      known organization word starts the affiliation
+ *      ("Michael Jordan UC Berkeley", "Jane Smith Stanford University").
  * Falls back to treating the whole string as the name when nothing
  * matches — same "don't guess" policy as the rest of this file.
  */
@@ -118,9 +121,43 @@ export function parsePersonQuery(raw: string): ParsedPersonQuery {
     if (splitIdx >= 2 && splitIdx < words.length) {
       return { name: words.slice(0, splitIdx).join(" "), affiliation: words.slice(splitIdx).join(" ") };
     }
+
+    // 4. Capitalized affiliation ("Michael Jordan UC Berkeley"): split at the
+    //    first word from the third on that clearly names an organization.
+    //    Anything else stays part of the name ("Mary Ann Smith").
+    const orgIdx = words.findIndex((w, idx) => idx >= 2 && isOrgSignal(w));
+    if (orgIdx !== -1) {
+      // "Labs", "Inc", "University"... follow the org's own name ("Acme Labs"),
+      // so the affiliation starts one word earlier when that leaves a full name.
+      const start = ORG_SUFFIX_WORDS.has(words[orgIdx].toLowerCase()) && orgIdx >= 3 ? orgIdx - 1 : orgIdx;
+      return { name: words.slice(0, start).join(" "), affiliation: words.slice(start).join(" ") };
+    }
   }
 
   return { name: trimmed };
+}
+
+// Generational suffixes look like acronyms but belong to the name.
+const NAME_SUFFIXES = new Set(["II", "III", "IV", "VI", "JR", "SR", "MD", "PHD"]);
+// Words that end an organization's name ("Acme Labs", "Stanford University").
+const ORG_SUFFIX_WORDS = new Set([
+  "university", "college", "school", "institute", "academy", "hospital", "clinic",
+  "inc", "inc.", "corp", "corp.", "corporation", "llc", "ltd", "co", "co.", "company",
+  "labs", "lab", "group", "capital", "ventures", "partners", "bank", "foundation", "agency",
+]);
+const ORG_WORDS = new Set([
+  ...ORG_SUFFIX_WORDS,
+  // Schools and employers people commonly type as bare names.
+  "berkeley", "stanford", "harvard", "yale", "princeton", "columbia", "cornell", "ucla", "nyu",
+  "google", "microsoft", "apple", "amazon", "meta", "facebook", "netflix", "tesla", "nvidia",
+  "openai", "anthropic", "stripe", "salesforce", "oracle", "intel", "uber", "airbnb",
+]);
+
+/** A word that marks the start of an organization: an acronym (UC, MIT, CSUN) or a known org word. */
+function isOrgSignal(word: string): boolean {
+  const bare = word.replace(/[,.]$/, "");
+  if (/^[A-Z]{2,}$/.test(bare) && !NAME_SUFFIXES.has(bare)) return true;
+  return ORG_WORDS.has(word.toLowerCase());
 }
 
 // Title words reused from extractRoleAndCompany, kept as a flat list so
