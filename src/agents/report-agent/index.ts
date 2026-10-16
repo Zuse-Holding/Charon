@@ -26,7 +26,12 @@ export class ReportAgent {
    * Opportunities (LLM-synthesized commentary, never actually sourced).
    */
   private pushSectionSources(lines: string[], sources: Source[], tags: string[]) {
-    const matched = sources.filter((s) => s.usedFor.some((u) => tags.includes(u)));
+    const seen = new Set<string>();
+    const matched = sources.filter((s) => {
+      if (!s.usedFor.some((u) => tags.includes(u)) || seen.has(s.url)) return false;
+      seen.add(s.url);
+      return true;
+    });
     if (matched.length === 0) {
       lines.push(`_Unverified — no sources recorded for this section._`);
     } else {
@@ -400,21 +405,16 @@ export class ReportAgent {
     lines.push(`## Overview`);
     lines.push(bundle.product.description ?? `_No description collected._`);
     lines.push(``);
-    // product-agent tags everything it collects "product" — a single tag
-    // for overview/details/specs/competitors alike, so these four
-    // sections share the same Sources list rather than each getting a
-    // finer-grained one. Distinguishing which specific finding backs
-    // which sub-section would need product-agent itself to tag more
-    // granularly, which is out of this task's scope (rendering what's
-    // already there, not re-instrumenting every agent).
-    this.pushSectionSources(lines, bundle.sources, ["product"]);
+    // product-agent tags each source with the sections its search fed
+    // (overview, product-details, specs, competitors, news).
+    this.pushSectionSources(lines, bundle.sources, ["overview"]);
 
     lines.push(`## Product Details`);
     lines.push(`- **Brand / Manufacturer:** ${bundle.product.brand ?? "Unknown"}`);
     lines.push(`- **Category:** ${bundle.product.category ?? "Unknown"}`);
     lines.push(`- **Price:** ${bundle.product.price ?? "Unknown"}`);
     lines.push(``);
-    this.pushSectionSources(lines, bundle.sources, ["product"]);
+    this.pushSectionSources(lines, bundle.sources, ["product-details"]);
 
     lines.push(`## Specs`);
     if (bundle.specs.length === 0) {
@@ -425,7 +425,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
-    this.pushSectionSources(lines, bundle.sources, ["product"]);
+    this.pushSectionSources(lines, bundle.sources, ["specs"]);
 
     lines.push(`## Competing Products`);
     if (bundle.competitors.length === 0) {
@@ -436,7 +436,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
-    this.pushSectionSources(lines, bundle.sources, ["product"]);
+    this.pushSectionSources(lines, bundle.sources, ["competitors"]);
 
     lines.push(`## Recent News`);
     if (bundle.news.length === 0) {
