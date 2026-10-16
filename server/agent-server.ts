@@ -1492,21 +1492,40 @@ app.get("/admin/unit-economics/:userId", async (req, res) => {
   const windowStartIso = windowStart.toISOString();
 
   try {
-    const [runsResult, diveResult, spendResult, recentSpendResult] = await Promise.all([
-      supabase.from("research_runs").select("cost_usd").gte("generated_at", windowStartIso),
-      supabase.from("deep_dives").select("cost_usd").gte("generated_at", windowStartIso),
+    const [runsResult, diveResult, spendResult, recentSpendResult, profilesResult] = await Promise.all([
+      supabase.from("research_runs").select("user_id, cost_usd").gte("generated_at", windowStartIso),
+      supabase.from("deep_dives").select("user_id, cost_usd").gte("generated_at", windowStartIso),
       supabase.from("acquisition_spend").select("amount_usd").gte("spent_on", windowStartIso.slice(0, 10)),
       supabase
         .from("acquisition_spend")
         .select("id, spent_on, amount_usd, channel, note")
         .order("spent_on", { ascending: false })
         .limit(10),
+      supabase.from("profiles").select("id, display_name, tier, stripe_customer_id"),
     ]);
-    const failed = [runsResult, diveResult, spendResult, recentSpendResult].find((r) => r.error);
+    const failed = [runsResult, diveResult, spendResult, recentSpendResult, profilesResult].find((r) => r.error);
     if (failed) throw failed.error;
 
     const sum = (rows: { [k: string]: unknown }[] | null, key: string) =>
       (rows ?? []).reduce((total, row) => total + (Number(row[key]) || 0), 0);
+
+    // Per-user report count and LLM cost in the window, so the web side can
+    // set each account's cost against what its Stripe subscription pays.
+    const usage = new Map<string, { reports: number; llmCostUsd: number }>();
+    for (const row of [...(runsResult.data ?? []), ...(diveResult.data ?? [])]) {
+      const u = usage.get(row.user_id) ?? { reports: 0, llmCostUsd: 0 };
+      u.reports += 1;
+      u.llmCostUsd += Number(row.cost_usd) || 0;
+      usage.set(row.user_id, u);
+    }
+    const accounts = (profilesResult.data ?? []).map((p) => ({
+      userId: p.id as string,
+      name: (p.display_name as string | null) ?? null,
+      tier: (p.tier as string | null) ?? null,
+      stripeCustomerId: (p.stripe_customer_id as string | null) ?? null,
+      reports: usage.get(p.id)?.reports ?? 0,
+      llmCostUsd: usage.get(p.id)?.llmCostUsd ?? 0,
+    }));
 
     res.json({
       windowDays: METRICS_WINDOW_DAYS,
@@ -1515,6 +1534,7 @@ app.get("/admin/unit-economics/:userId", async (req, res) => {
       acquisitionSpendUsd: sum(spendResult.data, "amount_usd"),
       acquisitionSpendEntries: spendResult.data?.length ?? 0,
       recentSpend: recentSpendResult.data ?? [],
+      accounts,
     });
   } catch (err) {
     console.error("[admin-unit-economics] query failed:", err);
@@ -1531,7 +1551,9 @@ app.post("/admin/acquisition-spend", async (req, res) => {
   const channelName = typeof channel === "string" ? channel.trim() : "";
   const noteText = typeof note === "string" && note.trim() ? note.trim() : null;
   const validDate = typeof spentOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(spentOn)
-    && !Number.isNaN(Date.parse(spentOn)) && Date.parse(spentOn) <= Date.now();
+    && !Number.isNaN(Date.parse(spentOn))
+    // +1 day: the browser sends its local date, which runs ahead of UTC east of Greenwich.
+    && Date.parse(spentOn) <= Date.now() + 86_400_000;
 
   if (!userId || !validDate || !Number.isFinite(amount) || amount <= 0 || amount > 10_000_000
       || channelName.length < 1 || channelName.length > 64 || (noteText && noteText.length > 280)) {

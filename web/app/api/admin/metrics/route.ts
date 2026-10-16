@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../../../lib/supabase/server";
 import { getAgentSecret } from "../../../../lib/agent-secret";
 import { getStripe } from "../../../../lib/stripe";
-import { computeSaasMetrics, fetchStripeBilling } from "../../../../lib/saas-metrics";
+import { computeAccountEconomics, computePastDue, computeSaasMetrics, fetchStripeBilling } from "../../../../lib/saas-metrics";
 
 const AGENT_URL = process.env.AGENT_SERVER_URL ?? "http://localhost:4000";
 
@@ -31,8 +31,11 @@ export async function GET() {
     const windowStartSec = Math.floor(new Date(costs.windowStart).getTime() / 1000);
     const billing = await fetchStripeBilling(getStripe(), windowStartSec);
 
+    const accounts = costs.accounts ?? [];
     return NextResponse.json({
       metrics: computeSaasMetrics(billing, costs, now, costs.windowDays),
+      accountEconomics: computeAccountEconomics(accounts, billing.subscriptions, costs.windowDays).slice(0, 15),
+      pastDue: computePastDue(billing.subscriptions, accounts),
       recentSpend: costs.recentSpend,
     });
   } catch (err) {
