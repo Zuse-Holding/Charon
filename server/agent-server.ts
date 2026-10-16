@@ -1240,12 +1240,20 @@ app.get("/tier/:userId", async (req, res) => {
   // hitting the hard block. Only computed when the tier actually has a
   // cap (-1 means unlimited, e.g. Pro/Team/internal) to avoid an extra
   // auth.admin lookup + count query on every /tier call for most users.
+  // Pro's Deep Dive cap (monthlyDeepDiveLimit) is exposed the same way.
   let monthlyUsage: { used: number; limit: number; resetsAt: string } | null = null;
-  if (config.monthlyResearchLimit !== -1) {
+  let monthlyDeepDiveUsage: { used: number; limit: number; resetsAt: string } | null = null;
+  if (config.monthlyResearchLimit !== -1 || config.monthlyDeepDiveLimit !== -1) {
     const periodStart = await getBillingPeriodStart(req.params.userId);
-    const used = await getMonthlyResearchUsage(req.params.userId, periodStart);
-    const resetsAt = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate());
-    monthlyUsage = { used, limit: config.monthlyResearchLimit, resetsAt: resetsAt.toISOString() };
+    const resetsAt = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toISOString();
+    if (config.monthlyResearchLimit !== -1) {
+      const used = await getMonthlyResearchUsage(req.params.userId, periodStart);
+      monthlyUsage = { used, limit: config.monthlyResearchLimit, resetsAt };
+    }
+    if (config.monthlyDeepDiveLimit !== -1) {
+      const used = await getMonthlyDeepDiveUsage(req.params.userId, periodStart);
+      monthlyDeepDiveUsage = { used, limit: config.monthlyDeepDiveLimit, resetsAt };
+    }
   }
 
   res.json({
@@ -1253,6 +1261,7 @@ app.get("/tier/:userId", async (req, res) => {
     config: effectiveConfig,
     displayName: profile?.display_name ?? null,
     monthlyUsage,
+    monthlyDeepDiveUsage,
     notificationPreferences: profile?.notification_preferences ?? DEFAULT_NOTIFICATION_PREFERENCES,
     subscriptionStatus: profile?.subscription_status ?? null,
     cancelAtPeriodEnd: profile?.cancel_at_period_end ?? false,
