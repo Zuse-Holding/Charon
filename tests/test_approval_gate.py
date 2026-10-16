@@ -39,7 +39,7 @@ class FakeTable:
         self.recorder.calls.append(("insert", self.name, values, None))
         return self
 
-    def upsert(self, values, on_conflict=None):
+    def upsert(self, values, on_conflict=None, **_kw):
         self._last_values = values
         self.recorder.calls.append(("upsert", self.name, values, on_conflict))
         return self
@@ -158,3 +158,23 @@ def test_save_brief_upserts_on_week_of_not_insert(fake_supabase):
     assert len(fake_supabase.calls) == 2
     for kind, table, _values, on_conflict in fake_supabase.calls:
         assert (kind, table, on_conflict) == ("upsert", "briefs", "week_of")
+
+
+def test_propose_action_with_source_ref_upserts_on_idempotency_key(fake_supabase):
+    """Same action for the same email twice -> one approval_queue row, keyed
+    on the unique (action_type, source_ref) constraint in schema.sql."""
+    for _ in range(2):
+        mcp_tools.propose_action(module="inbox", action_type="send_email", summary="x",
+                                 payload={"to": "a@b.com"}, source_ref="msg-1")
+    queue_writes = [c for c in fake_supabase.calls if c[1] == "approval_queue"]
+    assert len(queue_writes) == 2
+    for kind, _table, values, on_conflict in queue_writes:
+        assert (kind, on_conflict) == ("upsert", "action_type,source_ref")
+        assert values["source_ref"] == "msg-1" and "status" not in values
+
+
+def test_flag_lead_upserts_on_source_ref(fake_supabase):
+    mcp_tools.flag_lead(source_ref="msg-9", name="Pat", email="pat@x.com")
+    kind, table, values, on_conflict = fake_supabase.calls[0]
+    assert (kind, table, on_conflict) == ("upsert", "leads", "source_ref")
+    assert values["source"] == "inbox"

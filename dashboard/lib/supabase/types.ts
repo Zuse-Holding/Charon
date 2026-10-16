@@ -3,11 +3,13 @@
 // project is live, but the shapes here are authoritative until then.
 
 export type ApprovalModule = "inbox" | "finance" | "leads" | "brief" | "system";
-export type ApprovalStatus = "pending" | "approved" | "rejected" | "executed" | "failed";
-export type Venture = "zuse" | "metis" | "charon" | "lounge" | "kairos" | "personal_mixed";
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "executing" | "executed" | "failed";
+export type Venture = "zuse" | "metis" | "charon" | "lounge" | "kairos" | "personal_mixed" | "trading";
+export type TradeSide = "buy" | "sell";
+export type TradeStatus = "open" | "filled" | "canceled";
 export type LeadSource = "metis_form" | "inbox" | "manual" | "referral";
 export type LeadStatus = "new" | "enriched" | "contacted" | "replied" | "qualified" | "closed" | "dead";
-export type DeadlineKind = "state" | "tax" | "domain" | "insurance" | "other";
+export type DeadlineKind = "state" | "tax" | "domain" | "insurance" | "contract" | "other";
 export type DeadlineStatus = "open" | "done" | "waived";
 export type TriageBucket = "lead" | "vendor" | "legal_important" | "personal" | "noise";
 export type AgentJob = "inbox" | "finance" | "enrichment" | "compliance" | "brief";
@@ -24,6 +26,8 @@ export interface ApprovalQueueRow {
   resolved_at: string | null;
   executed_at: string | null;
   error: string | null;
+  result: string | null;
+  source_ref: string | null;
   related_lead: string | null;
   related_triage: string | null;
 }
@@ -68,6 +72,7 @@ export interface LeadRow {
   score: number | null;
   enrichment: Record<string, unknown> | null;
   last_touch_at: string | null;
+  source_ref: string | null;
 }
 
 export interface LeadEventRow {
@@ -87,6 +92,33 @@ export interface DeadlineRow {
   notes: string | null;
   status: DeadlineStatus;
   completed_at: string | null;
+  source_ref: string | null;
+}
+
+export type ContractKind = "nda" | "customer" | "vendor" | "partner" | "contractor" | "other";
+export type ContractStatus = "draft" | "sent" | "signed" | "expired" | "terminated";
+export type MetisProduct = "intelligence" | "diligence" | "committee";
+
+export interface ContractRow {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  title: string;
+  counterparty: string;
+  kind: ContractKind;
+  venture: Venture;
+  product: MetisProduct | null;
+  status: ContractStatus;
+  sent_on: string | null;
+  signed_on: string | null;
+  ends_on: string | null;
+  auto_renews: boolean;
+  renewal_months: number | null;
+  notice_days: number | null;
+  value_usd: number | null;
+  billing: "one_time" | "monthly" | "annual" | null;
+  doc_url: string | null;
+  notes: string | null;
 }
 
 export type PersonalGoalStatus = "active" | "done";
@@ -128,6 +160,44 @@ export interface SeleneFactRow {
   fact: string;
   source: string;
   active: boolean;
+}
+
+export interface TradeRow {
+  id: string;
+  created_at: string;
+  venture: Venture;
+  symbol: string;
+  side: TradeSide;
+  qty: number;
+  price: number | null;
+  filled_at: string | null;
+  status: TradeStatus;
+  source: "manual" | "alpaca";
+  external_id: string | null;
+  bot: string | null;
+  notes: string | null;
+}
+
+export type InvoiceStatus = "open" | "paid" | "void" | "uncollectible";
+
+export interface InvoiceRow {
+  id: string;
+  created_at: string;
+  approval_id: string | null;
+  stripe_invoice_id: string;
+  number: string | null;
+  customer_email: string;
+  customer_name: string | null;
+  product: MetisProduct | null;
+  lead_id: string | null;
+  amount_due: number;
+  amount_paid: number;
+  currency: string;
+  status: InvoiceStatus;
+  due_date: string | null;
+  hosted_url: string | null;
+  paid_at: string | null;
+  synced_at: string | null;
 }
 
 export interface AgentRunRow {
@@ -184,6 +254,9 @@ export interface Database {
       briefs: Table<BriefRow>;
       selene_facts: Table<SeleneFactRow>;
       agent_runs: Table<AgentRunRow>;
+      trades: Table<TradeRow>;
+      contracts: Table<ContractRow>;
+      invoices: Table<InvoiceRow>;
     } & Record<string, AnyTable>;
     Views: Record<string, never>;
     Functions: Record<string, never>;

@@ -25,7 +25,7 @@ function relTime(iso: string): string {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
-export default function AgentRunStatus() {
+export default function AgentRunStatus({ onClick }: { onClick?: () => void }) {
   const [pendingCount, setPendingCount] = useState(0);
   const [lastRun, setLastRun] = useState<AgentRunRow | null>(null);
   // Created lazily (client-only) so this component never touches Supabase
@@ -98,7 +98,11 @@ export default function AgentRunStatus() {
   const bottomText = lastRun ? `${lastRun.job} · ${relTime(lastRun.finished_at ?? lastRun.started_at)}` : "no runs yet";
 
   return (
-    <div className={`${styles.root} ${styles[tone]}`} title="Selene status">
+    <div
+      className={`${styles.root} ${styles[tone]} ${onClick ? styles.clickable : ""}`}
+      title={pendingCount > 0 ? `${pendingCount} pending approval${pendingCount === 1 ? "" : "s"} — open queue` : "Selene status — open queue"}
+      onClick={onClick}
+    >
       <div className={styles.ringWrap}>
         <svg className={styles.ring} viewBox="0 0 26 26">
           <circle className={styles.ringTrack} cx="13" cy="13" r={RADIUS} />

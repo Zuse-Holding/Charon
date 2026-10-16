@@ -19,3 +19,6 @@ selene_memory.db
 
 # Local output from grant-legacy-pro-grace.mjs — real user emails, never commit
 migration-output/
+
+# Selene OS agent box job logs (deploy/run-job.sh)
+logs/

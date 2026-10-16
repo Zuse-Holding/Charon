@@ -99,12 +99,107 @@
   flex-shrink: 0;
 }
 
+.payloadKey {
+  min-width: 72px;
+}
+
 .payloadVal {
   font-family: var(--font-mono);
   color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.emailBody {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.notice {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.historyTitle {
+  margin-top: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.historyRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.historyMain {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.historySummary {
+  color: var(--text);
+}
+
+.historyStatus {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.historyDetail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.h_approved,
+.h_executing {
+  border-left-color: var(--selene);
+}
+.h_approved .historyStatus,
+.h_executing .historyStatus {
+  color: var(--selene);
+}
+
+.h_executed {
+  border-left-color: var(--ok);
+}
+.h_executed .historyStatus {
+  color: var(--ok);
+}
+
+.h_failed {
+  border-left-color: var(--danger);
+}
+.h_failed .historyStatus,
+.h_failed .historyDetail {
+  color: var(--danger);
 }
 
 .actions {
