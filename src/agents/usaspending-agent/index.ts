@@ -51,6 +51,26 @@ function toStr(v: unknown): string | undefined {
   return s.length > 0 ? s : undefined;
 }
 
+/** Lowercase words only: "Stripe, Inc." -> "stripe inc". */
+function words(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/**
+ * Whether an award's recipient is the company searched for. Whole words
+ * only: substring matching let "STRIPES GLOBAL, INC." and "STATEWIDE
+ * STRIPES, INC." through as Stripe (in production, 2026-10-05). A blank
+ * recipient never matches.
+ */
+export function recipientMatches(recipient: string | null | undefined, needles: string[]): boolean {
+  const r = words(recipient ?? "");
+  if (!r) return false;
+  return needles.some((needle) => {
+    const n = words(needle);
+    return !!n && (` ${r} `.includes(` ${n} `) || ` ${n} `.includes(` ${r} `));
+  });
+}
+
 export class USASpendingAgent {
   // Each type-category request catches and logs its own failure rather
   // than throwing, so a slow/timed-out contracts request (seen in
@@ -130,12 +150,9 @@ export class USASpendingAgent {
 
       // Guard against a loose recipient_search_text match returning
       // awards for an unrelated namesake — only keep results whose
-      // recipient name actually contains the searched company name (or
-      // one of its known aka/rename variants) case-insensitively.
-      const filtered = results.filter((r) => {
-        const recipient = toStr(r["Recipient Name"])?.toLowerCase() ?? "";
-        return acceptedNeedles.some((needle) => recipient.includes(needle) || needle.includes(recipient));
-      });
+      // recipient name contains the searched company name (or one of its
+      // known aka/rename variants) as whole words.
+      const filtered = results.filter((r) => recipientMatches(toStr(r["Recipient Name"]), acceptedNeedles));
 
       if (results.length > 0 && filtered.length === 0) {
         console.warn(`[usaspending-agent] "${companyName}": ${results.length} raw result(s) all rejected by the recipient-name match guard — check for a naming mismatch (e.g. "${companyName}" vs the recipient's registered legal name).`);

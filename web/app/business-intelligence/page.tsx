@@ -36,25 +36,26 @@ function useScrollFade() {
   }, []);
 }
 
-// An excerpt of a real report (reports/stripe.md, generated 2026-10-05),
-// copied as written, including the section the pipeline couldn't source.
+// An excerpt of the full sample report on /sample-report
+// (web/content/sample-reports/stripe.md), copied as written, including the
+// section the pipeline couldn't source. Keep the two in step.
 const SAMPLE_REPORT = {
   subject: "Stripe",
-  generated: "Oct 5, 2026",
+  generated: "Oct 15, 2026",
   sections: [
     {
       title: "Company overview",
-      rows: [["Founded", "2010"], ["Headquarters", "San Francisco and Dublin"], ["Industry", "Financial Infrastructure"]],
-      sources: ["stripe.com", "stripe.com/guides", "stripe.com/payments"],
+      rows: [["Founded", "2010"], ["Headquarters", "San Francisco, CA and Dublin, Ireland"], ["Industry", "Financial Infrastructure"]],
+      sources: ["www.stripe.com", "stripe.com", "youtube.com", "en.wikipedia.org"],
     },
     {
       title: "Competitors",
-      rows: [["Named", "PayPal · Square · Adyen · Braintree · Checkout.com"]],
-      sources: ["paddle.com", "tipalti.com", "memberful.com", "attrock.com", "reddit.com"],
+      rows: [["Named", "PayPal · Adyen · Square · Braintree · Checkout.com"]],
+      sources: ["tipalti.com", "paddle.com", "reddit.com", "connectpay.com", "memberful.com"],
     },
     {
       title: "Risks",
-      rows: [["", "Direct competition from established payment processors like Adyen, PayPal, and Square threatens market share in financial infrastructure."]],
+      rows: [["", "Direct competition from Adyen, PayPal, and Square for global payment volume share."]],
       sources: [],
     },
   ],
@@ -69,7 +70,7 @@ const FEATURES = [
   {
     num: "02",
     title: "Deep Dive Analysis",
-    desc: "10-section analyst-grade report: founding history, leadership red flags, funding history, market sizing, competitive context, and a clear strategic verdict.",
+    desc: "10-section report: founding history, leadership red flags, funding history, market sizing, competitive context, and a clear strategic verdict.",
   },
   {
     num: "03",
@@ -160,7 +161,7 @@ export default function Landing() {
         <p className={styles.heroSub}>
           Seven AI agents run in parallel to surface funding, leadership, competitors,
           and market signals — synthesized into one clean report.
-          Between Crunchbase and PitchBook. In price and depth.
+          Priced like a tool, reads like an analyst&apos;s brief.
         </p>
 
         <div className={styles.heroCtas}>
@@ -206,6 +207,7 @@ export default function Landing() {
                 )}
               </div>
             ))}
+            <Link href="/sample-report" className={styles.sampleFullLink}>Read the full report →</Link>
           </div>
         </div>
       </div>
@@ -241,8 +243,8 @@ export default function Landing() {
       {/* PRICING */}
       <section className={`${styles.pricingSection} ${styles.fadeIn}`}>
         <div className={styles.sectionLabel}>PRICING</div>
-        <h2 className={styles.pricingTitle}>Between Crunchbase and PitchBook.</h2>
-        <div className={styles.pricingCode}>// in price and depth</div>
+        <h2 className={styles.pricingTitle}>Priced like a tool.</h2>
+        <div className={styles.pricingCode}>// reads like an analyst&apos;s brief</div>
         <div className={styles.pricingGrid}>
           {PRICING.map((plan) => (
             <div

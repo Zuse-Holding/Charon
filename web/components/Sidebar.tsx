@@ -129,7 +129,14 @@ export default function Sidebar() {
             navigation even if client hydration fails (e.g. the SSO/proxy
             interference some corporate laptops hit), so sign-out never
             silently stops responding. */}
-        <Link className={styles.signOut} href="/logout" title="Sign out">⏻</Link>
+        <Link className={styles.signOut} href="/logout" title="Sign out" aria-label="Sign out">
+          {/* Inline SVG, not the ⏻ glyph — Windows fonts lack U+23FB and render a box. */}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+            <path d="M12 3v9" />
+            <path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
+          </svg>
+        </Link>
       </div>
 
       {badge && (

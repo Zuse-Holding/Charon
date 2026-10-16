@@ -1471,6 +1471,101 @@ app.get("/admin/stats/:userId", async (req, res) => {
 });
 
 /**
+ * The non-Stripe half of the admin unit-economics metrics (Charon-only).
+ * web/app/api/admin/metrics/route.ts calls this first — a 403 here is what
+ * stops a non-admin before any Stripe call — then combines it with
+ * Stripe revenue/subscription data. LLM cost comes from the cost_usd
+ * columns on research_runs/deep_dives; acquisition spend is logged by hand.
+ */
+const METRICS_WINDOW_DAYS = 30;
+
+app.get("/admin/unit-economics/:userId", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const tier = await getUserTier(req.params.userId);
+  if (tier !== "internal") {
+    res.status(403).json({ error: "Admin metrics require Charon tier" });
+    return;
+  }
+
+  const windowStart = new Date(Date.now() - METRICS_WINDOW_DAYS * 86_400_000);
+  const windowStartIso = windowStart.toISOString();
+
+  try {
+    const [runsResult, diveResult, spendResult, recentSpendResult] = await Promise.all([
+      supabase.from("research_runs").select("cost_usd").gte("generated_at", windowStartIso),
+      supabase.from("deep_dives").select("cost_usd").gte("generated_at", windowStartIso),
+      supabase.from("acquisition_spend").select("amount_usd").gte("spent_on", windowStartIso.slice(0, 10)),
+      supabase
+        .from("acquisition_spend")
+        .select("id, spent_on, amount_usd, channel, note")
+        .order("spent_on", { ascending: false })
+        .limit(10),
+    ]);
+    const failed = [runsResult, diveResult, spendResult, recentSpendResult].find((r) => r.error);
+    if (failed) throw failed.error;
+
+    const sum = (rows: { [k: string]: unknown }[] | null, key: string) =>
+      (rows ?? []).reduce((total, row) => total + (Number(row[key]) || 0), 0);
+
+    res.json({
+      windowDays: METRICS_WINDOW_DAYS,
+      windowStart: windowStartIso,
+      llmCostUsd: sum(runsResult.data, "cost_usd") + sum(diveResult.data, "cost_usd"),
+      acquisitionSpendUsd: sum(spendResult.data, "amount_usd"),
+      acquisitionSpendEntries: spendResult.data?.length ?? 0,
+      recentSpend: recentSpendResult.data ?? [],
+    });
+  } catch (err) {
+    console.error("[admin-unit-economics] query failed:", err);
+    res.status(500).json({ error: "Failed to load unit economics" });
+  }
+});
+
+/** Log one acquisition-spend entry (Charon-only) — feeds CAC. */
+app.post("/admin/acquisition-spend", async (req, res) => {
+  if (!authCheck(req, res)) return;
+
+  const { userId, spentOn, amountUsd, channel, note } = req.body ?? {};
+  const amount = Number(amountUsd);
+  const channelName = typeof channel === "string" ? channel.trim() : "";
+  const noteText = typeof note === "string" && note.trim() ? note.trim() : null;
+  const validDate = typeof spentOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(spentOn)
+    && !Number.isNaN(Date.parse(spentOn)) && Date.parse(spentOn) <= Date.now();
+
+  if (!userId || !validDate || !Number.isFinite(amount) || amount <= 0 || amount > 10_000_000
+      || channelName.length < 1 || channelName.length > 64 || (noteText && noteText.length > 280)) {
+    res.status(400).json({ error: "Need a past date, an amount above zero, and a channel" });
+    return;
+  }
+
+  const tier = await getUserTier(userId);
+  if (tier !== "internal") {
+    res.status(403).json({ error: "Logging spend requires Charon tier" });
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("acquisition_spend")
+    .insert({
+      spent_on: spentOn,
+      amount_usd: Math.round(amount * 100) / 100,
+      channel: channelName,
+      note: noteText,
+      created_by: userId,
+    })
+    .select("id, spent_on, amount_usd, channel, note")
+    .single();
+
+  if (error) {
+    console.error("[admin-acquisition-spend] insert failed:", error);
+    res.status(500).json({ error: "Failed to log spend" });
+    return;
+  }
+  res.json(data);
+});
+
+/**
  * Manual quarterly refresh for the statewide_executives table (Charon-
  * only, next to /admin/stats). Deliberately not a live scrape — the
  * admin supplies reviewed data (state/office/name/party/termStart/

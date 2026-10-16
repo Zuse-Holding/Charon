@@ -127,6 +127,10 @@
 .sampleUnverified {
   font-family: var(--font-mono); font-size: 11px; color: var(--yellow); padding-top: 6px;
 }
+.sampleFullLink {
+  display: inline-block; margin-top: 18px;
+  font-size: 13px; color: #ff6b2b; text-decoration: underline;
+}
 
 /* STATS */
 .statsBar {

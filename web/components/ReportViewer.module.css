@@ -136,6 +136,18 @@
   padding: 3px 9px;
 }
 .sourcesList { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.sourcesDetails { margin-top: 6px; }
+.sourcesDetails > summary {
+  cursor: pointer;
+  width: fit-content;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.sourcesDetails > summary:hover { color: var(--text); }
 .sourceItem {
   display: flex;
   align-items: center;
