@@ -122,6 +122,8 @@ function normalizeRun(row: Record<string, unknown>) {
     type: row.type as string,
     subject: row.subject as string,
     generatedAt: row.generated_at as string,
+    // Plan at the time of the run (research_runs.tier), not the live one.
+    tier: (row.tier as string | null) ?? null,
     reportPath: row.report_path as string,
     bundle: row.bundle,
   };
