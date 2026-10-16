@@ -34,15 +34,17 @@ const PLANS = [
     highlight: false,
   },
   {
+    // Caps below mirror PRO_MONTHLY_RESEARCH_LIMIT (300) and
+    // PRO_MONTHLY_DEEP_DIVE_LIMIT (50) in server/agent-server.ts; change both together.
     tier: "PRO",
     price: "$49",
     period: "/mo",
     forWho: "For analysts, investors, and founders",
-    value: "Unlimited profiles and full Deep Dive reports — the tier built for people who research as their job, not a one-off.",
+    value: "300 profiles and 50 full Deep Dive reports a month — the tier built for people who research as their job, not a one-off.",
     features: [
       "Everything in Basic",
-      "Unlimited quick profiles",
-      "Full Deep Dive reports (10 sections)",
+      "300 quick profiles a month",
+      "50 Deep Dive reports a month (10 sections)",
       "Unlimited Watchlist",
       "PDF export",
       "Knowledge Graph access",
@@ -70,8 +72,8 @@ const PLANS = [
 ];
 
 const COMPARE_ROWS: [string, string, string, string][] = [
-  ["Quick profiles / month", "25", "Unlimited", "200 a day"],
-  ["Deep Dive reports", "—", "Full access", "20 a day"],
+  ["Quick profiles / month", "25", "300", "200 a day"],
+  ["Deep Dive reports", "—", "50 a month", "20 a day"],
   ["Watchlist entities", "5", "Unlimited", "50"],
   ["Knowledge Graph", "—", "Included", "Included"],
   ["Export formats", "Markdown", "Markdown + PDF", "Markdown + PDF"],
@@ -82,7 +84,7 @@ const COMPARE_ROWS: [string, string, string, string][] = [
 const FAQS = [
   {
     q: "What happens when I hit my Basic profile limit?",
-    a: "You'll be prompted to upgrade to Pro for unlimited profiles, or wait until your monthly limit resets. Nothing runs automatically or bills you without confirmation.",
+    a: "You'll be prompted to upgrade to Pro for 300 profiles a month, or wait until your monthly limit resets. Nothing runs automatically or bills you without confirmation.",
   },
   {
     q: "Can I cancel anytime?",

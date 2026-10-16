@@ -49,6 +49,7 @@ export async function GET() {
       },
       displayName: null,
       monthlyUsage: null,
+      monthlyDeepDiveUsage: null,
       subscriptionStatus: null,
       cancelAtPeriodEnd: false,
     });

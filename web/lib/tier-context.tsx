@@ -71,6 +71,8 @@ interface TierContextValue {
   displayName: string | null;
   email: string | null;
   monthlyUsage: MonthlyUsage | null;
+  /** Pro's monthly Deep Dive usage; null when the tier has no Deep Dive cap. */
+  monthlyDeepDiveUsage: MonthlyUsage | null;
   notificationPreferences: NotificationPreferences;
   /** profiles.subscription_status, mirrored from Stripe by the webhook —
    *  null for accounts that have never checked out (Free, or hand-assigned
@@ -119,6 +121,7 @@ const TierContext = createContext<TierContextValue>({
   displayName: null,
   email: null,
   monthlyUsage: null,
+  monthlyDeepDiveUsage: null,
   notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
   subscriptionStatus: null,
   cancelAtPeriodEnd: false,
@@ -158,6 +161,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   const [emailDerivedName, setEmailDerivedName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [monthlyUsage, setMonthlyUsage] = useState<MonthlyUsage | null>(null);
+  const [monthlyDeepDiveUsage, setMonthlyDeepDiveUsage] = useState<MonthlyUsage | null>(null);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(false);
@@ -187,6 +191,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
           setTier(data.tier);
           setConfig(data.config);
           setMonthlyUsage(data.monthlyUsage ?? null);
+          setMonthlyDeepDiveUsage(data.monthlyDeepDiveUsage ?? null);
           // Prefer the user's own saved preference over the email guess.
           if (data.displayName) setDisplayName(data.displayName);
           setNotificationPreferences({ ...DEFAULT_NOTIFICATION_PREFERENCES, ...(data.notificationPreferences ?? {}) });
@@ -198,6 +203,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
           setTier("free");
           setConfig(DEFAULT_CONFIG);
           setMonthlyUsage(null);
+          setMonthlyDeepDiveUsage(null);
           setSubscriptionStatus(null);
           setCancelAtPeriodEnd(false);
         }
@@ -294,7 +300,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, monthlyUsage, notificationPreferences, subscriptionStatus, cancelAtPeriodEnd, can, refresh, updateDisplayName, updateNotificationPreferences }}>
+    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, monthlyUsage, monthlyDeepDiveUsage, notificationPreferences, subscriptionStatus, cancelAtPeriodEnd, can, refresh, updateDisplayName, updateNotificationPreferences }}>
       {children}
     </TierContext.Provider>
   );
