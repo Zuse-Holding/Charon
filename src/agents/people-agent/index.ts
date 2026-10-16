@@ -152,7 +152,7 @@ export class PeopleAgent {
     let usedLLM = false;
     if (combinedText.length > 0) {
       const llmResult = await extractStructured(
-        `You are a research assistant extracting biographical facts about "${personName}"${affiliation ? ` (affiliated with ${affiliation} — use this to make sure you're extracting facts about the right person, not a same-named stranger)` : ""} from search results. Today's year is ${currentYear}.
+        `You are a research assistant extracting biographical facts about "${personName}"${affiliation ? ` (search context: "${affiliation}", which may be an employer, school or location — use it to make sure you're extracting facts about the right person, not a same-named stranger)` : ""} from search results. Today's year is ${currentYear}.
 
 Extract these fields:
 - summary: 2-3 sentences describing who this person is, what they're known for, and why they matter. Write it like the opening of a Wikipedia article — specific, confident, factual. No filler.
@@ -168,6 +168,7 @@ RULES:
 - currentRole must reflect their position as of ${currentYear}. If a source says "former", do NOT list it as current.
 - If you cannot confidently determine a field, omit it rather than guessing.
 - Be specific — name actual companies, schools, dollar figures where available.
+- Never include home or street addresses, phone numbers, personal email addresses or other contact details in any field, even if a source lists them. A city or region is fine only when it's part of who they are publicly (e.g. "Austin-based founder").
 - Every careerHistory entry and currentCompany must name one real organization. Never use placeholders like "Various", "Multiple" or "N/A"; leave the entry out instead.
 - Don't name a company someone merely worked with as their employer. A freelance actor, athlete or artist appearing in a studio's or brand's projects isn't employed by it; for them, omit currentCompany unless they actually hold a role there (owner, executive, signed team, etc.).`,
         combinedText,

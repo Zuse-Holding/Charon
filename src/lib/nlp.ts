@@ -66,7 +66,7 @@ export interface ParsedPersonQuery {
 
 // Explicit separators a user might type between name and affiliation —
 // checked first since they're unambiguous wherever they appear.
-const AFFILIATION_SEPARATORS = [" at ", " from ", " with ", " @ ", " - ", " — "];
+const AFFILIATION_SEPARATORS = [" at ", " from ", " with ", " in ", " @ ", " - ", " — "];
 
 /**
  * Splits a person-search query like "Daniel Olmos csun" or
@@ -87,7 +87,8 @@ const AFFILIATION_SEPARATORS = [" at ", " from ", " with ", " @ ", " - ", " — 
  *      Gated on the name being capitalized so an all-lowercase query
  *      (common when users don't bother with caps at all) isn't
  *      mis-split — ambiguous input is left alone rather than guessed.
- *   4. Capitalized affiliation: from the third word on, an acronym or a
+ *   4. Trailing US state: "John Smith Austin TX" -> location "Austin TX".
+ *   5. Capitalized affiliation: from the third word on, an acronym or a
  *      known organization word starts the affiliation
  *      ("Michael Jordan UC Berkeley", "Jane Smith Stanford University").
  * Falls back to treating the whole string as the name when nothing
@@ -109,10 +110,14 @@ export function parsePersonQuery(raw: string): ParsedPersonQuery {
   if (trimmed.includes(",")) {
     const [namePart, ...rest] = trimmed.split(",");
     const affiliation = rest.join(",").trim();
-    if (namePart.trim() && affiliation) return { name: namePart.trim(), affiliation };
+    // "John Smith Austin, TX": the comma splits city from state, not name
+    // from context — let the location rule below place the city.
+    const affWords = affiliation.split(" ");
+    const commaSplitsCityFromState = trailingStateLength(affWords) === affWords.length && namePart.trim().split(" ").length >= 3;
+    if (namePart.trim() && affiliation && !commaSplitsCityFromState) return { name: namePart.trim(), affiliation };
   }
 
-  const words = trimmed.split(" ");
+  const words = trimmed.replace(/,/g, "").split(" ");
   const nameLooksCapitalized = words.length >= 2 && /^[A-Z]/.test(words[0]) && /^[A-Z]/.test(words[1]);
   if (words.length >= 3 && nameLooksCapitalized) {
     let i = words.length - 1;
@@ -122,7 +127,13 @@ export function parsePersonQuery(raw: string): ParsedPersonQuery {
       return { name: words.slice(0, splitIdx).join(" "), affiliation: words.slice(splitIdx).join(" ") };
     }
 
-    // 4. Capitalized affiliation ("Michael Jordan UC Berkeley"): split at the
+    // 4. Trailing US state ("John Smith Austin TX", "Maria Garcia San Diego
+    //    California"): the state plus the city word(s) before it are the
+    //    location; whatever precedes is the name.
+    const location = splitTrailingLocation(words);
+    if (location) return location;
+
+    // 5. Capitalized affiliation ("Michael Jordan UC Berkeley"): split at the
     //    first word from the third on that clearly names an organization.
     //    Anything else stays part of the name ("Mary Ann Smith").
     const orgIdx = words.findIndex((w, idx) => idx >= 2 && isOrgSignal(w));
@@ -156,7 +167,7 @@ const ORG_WORDS = new Set([
 /** A word that marks the start of an organization: an acronym (UC, MIT, CSUN) or a known org word. */
 function isOrgSignal(word: string): boolean {
   const bare = word.replace(/[,.]$/, "");
-  if (/^[A-Z]{2,}$/.test(bare) && !NAME_SUFFIXES.has(bare)) return true;
+  if (/^[A-Z]{2,}$/.test(bare) && !NAME_SUFFIXES.has(bare) && !US_STATE_CODES.has(bare)) return true;
   return ORG_WORDS.has(word.toLowerCase());
 }
 
@@ -338,4 +349,58 @@ export function extractRoleAndCompany(
   }
 
   return null;
+}
+
+const US_STATE_CODES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS",
+  "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY",
+  "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+  "WI", "WY", "DC",
+]);
+const US_STATE_NAMES = [
+  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware",
+  "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky",
+  "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi",
+  "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico",
+  "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania",
+  "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont",
+  "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming",
+].map((n) => n.toLowerCase().split(" "));
+const SURNAME_STATES = new Set(["washington", "georgia", "virginia", "montana", "nevada", "indiana"]);
+// First words of two-word city names ("San Diego", "Las Vegas", "St. Louis").
+const CITY_PREFIXES = new Set([
+  "san", "santa", "los", "las", "new", "saint", "st.", "st", "fort", "ft.", "el", "salt",
+  "palm", "long", "grand", "lake", "port", "mount", "mt.", "north", "south", "east", "west", "del", "la",
+]);
+
+/** How many trailing words form a US state (code or full name), 0 if none. */
+function trailingStateLength(words: string[]): number {
+  const last = words[words.length - 1].replace(/[,.]$/, "");
+  if (US_STATE_CODES.has(last)) return 1;
+  const lower = words.map((w) => w.replace(/[,.]$/, "").toLowerCase());
+  for (const state of US_STATE_NAMES) {
+    if (state.length <= lower.length && state.every((w, i) => lower[lower.length - state.length + i] === w)) return state.length;
+  }
+  return 0;
+}
+
+/**
+ * "John Smith Austin TX" -> { name: "John Smith", affiliation: "Austin TX" }.
+ * The city is one word, or two after a common prefix ("San Diego"); the
+ * name keeps at least two words, so "Mary Ann Smith Austin TX" stays intact.
+ */
+function splitTrailingLocation(words: string[]): ParsedPersonQuery | null {
+  const stateLen = trailingStateLength(words);
+  if (stateLen === 0) return null;
+  // "Sarah Jane Washington", "Booker T. Washington": a state that's also a
+  // common surname only counts when a city or state code makes it clear.
+  const stateWord = words[words.length - 1].toLowerCase();
+  if (SURNAME_STATES.has(stateWord) && words.length < 4) return null;
+  let start = words.length - stateLen;
+  if (start >= 3) {
+    start -= 1; // one-word city
+    if (start >= 3 && CITY_PREFIXES.has(words[start - 1].toLowerCase())) start -= 1;
+  }
+  if (start < 2) return null;
+  return { name: words.slice(0, start).join(" "), affiliation: words.slice(start).join(" ").replace(/,/g, "") };
 }

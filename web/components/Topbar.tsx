@@ -128,7 +128,11 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
           <input
             className={styles.input}
             type="text"
-            placeholder="Research a company, person, product, or political figure..."
+            placeholder={
+              type === "person"
+                ? "Name, plus a company, school or city to narrow it down — e.g. Jane Smith, Austin TX"
+                : "Research a company, person, product, or political figure..."
+            }
             value={query}
             onChange={(e) => {
               const val = e.target.value;
