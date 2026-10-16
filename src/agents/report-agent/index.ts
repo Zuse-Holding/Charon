@@ -294,6 +294,22 @@ export class ReportAgent {
     }
     lines.push(``);
 
+    // Wikipedia photo, so the reader can confirm this is the person they
+    // meant. The license requires the artist and license shown with it.
+    const photo = bundle.photo;
+    if (photo) {
+      // Commons file names often hold parentheses ("..._(cropped).jpg"); a raw ")" would end the markdown link.
+      const u = (url: string) => url.replace(/\(/g, "%28").replace(/\)/g, "%29");
+      lines.push(`## Photo`);
+      lines.push(`![${photo.wikipediaTitle}](${u(photo.imageUrl)})`);
+      lines.push(`- **Wikipedia:** [${photo.wikipediaTitle}](${u(photo.wikipediaUrl)})${photo.description ? ` — ${photo.description}` : ""}`);
+      const license = photo.license
+        ? (photo.licenseUrl ? `[${photo.license}](${u(photo.licenseUrl)})` : photo.license)
+        : "see file page";
+      lines.push(`- **Photo:** ${photo.artist ?? "Unknown author"}, ${license}, via [Wikimedia Commons](${u(photo.filePageUrl)})`);
+      lines.push(``);
+    }
+
     lines.push(`## About`);
     lines.push(
       bundle.person.summary

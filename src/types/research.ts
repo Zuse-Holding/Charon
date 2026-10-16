@@ -1,3 +1,4 @@
+import type { PersonPhoto } from "../lib/wikimedia-photo.js";
 import type { ProvenanceRecord } from "../lib/provenance/build.js";
 import type { CoverageEntry } from "../lib/coverage/recorder.js";
 import type { DomainPosture } from "../agents/domain-posture-agent/index.js";
@@ -195,6 +196,10 @@ export interface PersonResearchBundle {
   sanctionsMatches?: SanctionsMatch[];
   nonprofitFilings?: NonprofitFilingEntry[];
   powerMapConnections?: PowerMapEntry[];
+  /** Wikipedia photo of a public figure, with its Commons license and
+   *  artist (src/lib/wikimedia-photo.ts). Absent for anyone without their
+   *  own English Wikipedia article, or when the match is ambiguous. */
+  photo?: PersonPhoto;
   /** Per-finding provenance (Feature 2). Present only when the
    *  FEATURE_PROVENANCE flag was on for the run. */
   provenance?: ProvenanceRecord;
