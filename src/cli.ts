@@ -6,6 +6,7 @@ import { join } from "node:path";
 import "dotenv/config";
 import { ResearchOrchestrator } from "./agents/orchestrator/index.js";
 import { findEasterEgg } from "./easter-eggs/index.js";
+import { LLM_PROVIDER } from "./lib/llm.js";
 import { parsePersonQuery } from "./lib/nlp.js";
 import {
   recordRun,
@@ -36,9 +37,7 @@ function warnIfNoSearchKey() {
 }
 
 function logLLMProvider() {
-  const provider = process.env.LLM_PROVIDER ??
-    (process.env.GROQ_API_KEY ? "groq" : "ollama");
-  console.log(`  LLM: ${provider.toUpperCase()}`);
+  console.log(`  LLM: ${LLM_PROVIDER.toUpperCase()}`);
 }
 
 // ── research ──────────────────────────────────────────────────────────
