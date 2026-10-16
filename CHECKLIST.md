@@ -28,10 +28,16 @@ env var *names* (values not read). Ordered by what hurts most if missed.
 - [ ] **Email for Metis's own messages:** `RESEND_API_KEY` and a verified
   `EMAIL_FROM` on Railway (see "Transactional email" below). Not on Vercel,
   which is fine: the agent server sends them.
-- [ ] **Confirm database backups** (see "DB backups" below).
-- [ ] **Rotate the Sentry and GitHub tokens** recorded in plain text in the
-  local `.claude/settings.local.json` (not committed), then delete those
-  two allow-rule lines.
+- [ ] **Confirm database backups** (see "DB backups" below). Couldn't be
+  checked from the agent box: the Supabase CLI isn't logged in there
+  (`supabase login`, then `supabase backups list --project-ref <ref>`).
+- [ ] **Confirm Railway is on the latest `main`** after each merge, and that
+  `AGENT_SECRET` isn't the `.env.example` default. Railway CLI isn't logged
+  in on the agent box, so neither could be checked from there.
+- [ ] **Revoke and replace the Sentry and GitHub tokens** that were recorded
+  in plain text in the local `.claude/settings.local.json` (never committed).
+  The three allow rules containing them were deleted 2026-10-15, but the
+  tokens themselves stay valid until revoked in Sentry and GitHub.
 - [ ] **PostHog:** `POSTHOG_KEY` isn't set on Vercel (see "Analytics"
   below). Without it the soft launch's sign-up → checkout funnel isn't
   visible.
@@ -41,9 +47,10 @@ env var *names* (values not read). Ordered by what hurts most if missed.
   people-finder sites work.
 - [x] **Person search checked on a lower-profile real person** (name +
   last workplace, 2026-10-15): results confirmed correct by Nick. Famous-name
-  tests (#37, #38) passed too. Known gap: one run inferred a current role
-  from a source's URL ("Vice Chancellor for Research" from a
-  `vcresearch.berkeley.edu` profile).
+  tests (#37, #38) passed too. A role inferred from a source's URL ("Vice
+  Chancellor for Research" from a `vcresearch.berkeley.edu` profile) was
+  fixed in the same PR as this note, along with source pages being labeled
+  with the wrong URL after a failed fetch.
 
 ## Task 4.3 — already satisfied, confirmed not just assumed
 

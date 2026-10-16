@@ -142,9 +142,11 @@ export class PeopleAgent {
       .join("\n");
 
     const combinedText = [
+      // Label before filtering: filtering first shifted every later page
+      // onto the previous result's URL whenever one fetch failed.
       ...fetchedBios
-        .filter((t): t is string => t !== null)
-        .map((t, i) => `SOURCE (${bioResults[i].url}):\n${t}`),
+        .map((t, i) => (t === null ? null : `SOURCE (${bioResults[i].url}):\n${t}`))
+        .filter((t): t is string => t !== null),
       `CAREER SNIPPETS:\n${snippetText}`,
       `BACKGROUND & NET WORTH:\n${backgroundText}`,
     ].filter(Boolean).join("\n\n") || snippetText;
@@ -166,6 +168,7 @@ Extract these fields:
 
 RULES:
 - currentRole must reflect their position as of ${currentYear}. If a source says "former", do NOT list it as current.
+- Take titles and roles only from what the text says about this person. Never infer them from a URL, domain, site name or page section (a profile hosted on a research office's site doesn't make someone that office's head).
 - If you cannot confidently determine a field, omit it rather than guessing.
 - Be specific — name actual companies, schools, dollar figures where available.
 - Never include home or street addresses, phone numbers, personal email addresses or other contact details in any field, even if a source lists them. A city or region is fine only when it's part of who they are publicly (e.g. "Austin-based founder").
