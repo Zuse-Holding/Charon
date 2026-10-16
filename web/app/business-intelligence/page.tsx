@@ -61,6 +61,15 @@ const SAMPLE_REPORT = {
   ],
 };
 
+// Upcoming work, one line each and no dates: promises go here only once
+// they're being built. Political research is deliberately not listed.
+// What has actually shipped lives on /changelog.
+const WHATS_NEXT = [
+  { title: "Team workspace and API", desc: "Shared reports and watchlists for a team, and an API to run reports from your own tools." },
+  { title: "Journalism tools", desc: "Research for reporters, built on public records, with every claim tied to its source." },
+  { title: "Creator search", desc: "Find and vet creators with the same sourced reports." },
+];
+
 const FEATURES = [
   {
     num: "01",
@@ -278,6 +287,20 @@ export default function Landing() {
           Need higher limits? Email <a href="mailto:support@metisanalytic.com">support@metisanalytic.com</a>.
         </p>
         <Link href="/pricing" className={styles.pricingDetailLink}>See full pricing details →</Link>
+      </section>
+
+      {/* WHAT'S NEXT */}
+      <section className={`${styles.nextSection} ${styles.fadeIn}`}>
+        <div className={styles.sectionLabel}>WHAT&apos;S NEXT</div>
+        <ul className={styles.nextList}>
+          {WHATS_NEXT.map((item) => (
+            <li key={item.title} className={styles.nextItem}>
+              <span className={styles.nextTitle}>{item.title}</span>
+              <span className={styles.nextDesc}>{item.desc}</span>
+            </li>
+          ))}
+        </ul>
+        <Link href="/changelog" className={styles.nextLink}>See what&apos;s shipped →</Link>
       </section>
 
       {/* FINAL CTA */}

@@ -46,6 +46,7 @@ export function SiteFooter({ hub = false }: { hub?: boolean }) {
           ? <Link href={BUSINESS_INTELLIGENCE_PATH} className={styles.footerLink}>Intelligence</Link>
           : <Link href="/pricing" className={styles.footerLink}>Pricing</Link>}
         <Link href="/resources" className={styles.footerLink}>Resources</Link>
+        <Link href="/changelog" className={styles.footerLink}>Changelog</Link>
         <a href={DILIGENCE_URL} className={styles.footerLink}>Diligence</a>
         <a href={COMMITTEE_URL} className={styles.footerLink}>Committee</a>
         <Link href="/privacy" className={styles.footerLink}>Privacy</Link>
