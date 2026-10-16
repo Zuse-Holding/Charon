@@ -1,7 +1,11 @@
 node_modules/
 dist/
 .env
-reports/*.md
+# Generated research output (CLI and agent server write these at runtime).
+# Some are about private individuals, so they never belong in git.
+reports/
+# CLI-only local store (src/database/store.ts), rewritten on every CLI run.
+database/store.json
 .claude/
 
 # --- Selene OS (dashboard/, agents/) additions ---
