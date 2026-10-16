@@ -447,7 +447,14 @@ interface ReportViewerProps {
   markdown: string;
   /** Re-runs the whole report. Offered when a source failed. */
   onRetry?: () => void;
+  /** Run type (company, person, political, ...). Decides which provenance note applies. */
+  kind?: string;
 }
+
+// Only these research types build the per-finding "Findings and Sources"
+// record (orchestrator attachProvenance). For the rest its absence says
+// nothing about the report's age.
+const PROVENANCE_KINDS = new Set(["company", "person"]);
 
 interface Section {
   title: string;
@@ -750,7 +757,7 @@ function renderSection(section: Section, onRetry?: () => void) {
   return <p className={styles.summaryText}>{getPlainText(content)}</p>;
 }
 
-export default function ReportViewer({ markdown, onRetry }: ReportViewerProps) {
+export default function ReportViewer({ markdown, onRetry, kind }: ReportViewerProps) {
   // Source Coverage is reference material, not findings: always render it
   // last so it doesn't interrupt the report, wherever the agent wrote it.
   const parsed = parseMarkdown(markdown);
@@ -760,13 +767,16 @@ export default function ReportViewer({ markdown, onRetry }: ReportViewerProps) {
   ];
   // Reports from before per-finding provenance carry no Findings section:
   // say so plainly rather than let them read as checked.
-  const legacy = isEnabled("provenance") && sections.length > 0 && !sections.some((s) => s.title === PROVENANCE_TITLE);
+  const noFindings = isEnabled("provenance") && sections.length > 0 && !sections.some((s) => s.title === PROVENANCE_TITLE);
+  const recordsProvenance = !kind || PROVENANCE_KINDS.has(kind);
 
   return (
     <div className={styles.viewer}>
-      {legacy && (
+      {noFindings && (
         <div className={styles.legacyBanner} role="note">
-          ! This report was created before Metis recorded a source for every finding. Treat its contents as unverified.
+          {recordsProvenance
+            ? "! This report was created before Metis recorded a source for every finding. Treat its contents as unverified."
+            : `! Metis doesn't record a source for every finding in ${kind} reports yet. Treat anything without a linked source as unverified.`}
         </div>
       )}
       {sections.map((section, i) => {
