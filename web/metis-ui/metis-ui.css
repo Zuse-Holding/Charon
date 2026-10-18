@@ -1,0 +1,200 @@
+/* ============================================================
+   Metis UI: shared tokens and components for every Metis site.
+   Source of truth: Charon web/metis-ui. Copied into committee-app by
+   scripts/sync-metis-ui.mjs; edit here, never in a copy.
+
+   Tokens are namespaced --m-* so they sit alongside each app's own
+   variables. Apps map their variables onto these (globals.css /
+   index.css) instead of redefining colors, sizes or timings inline.
+   ============================================================ */
+
+:root {
+  /* color: one visual system, orange as the brand accent everywhere */
+  --m-bg: #0A0A0F;
+  --m-surface: #14141C;
+  --m-surface-2: #1C1C27;
+  --m-border: #2A2A38;
+  --m-border-strong: #3A3A4C;
+  --m-text: #ECECF3;
+  --m-muted: #9A9AB0;          /* 7.2:1 on --m-bg, 6.6:1 on --m-surface */
+  --m-accent: #FF6B2B;         /* CTAs and the brand mark, every site */
+  --m-accent-hover: #FF8A55;
+  --m-accent-ink: #0A0A0F;     /* text on an accent fill */
+  --m-accent-soft: rgba(255, 107, 43, 0.12);
+  --m-good: #22E38B;
+  --m-warn: #FFC21A;
+  --m-bad: #FF4D5E;
+  --m-info: #3FD0FF;           /* data only: never borders or buttons */
+
+  /* type: six sizes, nothing else */
+  --m-font-display: var(--font-display-face, "Space Grotesk"), system-ui, sans-serif;
+  --m-font-body: var(--font-body-face, "Inter"), system-ui, sans-serif;
+  --m-font-mono: var(--font-mono-face, "JetBrains Mono"), ui-monospace, "SFMono-Regular", monospace;
+  --m-text-xs: 12px;
+  --m-text-sm: 14px;
+  --m-text-md: 16px;
+  --m-text-lg: 20px;
+  --m-text-xl: 28px;
+  --m-text-2xl: 44px;
+
+  /* space, radius */
+  --m-space-1: 4px;
+  --m-space-2: 8px;
+  --m-space-3: 12px;
+  --m-space-4: 16px;
+  --m-space-5: 24px;
+  --m-space-6: 32px;
+  --m-space-7: 48px;
+  --m-radius-sm: 6px;
+  --m-radius: 8px;
+  --m-radius-lg: 12px;
+
+  /* motion: one curve, two durations; opacity and transform only */
+  --m-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --m-fast: 150ms;
+  --m-slow: 250ms;
+}
+
+:root[data-theme="light"] {
+  --m-bg: #FFFFFF;
+  --m-surface: #FFFFFF;
+  --m-surface-2: #F4F4F7;
+  --m-border: #D6D6DE;
+  --m-border-strong: #B8B8C4;
+  --m-text: #111118;
+  --m-muted: #4A4A58;
+  --m-accent: #C2410C;
+  --m-accent-hover: #9A3412;
+  --m-accent-ink: #FFFFFF;
+  --m-accent-soft: rgba(194, 65, 12, 0.08);
+  --m-good: #08754A;
+  --m-warn: #8A5A00;
+  --m-bad: #B3122A;
+  --m-info: #0B5F80;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --m-fast: 0ms; --m-slow: 0ms; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Numbers, money, dates: tabular figures everywhere so columns of prices,
+   ratios and percentages line up. .m-num adds the mono face for figures
+   that should read as data. */
+body { font-variant-numeric: tabular-nums; }
+.m-num { font-family: var(--m-font-mono); font-variant-numeric: tabular-nums; }
+
+/* Every button acknowledges a press at once (well under 100 ms), on every
+   site, whatever its own button styles. */
+:where(button, [role="button"], .btn, .m-btn, a.btn):active:not(:disabled):not([aria-disabled="true"]) {
+  transform: scale(0.97);
+  transition: transform var(--m-fast) var(--m-ease);
+}
+
+/* Every pressable thing acknowledges a press immediately. */
+.m-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--m-space-2);
+  min-height: 36px; padding: 0 var(--m-space-4);
+  font: 600 var(--m-text-sm)/1 var(--m-font-display);
+  border-radius: var(--m-radius); border: 1px solid transparent;
+  text-decoration: none; cursor: pointer;
+  transition: background-color var(--m-fast) var(--m-ease), border-color var(--m-fast) var(--m-ease), transform var(--m-fast) var(--m-ease);
+}
+.m-btn:active { transform: scale(0.97); }
+.m-btn:focus-visible { outline: 2px solid var(--m-accent); outline-offset: 2px; }
+.m-btn[disabled], .m-btn[aria-busy="true"] { opacity: 0.6; cursor: progress; }
+.m-btn-primary { background: var(--m-accent); color: var(--m-accent-ink); }
+.m-btn-primary:hover { background: var(--m-accent-hover); }
+.m-btn-ghost { background: transparent; color: var(--m-text); border-color: var(--m-border-strong); }
+.m-btn-ghost:hover { border-color: var(--m-accent); }
+
+/* ---------- header ---------- */
+.m-header {
+  position: relative; z-index: 20;
+  display: flex; align-items: center; gap: var(--m-space-5);
+  max-width: 1200px; margin: 0 auto; height: 64px; padding: 0 var(--m-space-5);
+  font-family: var(--m-font-body);
+}
+.m-brand { display: flex; align-items: center; gap: var(--m-space-3); text-decoration: none; color: var(--m-text); }
+.m-brand-mark {
+  width: 14px; height: 14px; border-radius: 3px; background: var(--m-accent);
+  box-shadow: 0 0 0 3px var(--m-accent-soft);
+}
+.m-brand-text { display: flex; align-items: baseline; gap: var(--m-space-2); }
+.m-brand-metis { font: 700 var(--m-text-sm)/1 var(--m-font-display); letter-spacing: 0.18em; color: var(--m-accent); }
+.m-brand-product { font: 600 var(--m-text-sm)/1 var(--m-font-display); color: var(--m-text); }
+
+.m-switcher { position: relative; }
+.m-switcher summary {
+  list-style: none; cursor: pointer; font-size: var(--m-text-sm); color: var(--m-muted);
+  padding: var(--m-space-2) var(--m-space-3); border-radius: var(--m-radius-sm);
+}
+.m-switcher summary::-webkit-details-marker { display: none; }
+.m-switcher summary:hover, .m-switcher[open] summary { color: var(--m-text); background: var(--m-surface-2); }
+.m-switcher-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; width: 300px; margin: 0; padding: var(--m-space-2);
+  list-style: none; background: var(--m-surface); border: 1px solid var(--m-border-strong); border-radius: var(--m-radius-lg);
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.6);
+  animation: m-pop var(--m-fast) var(--m-ease);
+}
+.m-switcher-menu a {
+  display: flex; flex-direction: column; gap: 2px; padding: var(--m-space-3); border-radius: var(--m-radius);
+  text-decoration: none; color: var(--m-text);
+}
+.m-switcher-menu a:hover { background: var(--m-surface-2); }
+.m-switcher-menu a[aria-current="page"] { background: var(--m-accent-soft); }
+.m-switcher-name { font: 600 var(--m-text-sm)/1.3 var(--m-font-display); }
+.m-switcher-here { font-weight: 400; color: var(--m-muted); }
+.m-switcher-blurb { font-size: var(--m-text-xs); color: var(--m-muted); line-height: 1.4; }
+@keyframes m-pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+.m-header-links { display: flex; gap: var(--m-space-5); margin-left: auto; }
+.m-header-links a { font-size: var(--m-text-sm); color: var(--m-muted); text-decoration: none; transition: color var(--m-fast) var(--m-ease); }
+.m-header-links a:hover { color: var(--m-text); }
+.m-header-actions { display: flex; gap: var(--m-space-3); align-items: center; }
+.m-header-links + .m-header-actions { margin-left: 0; }
+.m-switcher + .m-header-actions { margin-left: auto; }
+
+@media (max-width: 720px) {
+  .m-header { gap: var(--m-space-3); padding: 0 var(--m-space-4); }
+  .m-header-links { display: none; }
+  .m-header-actions { margin-left: auto; }
+  .m-switcher-menu { width: min(300px, calc(100vw - 32px)); }
+}
+
+/* ---------- footer ---------- */
+.m-footer {
+  max-width: 1200px; margin: 0 auto; padding: var(--m-space-6) var(--m-space-5);
+  border-top: 1px solid var(--m-border); font-size: var(--m-text-xs); color: var(--m-muted);
+  display: flex; flex-direction: column; gap: var(--m-space-3);
+}
+.m-footer-links { display: flex; flex-wrap: wrap; gap: var(--m-space-2) var(--m-space-5); }
+.m-footer-links a { color: var(--m-muted); text-decoration: none; }
+.m-footer-links a:hover, .m-footer-links a[aria-current="page"] { color: var(--m-text); }
+.m-footer-note, .m-footer-legal { margin: 0; }
+
+/* ---------- states ---------- */
+.m-state {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--m-space-2);
+  padding: var(--m-space-5); border: 1px solid var(--m-border); border-radius: var(--m-radius-lg);
+  background: var(--m-surface); color: var(--m-text); font-family: var(--m-font-body);
+}
+.m-state-compact { padding: var(--m-space-4); }
+.m-state-head { display: flex; align-items: center; gap: var(--m-space-2); font: 600 var(--m-text-xs)/1 var(--m-font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--m-muted); }
+.m-state-glyph { font-size: var(--m-text-sm); }
+.m-state-what { margin: 0; font-size: var(--m-text-md); line-height: 1.5; }
+.m-state-detail { font-size: var(--m-text-sm); color: var(--m-muted); }
+.m-state-action { font-size: var(--m-text-sm); }
+.m-state-when { margin: 0; font-size: var(--m-text-xs); color: var(--m-muted); }
+.m-state-error { border-color: var(--m-bad); }
+.m-state-error .m-state-head { color: var(--m-bad); }
+.m-state-quota { border-color: var(--m-warn); }
+.m-state-quota .m-state-head, .m-state-partial .m-state-head { color: var(--m-warn); }
+.m-state-upgrade .m-state-head { color: var(--m-accent); }
+.m-state-loading .m-state-glyph { animation: m-spin 1s linear infinite; display: inline-block; }
+@keyframes m-spin { to { transform: rotate(360deg); } }
+
+/* ---------- quota ---------- */
+.m-quota { display: inline-flex; align-items: center; gap: var(--m-space-2); font-size: var(--m-text-xs); color: var(--m-muted); }
+.m-quota-warn { color: var(--m-warn); }
+.m-quota-danger { color: var(--m-bad); }

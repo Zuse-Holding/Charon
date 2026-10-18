@@ -278,7 +278,7 @@ function Dashboard() {
                 </div>
               ))}
               {!initialLoading && runs.length === 0 && (
-                <EmptyState size="compact" icon="◎" title="No research yet" description="Run your first query above." />
+                <EmptyState size="compact" icon="◎" title="No research yet" description="Run your first query above." when={null} />
               )}
               {pending && (
                 <div className={`${styles.feedItem} ${styles.feedItemPending}`}>

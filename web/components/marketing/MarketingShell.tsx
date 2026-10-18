@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { BUSINESS_INTELLIGENCE_PATH, COMMITTEE_URL, DILIGENCE_URL } from "../../lib/products";
+import { MetisFooter, MetisHeader } from "../../metis-ui";
+import { BUSINESS_INTELLIGENCE_PATH } from "../../lib/products";
 import styles from "./MarketingShell.module.css";
 
 const NAV_LINKS = [
@@ -8,53 +8,28 @@ const NAV_LINKS = [
   { href: "/resources", label: "Resources" },
 ];
 
-// `hub` is the metisanalytic.com front door: a plain Metis wordmark and no
-// product nav, since the nav and sign-up buttons belong to Intelligence.
-export function SiteNav({ subtitle = "INTELLIGENCE", hub = false }: { subtitle?: string; hub?: boolean }) {
+// The shared Metis header (web/metis-ui), same on every Metis site. `hub` is
+// the metisanalytic.com front door: the plain Metis mark, no Intelligence
+// nav or sign-up, since those belong to Intelligence.
+export function SiteNav({ hub = false }: { hub?: boolean }) {
+  if (hub) return <MetisHeader product="hub" />;
   return (
-    <nav className={styles.nav}>
-      <Link href="/" className={styles.navLogo}>
-        <div className={styles.logoIcon} />
-        <div>
-          <div className={styles.logoMark}>METIS</div>
-          {!hub && <div className={styles.logoSub}>{subtitle}</div>}
-        </div>
-      </Link>
-      {!hub && <>
-      <div className={styles.navCenter}>
-        {NAV_LINKS.map((l) => (
-          <Link key={l.href} href={l.href} className={styles.navLink}>
-            {l.label}
-          </Link>
-        ))}
-      </div>
-      <div className={styles.navRight}>
-        <Link href="/login" className={styles.btnGhost}>Sign In</Link>
-        <Link href="/login?mode=signup" className={styles.ctaPrimary}>Get started</Link>
-      </div>
-      </>}
-    </nav>
+    <MetisHeader
+      product="intelligence"
+      homeHref={BUSINESS_INTELLIGENCE_PATH}
+      links={NAV_LINKS}
+      actions={
+        <>
+          <a href="/login" className="m-btn m-btn-ghost">Sign in</a>
+          <a href="/login?mode=signup" className="m-btn m-btn-primary">Get started</a>
+        </>
+      }
+    />
   );
 }
 
-export function SiteFooter({ hub = false }: { hub?: boolean }) {
-  return (
-    <footer className={styles.footer}>
-      <span>© 2026 ZUSE HOLDINGS LLC</span>
-      <div className={styles.footerLinks}>
-        {hub
-          ? <Link href={BUSINESS_INTELLIGENCE_PATH} className={styles.footerLink}>Intelligence</Link>
-          : <Link href="/pricing" className={styles.footerLink}>Pricing</Link>}
-        <Link href="/resources" className={styles.footerLink}>Resources</Link>
-        <Link href="/changelog" className={styles.footerLink}>Changelog</Link>
-        <a href={DILIGENCE_URL} className={styles.footerLink}>Diligence</a>
-        <a href={COMMITTEE_URL} className={styles.footerLink}>Committee</a>
-        <Link href="/privacy" className={styles.footerLink}>Privacy</Link>
-        <Link href="/terms" className={styles.footerLink}>Terms</Link>
-        <a href="mailto:support@metisanalytic.com" className={styles.footerLink}>support@metisanalytic.com</a>
-      </div>
-    </footer>
-  );
+export function SiteFooter() {
+  return <MetisFooter product="intelligence" />;
 }
 
 export function PageEffects() {
@@ -68,13 +43,13 @@ export function PageEffects() {
   );
 }
 
-export function MarketingShell({ children, subtitle, hub }: { children: React.ReactNode; subtitle?: string; hub?: boolean }) {
+export function MarketingShell({ children, hub }: { children: React.ReactNode; hub?: boolean }) {
   return (
     <div className={styles.page}>
       <PageEffects />
-      <SiteNav subtitle={subtitle} hub={hub} />
+      <SiteNav hub={hub} />
       {children}
-      <SiteFooter hub={hub} />
+      <SiteFooter />
     </div>
   );
 }

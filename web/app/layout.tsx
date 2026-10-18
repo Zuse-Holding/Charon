@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "../metis-ui/metis-ui.css";
 import "./globals.css";
 import { ResearchProvider } from "../lib/research-context";
 import { TierProvider } from "../lib/tier-context";

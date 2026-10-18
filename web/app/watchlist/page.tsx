@@ -322,7 +322,8 @@ export default function Watchlist() {
           ) : entries.length === 0 ? (
             <EmptyState
               icon="◎"
-              title="Your Watchlist is empty"
+              title="Your watchlist is empty"
+              when={null}
               description={
                 <>
                   Research a company, person, or product from the dashboard,

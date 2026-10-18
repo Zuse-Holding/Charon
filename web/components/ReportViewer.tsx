@@ -757,6 +757,51 @@ function renderSection(section: Section, onRetry?: () => void) {
   return <p className={styles.summaryText}>{getPlainText(content)}</p>;
 }
 
+/**
+ * What a reader sees first (P2 "payoff" moment): the one-line summary, three
+ * numbers, and the top risk, before the full report. Built only from lines
+ * the report already contains; renders nothing for reports without them.
+ */
+function ReportGlance({ sections }: { sections: Section[] }) {
+  const find = (t: string) => sections.find((s) => s.title === t);
+  const text = (s?: Section) => (s?.content ?? []).map((l) => l.trim()).filter((l) => l && !l.startsWith("**Sources") && !/^\d+\. \[/.test(l));
+  const summary = text(find("Executive Summary"))[0];
+  const coverage = text(find(COVERAGE_TITLE)).find((l) => /sources searched/.test(l))?.match(/(\d+) of (\d+) sources searched/);
+  const findings = text(find(PROVENANCE_TITLE)).find((l) => /findings:/.test(l));
+  const confirmed = findings?.match(/(\d+) confirmed/)?.[1];
+  const unverified = findings?.match(/(\d+) unverified/)?.[1];
+  const total = findings?.match(/(\d+) findings/)?.[1];
+  const risk = parseListItems(find("Risks")?.content ?? [])[0];
+  if (!summary && !coverage && !findings) return null;
+
+  const stats: [string, string][] = [];
+  if (coverage) stats.push(["Sources searched", `${coverage[1]} of ${coverage[2]}`]);
+  if (total && confirmed) stats.push(["Findings confirmed twice", `${confirmed} of ${total}`]);
+  if (unverified) stats.push(["Unverified", unverified]);
+
+  return (
+    <section className={styles.glance} aria-label="At a glance">
+      <div className={styles.sectionLabel}>At a glance</div>
+      {summary && <p className={styles.glanceSummary}>{summary.replace(/\*\*(.*?)\*\*/g, "$1")}</p>}
+      {stats.length > 0 && (
+        <dl className={styles.glanceStats}>
+          {stats.map(([label, value]) => (
+            <div key={label}>
+              <dd className="m-num">{value}</dd>
+              <dt>{label}</dt>
+            </div>
+          ))}
+        </dl>
+      )}
+      {risk && (
+        <p className={styles.glanceRisk}>
+          <span className={styles.glanceRiskTag}><span aria-hidden>▲</span> Top risk</span> {risk.replace(/\*\*(.*?)\*\*/g, "$1")}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function ReportViewer({ markdown, onRetry, kind }: ReportViewerProps) {
   // Source Coverage is reference material, not findings: always render it
   // last so it doesn't interrupt the report, wherever the agent wrote it.
@@ -779,6 +824,7 @@ export default function ReportViewer({ markdown, onRetry, kind }: ReportViewerPr
             : `! Metis doesn't record a source for every finding in ${kind} reports yet. Treat anything without a linked source as unverified.`}
         </div>
       )}
+      <ReportGlance sections={sections} />
       {sections.map((section, i) => {
         const { body, sourceLines, unverified } = splitOutSources(section.content);
         return (

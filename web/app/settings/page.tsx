@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
 import { useTier } from "../../lib/tier-context";
 import { usageRows as sharedUsageRows } from "../../lib/usage";
+import { quotaText } from "../../metis-ui";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import { Skeleton } from "../../components/Skeleton";
@@ -277,7 +278,8 @@ export default function Settings() {
                       />
                     </div>
                     <span className={styles.usageCount}>
-                      {row.used}/{row.limit} · {row.resets ? `resets ${row.resets}` : "window starts with your next run"}
+                      {quotaText({ used: row.used, limit: row.limit, unit: row.label.toLowerCase(), resets: row.resets })}
+                      {!row.resets && row.periodTag !== "month" ? " · window starts with your next run" : ""}
                     </span>
                   </div>
                   <span className={`${styles.badge} ${styles[row.status]}`}>
