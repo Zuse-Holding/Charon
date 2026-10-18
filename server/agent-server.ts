@@ -10,6 +10,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ResearchOrchestrator } from "../src/agents/orchestrator/index.js";
 import type { ProgressEvent } from "../src/lib/coverage/recorder.js";
+import { currentWindow, timeUntil, WINDOW_HOURS, WINDOW_LOOKBACK_MS, type UsageWindow } from "../src/lib/usage-window.js";
 import { DeepDiveAgent } from "../src/agents/deep-dive/index.js";
 import { EntityExtractionAgent } from "../src/agents/entity-extraction/index.js";
 import { OpenCorporatesAgent } from "../src/agents/opencorporates-agent/index.js";
@@ -97,8 +98,11 @@ function hasPoliticalAccess(userId: string, config: TierConfig): boolean {
 type Tier = "internal" | "team" | "pro" | "basic" | "free" | "trial";
 
 interface TierConfig {
-  dailyResearchLimit: number;
-  dailyDeepDiveLimit: number;
+  // Per work window (src/lib/usage-window.ts): the first run opens an
+  // 8-hour window (USAGE_WINDOW_HOURS) and both counts reset when it
+  // ends. Replaced the midnight-reset daily caps. -1 = unlimited.
+  windowResearchLimit: number;
+  windowDeepDiveLimit: number;
   deepDiveAccess: boolean;
   politicalAccess: boolean;
   watchlistLimit: number;
@@ -123,14 +127,14 @@ interface TierConfig {
   monthlyResearchLimit: number;
   // Phase 1 (commercial launch): Free tier's cap is a one-time lifetime
   // allowance, not a recurring one — deliberately a separate field from
-  // monthlyResearchLimit/dailyResearchLimit rather than overloading either,
+  // monthlyResearchLimit/windowResearchLimit rather than overloading either,
   // since "3 ever" and "3 per period" are different semantics that would
   // otherwise be indistinguishable at the call site. -1 = not applicable.
   lifetimeResearchLimit: number;
   // Phase 1: Pro's Deep Dive fair-use soft cap is monthly (env-configurable,
-  // PRO_MONTHLY_DEEP_DIVE_LIMIT), replacing the old daily-only model for
-  // Pro specifically — dailyDeepDiveLimit stays as-is for tiers that still
-  // use a daily model (Team/internal/trial). -1 = not applicable.
+  // PRO_MONTHLY_DEEP_DIVE_LIMIT), replacing the old per-period model for
+  // Pro specifically — windowDeepDiveLimit stays as-is for tiers that still
+  // use a work-window cap (Team/trial). -1 = not applicable.
   monthlyDeepDiveLimit: number;
   // Task 3.1 — hourly burst throttle, distinct from the monthly/lifetime
   // caps above (those are plan entitlements; this is abuse resistance —
@@ -160,23 +164,23 @@ const RATE_LIMIT_FREE_PER_HOUR = Number(process.env.RATE_LIMIT_FREE_PER_HOUR ?? 
 const RATE_LIMIT_PAID_PER_HOUR = Number(process.env.RATE_LIMIT_PAID_PER_HOUR ?? 30);
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: { dailyResearchLimit: -1, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
+  internal: { windowResearchLimit: -1, windowDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
   // Team is not sold (Phase 1 task 1.6) — left exactly as-is otherwise;
   // may be relabeled/reworked once the multi-seat workspace feature
   // (docs/team-features-scoping.md) actually exists.
-  team:     { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false },
+  team:     { windowResearchLimit: 200, windowDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false },
   // Pro: quick-profile and Deep Dive caps are both monthly fair-use soft
-  // caps now, not unlimited/daily — dailyDeepDiveLimit set to -1 since
+  // caps now, not unlimited — windowDeepDiveLimit set to -1 since
   // monthlyDeepDiveLimit replaces it for this tier specifically.
-  pro:      { dailyResearchLimit: 50, dailyDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: PRO_MONTHLY_RESEARCH_LIMIT, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: PRO_MONTHLY_DEEP_DIVE_LIMIT, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false },
+  pro:      { windowResearchLimit: 50, windowDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: PRO_MONTHLY_RESEARCH_LIMIT, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: PRO_MONTHLY_DEEP_DIVE_LIMIT, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false },
   // Basic: PDF export added (Phase 1 task 1.6 — was withheld before).
-  basic:    { dailyResearchLimit: 10, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: true, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: false, creatorAccess: false },
+  basic:    { windowResearchLimit: 10, windowDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: true, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: false, creatorAccess: false },
   // Free (Phase 1): the real default for new signups now (see getUserTier
   // below) — 3 quick profiles LIFETIME, not recurring, hence
-  // dailyResearchLimit/monthlyResearchLimit both -1 here and the cap
+  // windowResearchLimit/monthlyResearchLimit both -1 here and the cap
   // living entirely in lifetimeResearchLimit. 1 watchlist entity, no
   // Deep Dive, no export.
-  free:     { dailyResearchLimit: -1, dailyDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 1, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: 3, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_FREE_PER_HOUR, publicRecordsAccess: false, creatorAccess: false },
+  free:     { windowResearchLimit: -1, windowDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 1, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: 3, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_FREE_PER_HOUR, publicRecordsAccess: false, creatorAccess: false },
   // Time-boxed tier for external demo/partner accounts (limited partners,
   // investor trials, etc). Deliberately mirrors "team" limits and features
   // so the demo shows the platform at full strength — the ONLY things it
@@ -184,7 +188,7 @@ const TIER_CONFIG: Record<Tier, TierConfig> = {
   // which stay off regardless of what tier
   // gets requested for these accounts. Expiry enforced via
   // profiles.trial_expires_at, checked in getUserTier below.
-  trial:    { dailyResearchLimit: 200, dailyDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false },
+  trial:    { windowResearchLimit: 200, windowDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false },
 };
 
 /**
@@ -233,7 +237,7 @@ async function getUserTier(userId: string): Promise<Tier | "expired"> {
 }
 
 const EXPIRED_CONFIG: TierConfig = {
-  dailyResearchLimit: 0, dailyDeepDiveLimit: 0, deepDiveAccess: false,
+  windowResearchLimit: 0, windowDeepDiveLimit: 0, deepDiveAccess: false,
   politicalAccess: false, watchlistLimit: 0, knowledgeGraphAccess: false,
   exportAccess: false, charonProtocol: false, chatWidgetAccess: false,
   personResearchAccess: false, muckrockAccess: false, adminAccess: false,
@@ -247,16 +251,24 @@ function getTierConfig(tier: Tier | "expired"): TierConfig {
   return TIER_CONFIG[tier] ?? TIER_CONFIG.free;
 }
 
-async function getDailyUsage(userId: string, table: "research_runs" | "deep_dives"): Promise<number> {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true }).eq("user_id", userId).gte("generated_at", startOfDay.toISOString());
-  if (error) return 0;
-  return count ?? 0;
+/** The account's current work window: quick profiles and Deep Dives
+ *  share one window, opened by whichever runs first. */
+async function getUsageWindow(userId: string): Promise<UsageWindow> {
+  const since = new Date(Date.now() - WINDOW_LOOKBACK_MS).toISOString();
+  const times = async (table: "research_runs" | "deep_dives") => {
+    const { data, error } = await supabase.from(table).select("generated_at").eq("user_id", userId).gte("generated_at", since);
+    if (error) {
+      console.error(`[usage-window] ${table} fetch error:`, JSON.stringify(error));
+      return [];
+    }
+    return (data ?? []).map((r) => new Date(r.generated_at as string));
+  };
+  const [research, deepDives] = await Promise.all([times("research_runs"), times("deep_dives")]);
+  return currentWindow(research, deepDives);
 }
 
 /**
- * Person-search monthly limit — 25/month, separate from the daily research
+ * Person-search monthly limit — 25/month, separate from the work-window research
  * limit. Scoped specifically to type === "person" requests. Internal tier
  * bypasses this the same way it bypasses every other limit.
  */
@@ -637,10 +649,15 @@ app.post("/research", async (req, res) => {
     return tierDenied(res, "Creator research is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_research" });
   }
 
-  if (config.dailyResearchLimit !== -1) {
-    const usage = await getDailyUsage(userId, "research_runs");
-    if (usage >= config.dailyResearchLimit) {
-      return tierDenied(res, `Daily research limit of ${config.dailyResearchLimit} reached.`, undefined, { userId, cap: "daily_research_limit" });
+  if (config.windowResearchLimit !== -1) {
+    const window = await getUsageWindow(userId);
+    if (window.resetsAt && window.research >= config.windowResearchLimit) {
+      return tierDenied(
+        res,
+        `You've used all ${config.windowResearchLimit} quick profiles for this ${WINDOW_HOURS}-hour window. It resets in ${timeUntil(window.resetsAt)}.`,
+        tier === "basic" ? "Pro raises it to 50 per window." : tier === "pro" ? "Team raises it to 200 per window: email support@metisanalytic.com." : undefined,
+        { userId, cap: "window_research_limit" }
+      );
     }
   }
 
@@ -1171,14 +1188,19 @@ app.post("/deep-dive", async (req, res) => {
     return tierDenied(res, "Deep Dive requires Pro or higher.", undefined, { userId, cap: "deep_dive_access", capEmail: "Deep Dive access" });
   }
 
-  if (config.dailyDeepDiveLimit !== -1) {
-    const usage = await getDailyUsage(userId, "deep_dives");
-    if (usage >= config.dailyDeepDiveLimit) {
-      return tierDenied(res, `Daily Deep Dive limit of ${config.dailyDeepDiveLimit} reached.`, undefined, { userId, cap: "daily_deep_dive_limit" });
+  if (config.windowDeepDiveLimit !== -1) {
+    const window = await getUsageWindow(userId);
+    if (window.resetsAt && window.deepDives >= config.windowDeepDiveLimit) {
+      return tierDenied(
+        res,
+        `You've used all ${config.windowDeepDiveLimit} Deep Dives for this ${WINDOW_HOURS}-hour window. It resets in ${timeUntil(window.resetsAt)}.`,
+        undefined,
+        { userId, cap: "window_deep_dive_limit" }
+      );
     }
   }
 
-  // Pro's monthly fair-use soft cap (task 1.6) — dailyDeepDiveLimit is -1
+  // Pro's monthly fair-use soft cap (task 1.6) — windowDeepDiveLimit is -1
   // for Pro, so this is the binding check for that tier; other tiers that
   // still use monthlyDeepDiveLimit: -1 skip this entirely.
   if (config.monthlyDeepDiveLimit !== -1) {
@@ -1286,12 +1308,31 @@ app.get("/tier/:userId", async (req, res) => {
     }
   }
 
+  // Work-window usage (quick profiles and Deep Dives share one window).
+  // Null when the tier has neither window cap.
+  let windowUsage: {
+    hours: number;
+    resetsAt: string | null;
+    research: { used: number; limit: number } | null;
+    deepDives: { used: number; limit: number } | null;
+  } | null = null;
+  if (config.windowResearchLimit !== -1 || config.windowDeepDiveLimit > 0) {
+    const w = await getUsageWindow(req.params.userId);
+    windowUsage = {
+      hours: WINDOW_HOURS,
+      resetsAt: w.resetsAt?.toISOString() ?? null,
+      research: config.windowResearchLimit !== -1 ? { used: w.research, limit: config.windowResearchLimit } : null,
+      deepDives: config.windowDeepDiveLimit > 0 ? { used: w.deepDives, limit: config.windowDeepDiveLimit } : null,
+    };
+  }
+
   res.json({
     tier,
     config: effectiveConfig,
     displayName: profile?.display_name ?? null,
     monthlyUsage,
     monthlyDeepDiveUsage,
+    windowUsage,
     notificationPreferences: profile?.notification_preferences ?? DEFAULT_NOTIFICATION_PREFERENCES,
     subscriptionStatus: profile?.subscription_status ?? null,
     cancelAtPeriodEnd: profile?.cancel_at_period_end ?? false,
