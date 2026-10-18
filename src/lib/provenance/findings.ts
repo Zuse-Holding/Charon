@@ -57,6 +57,10 @@ export interface Candidate {
    *  recordUrl (e.g. "no DMARC record" from a DNS answer), so that stored
    *  response supports it even when no text in it can be matched. */
   direct?: boolean;
+  /** Sources an analysis claim (a synthesized risk or opportunity) was
+   *  drawn from. Its wording never appears in a response, so the stored
+   *  responses for these URLs are what support it. */
+  citedUrls?: string[];
 }
 
 // Search engines return other sites' snippets: useful evidence, but not an
@@ -174,6 +178,9 @@ export function traceFindings(
       const own = usable.find((s) => sameUrl(s.url, c.recordUrl!));
       if (own) matches = [own];
     }
+    if (matches.length === 0 && c.citedUrls?.length) {
+      matches = usable.filter((s) => c.citedUrls!.some((u) => sameUrl(s.url, u)));
+    }
     const independent = new Set(matches.filter((s) => !SEARCH_HOSTS.includes(s.host)).map((s) => siteOf(s.host)));
     const verification: Verification =
       independent.size >= 2 ? "confirmed" : matches.length > 0 ? "single_source" : "unverified";
@@ -195,7 +202,9 @@ export function traceFindings(
         untraceable += 1;
         continue;
       }
-      sourceName ??= fb?.name;
+      // The fallback's name describes the fallback, not a recordUrl of the
+      // claim's own; that gets named by its site below.
+      if (!c.recordUrl) sourceName ??= fb?.name;
       primary = usable.find((s) => s.url === sourceUrl);
       if (!primary) {
         // Nothing fetched holds this claim: store what the AI step produced,

@@ -773,7 +773,6 @@ function ReportGlance({ sections }: { sections: Section[] }) {
   const coverage = text(find(COVERAGE_TITLE)).find((l) => /sources searched/.test(l))?.match(/(\d+) of (\d+) sources searched/);
   const findings = text(find(PROVENANCE_TITLE)).find((l) => /findings:/.test(l));
   const confirmed = findings?.match(/(\d+) confirmed/)?.[1];
-  const unverified = findings?.match(/(\d+) unverified/)?.[1];
   const total = findings?.match(/(\d+) findings/)?.[1];
   // Sourced sections only: an unverified risk shouldn't be the headline.
   const risks = find("Risks");
@@ -781,10 +780,12 @@ function ReportGlance({ sections }: { sections: Section[] }) {
   const risk = risksSourced ? parseListItems(risks.content)[0] : undefined;
   if (!summary && !coverage && !findings) return null;
 
+  // Leads with what the report has; gaps are spelled out in Source
+  // Coverage and Findings and Sources below.
   const stats: [string, string][] = [];
-  if (coverage) stats.push(["Sources searched", `${coverage[1]} of ${coverage[2]}`]);
-  if (total && confirmed) stats.push(["Findings confirmed twice", `${confirmed} of ${total}`]);
-  if (unverified) stats.push(["Unverified", unverified]);
+  if (coverage) stats.push(["Sources searched", coverage[1]]);
+  if (total) stats.push(["Findings", total]);
+  if (confirmed) stats.push(["Confirmed by 2+ sources", confirmed]);
 
   return (
     <section className={styles.glance} aria-label="At a glance">

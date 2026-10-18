@@ -691,24 +691,32 @@ export const PersonExtractionSchema = AnyObject.transform((obj) => ({
 export type PersonExtraction = z.infer<typeof PersonExtractionSchema>;
 
 export const RisksOpportunitiesSchema = AnyObject.transform((obj) => {
-  function toFlexibleStringArray(val: unknown): string[] {
+  // Each item carries the numbered sources it rests on (see
+  // synthesis-agent). A bare string has no citations and is kept with an
+  // empty list; the caller decides what an uncited item is worth.
+  function toCitedItems(val: unknown): { text: string; sources: number[] }[] {
     if (!val) return [];
     const arr = Array.isArray(val) ? val : [val];
     return arr
       .map((item: unknown) => {
-        if (typeof item === "string") return item;
+        if (typeof item === "string") return { text: item, sources: [] };
         if (typeof item === "object" && item !== null) {
           const o = item as Record<string, unknown>;
-          const v = o.risk ?? o.opportunity ?? o.description ?? o.text ?? o.item ?? Object.values(o)[0];
-          return typeof v === "string" ? v : null;
+          const v = o.text ?? o.risk ?? o.opportunity ?? o.description ?? o.item ?? Object.values(o)[0];
+          if (typeof v !== "string") return null;
+          const raw = o.sources ?? o.source ?? o.citations ?? [];
+          const sources = (Array.isArray(raw) ? raw : [raw])
+            .map((n) => (typeof n === "number" ? n : parseInt(String(n), 10)))
+            .filter((n) => Number.isInteger(n));
+          return { text: v, sources };
         }
         return null;
       })
-      .filter((s): s is string => s !== null && s.length > 0);
+      .filter((s): s is { text: string; sources: number[] } => s !== null && s.text.length > 0);
   }
   return {
-    risks: toFlexibleStringArray(obj.risks ?? obj.risk),
-    opportunities: toFlexibleStringArray(obj.opportunities ?? obj.opportunity),
+    risks: toCitedItems(obj.risks ?? obj.risk),
+    opportunities: toCitedItems(obj.opportunities ?? obj.opportunity),
   };
 });
 export type RisksOpportunities = z.infer<typeof RisksOpportunitiesSchema>;

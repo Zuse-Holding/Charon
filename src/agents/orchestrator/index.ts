@@ -239,6 +239,7 @@ export class ResearchOrchestrator {
     if (synthesis) {
       bundle.risks = synthesis.risks;
       bundle.opportunities = synthesis.opportunities;
+      bundle.synthesisCitations = synthesis.citations;
     }
 
     return {
