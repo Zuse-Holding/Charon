@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { SourceCite } from "../metis-ui";
 import { isEnabled } from "../lib/flags";
 import styles from "./ReportViewer.module.css";
 
@@ -529,6 +530,10 @@ function splitOutSources(content: string[]): { body: string[]; sourceLines: stri
   return { body: content.slice(0, markerIdx), sourceLines: content.slice(markerIdx + 1), unverified: false };
 }
 
+function domainOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
 function renderSectionSources(sourceLines: string[] | null, unverified: boolean) {
   if (unverified) {
     return <div className={styles.unverifiedBadge}>Unverified — no source recorded for this section</div>;
@@ -550,11 +555,10 @@ function renderSectionSources(sourceLines: string[] | null, unverified: boolean)
       <summary>Sources ({links.length})</summary>
       <div className={styles.sourcesList}>
         {links.map((s, i) => (
-          <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className={styles.sourceItem}>
+          <div key={i} className={styles.sourceItem}>
             <span className={styles.sourceNum}>{i + 1}</span>
-            <span className={styles.sourceText}>{s.text}</span>
-            <span className={styles.sourceArrow}>↗</span>
-          </a>
+            <SourceCite source={domainOf(s.url)} title={s.text} href={s.url} />
+          </div>
         ))}
       </div>
     </details>
