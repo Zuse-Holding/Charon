@@ -1,98 +1,62 @@
-# Charon — Business Intelligence Platform
-**Zuse Holdings · July 2026**
+# Metis: research tools that show their work
+**Zuse Holdings LLC · Investor overview · October 2026**
 
----
+Designed version: `Metis-Investor-One-Pager.pdf` (built from `metis-pamphlet/src/investor.html`). Keep the two in sync. This version assumes the Phase 0 launch fixes are done: live checkout verified, final legal terms, and the Diligence dry run passed. Re-check each "Live" or "Built" claim before sending.
 
-## The Problem
+Metis splits a question across several AI analysts with different jobs, keeps their sources and disagreements visible, and leaves the decision to the user. One method, three products: company research, small-business acquisition diligence, and a public, self-grading AI investment committee.
 
-Business intelligence research is broken at every price point.
+## The problem
+Research before a meeting, a deal or an investment is either shallow and cheap, or deep and priced for institutions. General-purpose AI fills the gap with a confident answer that rarely shows which part to doubt.
 
-- **Crunchbase ($49/mo)** — shallow profiles, outdated data, no analytical depth
-- **PitchBook ($15,000–25,000/yr)** — institutional-grade, but priced exclusively for institutions
+## Our approach
+Analysts with separate jobs work the same question in parallel. Each one cites what it used. Disagreement is kept instead of averaged away, and a section with no source is marked unverified.
 
-Founders, operators, BD professionals, and investors who need real answers before a meeting, a deal, or a hire are stuck either paying too much or settling for too little.
+## Products
+| Product | Status | What it does | Pricing |
+|---|---|---|---|
+| Metis Intelligence | Live, paid plans | Company, person and product research from seven agents, with sources listed per section. Pro adds a 10-section Deep Dive, watchlist, knowledge graph and PDF export. | $19 / $49 / $149 a month, self-serve |
+| Metis Diligence | Built, in validation | Buyers of $1–10M businesses upload a CIM, P&Ls and tax returns. Four analysts (lender, forensic CPA, operator, bear) test the numbers, with every claim tied to a page. | $500 a report · 3 for $1,200 |
+| Metis Committee | Live, free | Five AI analysts debate a stock each trading day, and a chairman makes the call. Transcripts are public, and every call is graded after 30 days. Free API and MCP server. Paper trading only. | Free. Keep-or-shelve review on 15 Nov 2026. |
 
----
+## Where we are
+- **Live:** Intelligence with self-serve billing and final legal terms. Committee transcripts and track record are public.
+- **Built:** the Diligence pipeline. It passed a dry run on a fictional deal. Validation by a finance reviewer comes next.
+- **Customers:** none yet. Intelligence launches publicly in November 2026.
+- **Costs:** $142–347 a month to run all three products.
+- **Break-even:** about 20 Intelligence subscribers, or 2 Diligence reports a month, covers all business costs.
 
-## What Charon Does
+## Milestones
+| Date | Milestone |
+|---|---|
+| Nov 2026 | Intelligence public launch; Committee review |
+| Nov 2026 | Diligence validated by an outside finance reviewer |
+| Dec 2026 | 10 paying Intelligence accounts |
+| Jan 2027 | 5 Diligence pilot reports delivered |
+| Feb 2027 | Diligence paid launch; revenue covers all business costs |
+| Mar 2027 | $2.5k monthly revenue |
+| Oct 2027 | $10k monthly revenue |
 
-Charon is an AI-powered research platform that produces analyst-grade intelligence reports on any company, person, or product — in under 30 seconds.
+## Revenue targets (October 2027)
+| Scenario | Intelligence subscribers | Diligence reports a month | Monthly revenue | First 12 months |
+|---|---|---|---|---|
+| Conservative | 32 | 5 | $3.7k | $19k |
+| Base | 120 | 15 | $12.2k | $60k |
+| Upside | 300 | 35 | $29.2k | $147k |
 
-Seven specialized agents run in parallel, pulling from the web, corporate filings, news, leadership databases, and product data. The output is a structured report with Leadership profiles, Funding history, Competitive context, Risk flags, and Market sizing — all synthesized into a single clean document.
+These are targets built on stated assumptions, not forecasts. The assumptions are about $39 a month per subscriber across plans, $500 per Diligence report at list price, and $0 from Committee.
 
-For deeper analysis, the **Deep Dive** feature runs a 10-section analyst report covering everything from founding history to a strategic verdict, comparable to a condensed McKinsey brief.
+## The raise: $27.5k (lean) or $55k (with a contractor)
+This covers six months of runway, including about 10% contingency.
 
----
+| Use | Amount |
+|---|---|
+| Legal review, all three sites | $3–7k |
+| Diligence finance reviewer | $2–6k |
+| Go-to-market tests | $2–5k |
+| E&O insurance | $1–1.5k |
+| Running costs, hardware, accounting, tax | $2.7–5.4k |
+| Part-time contractor (larger plan only) | $12–24k |
 
-## The Market Gap
+metisanalytic.com · diligence.metisanalytic.com · committee.metisanalytic.com · support@metisanalytic.com
 
-| | Price | Depth |
-|---|---|---|
-| Crunchbase | $29–$199/mo | Shallow |
-| PitchBook | $15,000+/yr | Deep |
-| **Charon** | **$19–$149/mo** | **Analyst-grade** |
-
-The gap between these two incumbents is wide, underserved, and growing. The target buyer — operators and founders at Series A–C companies — has real budget and no good option.
-
----
-
-## Product
-
-**Live today:**
-- Quick Research — company, person, and product profiles in ~30 seconds
-- Deep Dive — 10-section analyst report with leadership red flags, market sizing, and strategic verdict
-- Intelligence Feed — daily business signals across 8 sectors (Tech, Fintech, AI, Healthcare, Gaming, Defense, Climate, Consumer)
-- Knowledge Graph — entity relationship mapping, building automatically with every research run
-- Google OAuth, rate limiting, mobile support
-
-**Pricing:**
-- **Basic** — $19/mo (unlimited quick profiles, watchlist, markdown export)
-- **Pro** — $49/mo (Deep Dive, PDF export, Knowledge Graph, unlimited watchlist)
-- **Team** — $149/mo (3 seats, shared workspace, API access)
-- **Enterprise** — Custom (white-label, custom data feeds, dedicated infrastructure)
-
----
-
-## Traction
-
-- Platform live at [charonv1-silk.vercel.app](https://charonv1-silk.vercel.app)
-- Multi-user, cloud-hosted, full auth (email + Google OAuth)
-- Research pipeline running on Railway, data persisted in Supabase
-- Early beta users onboarding now
-
----
-
-## Roadmap
-
-**Q3 2026**
-- Stripe payment integration
-- Knowledge Graph visual explorer (interactive entity relationship graph)
-- Watchlist alerts (notify on material changes)
-- Custom domain
-
-**Q4 2026**
-- CharonResearch chat widget (Premium tier — ask questions across your research history)
-- API access for Team/Enterprise
-- Cross-entity intelligence queries on the Knowledge Graph
-- White-label deployment for Enterprise clients
-
-**2027**
-- Political research vertical (campaign finance, voting records, donor network mapping)
-- Civic/government entity type
-- Custom data feed integrations
-
----
-
-## Why Now
-
-AI research capabilities have crossed a threshold where multi-agent pipelines can produce genuinely useful intelligence at a fraction of the cost of human analysts. The infrastructure (LLM APIs, vector search, graph databases) is cheap and available. The incumbents are not AI-native and are not moving fast.
-
-The window to establish a differentiated position in this market is open now.
-
----
-
-## The Ask
-
-[To be filled in based on conversation — seed check / angels / strategic partnership]
-
-**Contact:** hello@zuseholdings.com
+*Forward-looking figures are estimates and may not be achieved. Metis reports are AI-generated research and can contain errors. Diligence is a screening analysis, not an audit or investment advice. Committee is paper trading only, and its results are hypothetical.*
