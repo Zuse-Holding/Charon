@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import { useTier } from "../../lib/tier-context";
 import { SiteNav } from "../../components/marketing/MarketingShell";
+import { safeNext } from "../../lib/return-to";
 import styles from "./page.module.css";
 
 // Show/hide toggle for password fields — plain SVG eye / eye-off icons,
@@ -85,7 +86,8 @@ function LoginPage() {
 
   const router   = useRouter();
   const params   = useSearchParams();
-  const next     = params.get("next") ?? "/app";
+  const next     = safeNext(params.get("next"));
+  const expired  = params.get("expired") === "1";
   const plan     = params.get("plan"); // "basic" | "pro" from a pricing-page CTA — see web/lib/checkout.ts
   const postAuthDestination = plan === "basic" || plan === "pro" ? `/checkout-redirect?plan=${plan}` : next;
   const selectedPlan = plan === "basic" || plan === "pro" ? PLAN_SUMMARY[plan] : null;
@@ -277,6 +279,11 @@ function LoginPage() {
     <SiteNav />
     <div className={styles.shell}>
       <div className={styles.card}>
+        {expired && (
+          <div className={styles.sectionNote} role="status" style={{ marginBottom: 16 }}>
+            Your session expired. Sign in and you&apos;ll be back where you left off.
+          </div>
+        )}
         <div className={styles.tabRow}>
           <button
             className={`${styles.modeTab} ${mode === "signin" ? styles.modeActive : ""}`}

@@ -5,6 +5,7 @@ import { ResearchProvider } from "../lib/research-context";
 import { TierProvider } from "../lib/tier-context";
 import { PastDueBanner } from "../components/PastDueBanner";
 import { UsageLimitBanner } from "../components/UsageLimitBanner";
+import { SessionGuard } from "../components/SessionGuard";
 
 export const metadata: Metadata = {
   // Absolute URLs for the generated social preview image (app/opengraph-image.tsx).
@@ -41,6 +42,7 @@ export default function RootLayout({
       <body>
         <ResearchProvider>
           <TierProvider>
+            <SessionGuard />
             <PastDueBanner />
             <UsageLimitBanner />
             {children}

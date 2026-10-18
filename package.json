@@ -30,7 +30,7 @@
     "day7-email-job": "tsx run-day7-email-job.mjs",
     "restore-test": "node restore-test.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"src/**/*.test.ts\" \"web/metis-ui/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\" \"web/metis-ui/*.test.ts\" \"web/lib/*.test.ts\""
   },
   "keywords": [],
   "author": "",

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
+import { isPrivatePath } from "./lib/return-to";
 
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({
@@ -29,16 +30,6 @@ export async function middleware(request: NextRequest) {
   // public marketing site, and any unrecognized/typo'd path) falls through
   // to Next's normal routing — including its 404 — instead of being forced
   // through a login redirect.
-  const PRIVATE_PREFIXES = [
-    "/app",
-    "/dashboard",
-    "/settings",
-    "/watchlist",
-    "/intel-feed",
-    "/knowledge-graph",
-    "/reports",
-    "/api",
-  ];
   // Stripe calls this directly with its own signature, not a session
   // cookie — gating it behind /login would make Stripe receive a 307
   // instead of our handler ever running. Verified by request signature
@@ -54,14 +45,20 @@ export async function middleware(request: NextRequest) {
   // the same way (by actually testing the flow, not just reading the code).
   const isAuthRoute = pathname.startsWith("/api/auth/");
 
-  const isPrivateRoute = !isWebhook && !isAuthRoute && PRIVATE_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
+  const isPrivateRoute = !isWebhook && !isAuthRoute && isPrivatePath(pathname);
 
   if (!user && isPrivateRoute) {
+    // An API call from a page whose session expired gets a 401 the page can
+    // act on (components/SessionGuard.tsx), not a redirect to the login HTML.
+    if (pathname === "/api" || pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Your session expired. Sign in again." }, { status: 401 });
+    }
+    // Back to exactly this page after sign-in, query string included.
+    const back = `${pathname}${request.nextUrl.search}`;
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", pathname);
+    url.search = "";
+    url.searchParams.set("next", back);
     return NextResponse.redirect(url);
   }
 
