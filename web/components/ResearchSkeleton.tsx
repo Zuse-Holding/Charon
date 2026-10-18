@@ -1,4 +1,5 @@
 "use client";
+import { Stepper } from "../metis-ui";
 import styles from "./ResearchSkeleton.module.css";
 
 /** One source's live state, written by the agent server while the run
@@ -19,6 +20,15 @@ interface Props {
    *  step list below. */
   progress?: RunProgress[];
 }
+
+// The stages of a run, on the shared Metis stepper (same as Diligence deals
+// and Committee meetings). Sources finish one by one (listed below); the
+// report is written once they're all in.
+const RUN_STEPS = [
+  { key: "sources", label: "Searching sources" },
+  { key: "write", label: "Writing the report" },
+  { key: "ready", label: "Ready" },
+];
 
 // Glyph + word for every state, so status never relies on color alone.
 const STATE_GLYPH: Record<RunProgress["state"], string> = { running: "▸", done: "✓", empty: "–", failed: "✕" };
@@ -64,6 +74,13 @@ export default function ResearchSkeleton({ subject, type, progress }: Props) {
           </div>
         </div>
       </div>
+
+      <Stepper
+        label="Research progress"
+        steps={RUN_STEPS}
+        current={live && finished === live.length ? 1 : 0}
+        currentDetail={live ? `${finished} of ${live.length} sources` : "Starting…"}
+      />
 
       <div className={styles.progressTrack}>
         {live
