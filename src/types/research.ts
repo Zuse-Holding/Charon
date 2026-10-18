@@ -44,6 +44,11 @@ export interface NewsEntry {
   date?: string;
   summary?: string;
   url?: string;
+  /** Publication name or domain ("axios.com"). */
+  outlet?: string;
+  /** Fetched article text, passed to synthesis as context. Never rendered:
+   *  extracted page text carries site navigation and broken words. */
+  articleText?: string;
 }
 
 export interface FundingEntry {

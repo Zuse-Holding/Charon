@@ -37,26 +37,27 @@ function useScrollFade() {
 }
 
 // An excerpt of the full sample report on /sample-report
-// (web/content/sample-reports/stripe.md), copied as written, including the
-// section the pipeline couldn't source. Keep the two in step.
+// (web/content/sample-reports/stripe.md), copied as written. Sourced
+// sections only: the full report shows the unverified ones in context.
+// Keep the two in step.
 const SAMPLE_REPORT = {
   subject: "Stripe",
-  generated: "Oct 15, 2026",
+  generated: "Oct 17, 2026",
   sections: [
     {
       title: "Company overview",
-      rows: [["Founded", "2010"], ["Headquarters", "San Francisco, CA and Dublin, Ireland"], ["Industry", "Financial Infrastructure"]],
+      rows: [["Founded", "2010"], ["Headquarters", "San Francisco, California and Dublin, Ireland"], ["Industry", "Financial Services and Software as a Service"]],
       sources: ["www.stripe.com", "stripe.com", "youtube.com", "en.wikipedia.org"],
+    },
+    {
+      title: "Leadership",
+      rows: [["CEO", "Patrick Collison, cofounder"], ["President", "John Collison, cofounder"], ["CTO", "David Singleton"]],
+      sources: ["stripe.com", "craft.co", "linkedin.com", "unifygtm.com", "derrick-app.com"],
     },
     {
       title: "Competitors",
       rows: [["Named", "PayPal · Adyen · Square · Braintree · Checkout.com"]],
-      sources: ["tipalti.com", "paddle.com", "reddit.com", "connectpay.com", "memberful.com"],
-    },
-    {
-      title: "Risks",
-      rows: [["", "Direct competition from Adyen, PayPal, and Square for global payment volume share."]],
-      sources: [],
+      sources: ["tipalti.com", "reddit.com", "paddle.com", "bluesnap.com", "memberful.com"],
     },
   ],
 };
