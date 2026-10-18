@@ -153,3 +153,29 @@ describe("coverage report section", () => {
     assert.equal(deepLink(sourceById("nonprofits"), "A|B (C)"), "https://projects.propublica.org/nonprofits/search?q=A%7CB%20(C)");
   });
 });
+
+describe("run progress (P1-9)", () => {
+  it("reports running, then the outcome, for each source", async () => {
+    const events: { id: string; state: string; count?: number }[] = [];
+    const cov = new CoverageRecorder(true, "company", "Acme", ENV, 20, (e) => events.push(e));
+    await cov.run("usaspending", async () => ({ awards: [1, 2], sources: [] }), empty, (r) => r.awards.length);
+    await cov.run("news", never, empty, (r) => r.awards.length);
+    assert.deepEqual(events.map((e) => `${e.id}:${e.state}`), [
+      "usaspending:running", "usaspending:done", "news:running", "news:failed",
+    ]);
+    assert.equal(events[1].count, 2);
+  });
+
+  it("still reports progress with the coverage flag off", async () => {
+    const events: string[] = [];
+    const cov = new CoverageRecorder(false, "company", "Acme", ENV, 20, (e) => events.push(e.state));
+    await cov.run("usaspending", async () => empty, empty, (r) => r.awards.length);
+    assert.deepEqual(events, ["running", "empty"]);
+  });
+
+  it("a throwing listener never breaks the run", async () => {
+    const cov = new CoverageRecorder(true, "company", "Acme", ENV, 20, () => { throw new Error("boom"); });
+    const value = await cov.run("usaspending", async () => empty, empty, (r) => r.awards.length);
+    assert.deepEqual(value, empty);
+  });
+});

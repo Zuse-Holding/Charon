@@ -40,7 +40,7 @@ import { classifyOfficeType } from "../../lib/office-classifier.js";
 import { isEnabled } from "../../lib/flags.js";
 import { buildCompanyProvenance, buildPersonProvenance, type BuiltProvenance } from "../../lib/provenance/build.js";
 import { recordSnapshots, type Snapshot } from "../../lib/provenance/snapshots.js";
-import { CoverageRecorder } from "../../lib/coverage/recorder.js";
+import { CoverageRecorder, type ProgressListener } from "../../lib/coverage/recorder.js";
 import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
 
 /**
@@ -110,7 +110,7 @@ export class ResearchOrchestrator {
    * @param deep Charon Protocol (internal tier only) — passed through to
    *   LittleSis for relationship pulling.
    */
-  async researchCompany(companyName: string, proAccess = false, deep = false, options: { relatedHops?: number } = {}): Promise<{
+  async researchCompany(companyName: string, proAccess = false, deep = false, options: { relatedHops?: number; onProgress?: ProgressListener } = {}): Promise<{
     bundle: ResearchBundle;
     report: string;
     // Charon/internal-only (deep) — LittleSis relationships (board/officer
@@ -121,7 +121,7 @@ export class ResearchOrchestrator {
     /** Raw source responses for the caller to store (provenance flag on). */
     snapshots?: Snapshot[];
   }> {
-    const cov = new CoverageRecorder(isEnabled("coverage"), "company", companyName);
+    const cov = new CoverageRecorder(isEnabled("coverage"), "company", companyName, process.env, undefined, options.onProgress);
     const { value, snapshots } = await recordSnapshots(isEnabled("provenance"), () =>
       this.gatherCompany(companyName, proAccess, deep, cov, options.relatedHops));
     const { bundle, littleSisRelationships } = value;
@@ -266,14 +266,14 @@ export class ResearchOrchestrator {
    *   checked by the caller. No Wayback for person research — see
    *   wayback-agent's doc comment for why.
    */
-  async researchPerson(personName: string, deep = false, affiliation?: string, proAccess = false): Promise<{
+  async researchPerson(personName: string, deep = false, affiliation?: string, proAccess = false, options: { onProgress?: ProgressListener } = {}): Promise<{
     bundle: PersonResearchBundle;
     report: string;
     // Charon/internal-only (deep) — see researchCompany's same field.
     littleSisRelationships?: LittleSisRelationshipEntry[];
     snapshots?: Snapshot[];
   }> {
-    const cov = new CoverageRecorder(isEnabled("coverage"), "person", personName);
+    const cov = new CoverageRecorder(isEnabled("coverage"), "person", personName, process.env, undefined, options.onProgress);
     const { value, snapshots } = await recordSnapshots(isEnabled("provenance"), () =>
       this.gatherPerson(personName, deep, affiliation, proAccess, cov));
     const { bundle, littleSisRelationships } = value;

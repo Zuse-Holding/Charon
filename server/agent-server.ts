@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ResearchOrchestrator } from "../src/agents/orchestrator/index.js";
+import type { ProgressEvent } from "../src/lib/coverage/recorder.js";
 import { DeepDiveAgent } from "../src/agents/deep-dive/index.js";
 import { EntityExtractionAgent } from "../src/agents/entity-extraction/index.js";
 import { OpenCorporatesAgent } from "../src/agents/opencorporates-agent/index.js";
@@ -714,6 +715,24 @@ app.post("/research", async (req, res) => {
     console.error("[research] Failed to insert pending run:", JSON.stringify(pendingError));
   }
 
+  // P1-9 — live per-source progress for the run screen. Stored in the
+  // pending row's bundle (replaced wholesale when the run completes), at
+  // most one write a second, and only while the row is still pending so
+  // a late write can never clobber the finished report.
+  const progress = new Map<string, ProgressEvent>();
+  let progressTimer: ReturnType<typeof setTimeout> | null = null;
+  const flushProgress = () => {
+    progressTimer = null;
+    supabase.from("research_runs")
+      .update({ bundle: { progress: [...progress.values()] } })
+      .eq("id", runId).eq("status", "pending")
+      .then(({ error }) => { if (error) console.error("[research] progress write failed:", JSON.stringify(error)); });
+  };
+  const onProgress = (event: ProgressEvent) => {
+    progress.set(event.id, event);
+    if (!progressTimer) progressTimer = setTimeout(flushProgress, 1000);
+  };
+
   try {
     let bundle: unknown;
     let report: string;
@@ -753,13 +772,13 @@ app.post("/research", async (req, res) => {
 
       if (type === "company") {
         const relatedHops = Number.isFinite(Number(req.body.relatedHops)) ? Number(req.body.relatedHops) : undefined;
-        const result = await orchestrator.researchCompany(subject, proAccess, deep, { relatedHops });
+        const result = await orchestrator.researchCompany(subject, proAccess, deep, { relatedHops, onProgress });
         bundle = result.bundle; report = result.report;
         littleSisRelationships = result.littleSisRelationships;
         snapshots = result.snapshots;
         outPath = join(REPORTS_DIR, `${slugify(subject)}.md`);
       } else if (type === "person") {
-        const result = await orchestrator.researchPerson(subject, deep, personAffiliation, proAccess);
+        const result = await orchestrator.researchPerson(subject, deep, personAffiliation, proAccess, { onProgress });
         bundle = result.bundle; report = result.report;
         littleSisRelationships = result.littleSisRelationships;
         snapshots = result.snapshots;
@@ -782,6 +801,16 @@ app.post("/research", async (req, res) => {
         outPath = join(REPORTS_DIR, "products", `${slugify(subject)}.md`);
       }
     });
+
+    if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
+
+    // Never store an empty report: if no source returned anything, fail
+    // the run with a next step instead (P1-9). One working source is
+    // enough; the report names the ones that failed in Source Coverage.
+    const events = [...progress.values()];
+    if (events.length > 0 && !events.some((e) => e.state === "done")) {
+      throw new Error(`No source returned anything for "${subject}". Check the spelling, or add a detail like the website or city, and run it again.`);
+    }
 
     writeFileSync(outPath, report, "utf-8");
 
@@ -853,6 +882,7 @@ app.post("/research", async (req, res) => {
       }, 4000);
     }
   } catch (err) {
+    if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
     const message = err instanceof Error ? err.message : JSON.stringify(err);
     console.error("[research] Error:", message);
     await supabase.from("research_runs").update({ status: "failed", error: message, duration_ms: Date.now() - startedAt }).eq("id", runId);
