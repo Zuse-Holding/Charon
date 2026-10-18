@@ -198,12 +198,11 @@ export class ReportAgent {
     if (bundle.news.length === 0) {
       lines.push(`_No recent news found._`);
     } else {
+      // headline · outlet · date, as a link. ReportViewer renders the
+      // part after " — " as the card's subline.
       for (const n of bundle.news) {
-        lines.push(
-          `- [${n.headline}](${n.url ?? "#"})${
-            n.summary ? ` — ${n.summary}` : ""
-          }`
-        );
+        const meta = [n.outlet, n.date].filter(Boolean).join(" · ");
+        lines.push(`- [${n.headline}](${n.url ?? "#"})${meta ? ` — ${meta}` : ""}`);
       }
     }
     lines.push(``);
@@ -377,12 +376,11 @@ export class ReportAgent {
     if (bundle.news.length === 0) {
       lines.push(`_No recent news found._`);
     } else {
+      // headline · outlet · date, as a link. ReportViewer renders the
+      // part after " — " as the card's subline.
       for (const n of bundle.news) {
-        lines.push(
-          `- [${n.headline}](${n.url ?? "#"})${
-            n.summary ? ` — ${n.summary}` : ""
-          }`
-        );
+        const meta = [n.outlet, n.date].filter(Boolean).join(" · ");
+        lines.push(`- [${n.headline}](${n.url ?? "#"})${meta ? ` — ${meta}` : ""}`);
       }
     }
     lines.push(``);

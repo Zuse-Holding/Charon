@@ -31,6 +31,25 @@ function PasswordToggle({ show, onToggle }: { show: boolean; onToggle: () => voi
   );
 }
 
+const MIN_PASSWORD_LENGTH = 8;
+
+// Rules shown before submit, ticked live as the user types.
+function PasswordRules({ id, password }: { id: string; password: string }) {
+  const ok = password.length >= MIN_PASSWORD_LENGTH;
+  return (
+    <div id={id} className={`${styles.pwRules} ${ok ? styles.pwRuleMet : ""}`}>
+      <span aria-hidden="true">{ok ? "✓" : "·"}</span> At least {MIN_PASSWORD_LENGTH} characters
+    </div>
+  );
+}
+
+// Shown above the signup form when a pricing CTA sent the visitor here,
+// so the plan they picked stays in view. Prices mirror app/pricing.
+const PLAN_SUMMARY: Record<"basic" | "pro", { name: string; price: string; includes: string }> = {
+  basic: { name: "Basic", price: "$19/mo", includes: "25 quick profiles a month · Markdown export" },
+  pro:   { name: "Pro",   price: "$49/mo", includes: "Deep Dives · PDF export · Knowledge Graph" },
+};
+
 function LoginPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName]   = useState("");
@@ -68,6 +87,7 @@ function LoginPage() {
   const next     = params.get("next") ?? "/app";
   const plan     = params.get("plan"); // "basic" | "pro" from a pricing-page CTA — see web/lib/checkout.ts
   const postAuthDestination = plan === "basic" || plan === "pro" ? `/checkout-redirect?plan=${plan}` : next;
+  const selectedPlan = plan === "basic" || plan === "pro" ? PLAN_SUMMARY[plan] : null;
   const supabase = useMemo(() => createClient({ rememberMe }), [rememberMe]);
   const { refresh: refreshTier } = useTier();
 
@@ -92,6 +112,10 @@ function LoginPage() {
     if (!email || !password) { setError("Email and password required."); return; }
     if (mode === "signup" && (!firstName.trim() || !lastName.trim())) {
       setError("First and last name required.");
+      return;
+    }
+    if (mode === "signup" && password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
     setLoading(true); setError(null); setMessage(null);
@@ -175,7 +199,7 @@ function LoginPage() {
   }
 
   async function handleSetNewPassword() {
-    if (newPassword.length < 8) { setRecoveryError("Password must be at least 8 characters."); return; }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) { setRecoveryError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`); return; }
     if (newPassword !== confirmPassword) { setRecoveryError("Passwords don't match."); return; }
     setRecoveryLoading(true); setRecoveryError(null);
     const { error } = await supabase.auth.updateUser({ password: newPassword });
@@ -196,42 +220,54 @@ function LoginPage() {
             <div className={styles.logoSub}>INTELLIGENCE</div>
           </div>
 
-          <div className={styles.fields}>
-            <div className={styles.sectionNote}>Set a new password for your account.</div>
-            <div className={styles.pwWrap}>
-              <input
-                className={`${styles.input} ${styles.pwInput}`}
-                type={showNewPassword ? "text" : "password"}
-                placeholder="New password"
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleSetNewPassword()}
-              />
-              <PasswordToggle show={showNewPassword} onToggle={() => setShowNewPassword(v => !v)} />
+          <form onSubmit={e => { e.preventDefault(); handleSetNewPassword(); }} noValidate>
+            <div className={styles.fields}>
+              <div className={styles.sectionNote}>Set a new password for your account.</div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="new-password">New password</label>
+                <div className={styles.pwWrap}>
+                  <input
+                    id="new-password"
+                    name="new-password"
+                    autoComplete="new-password"
+                    aria-describedby="new-password-rules"
+                    className={`${styles.input} ${styles.pwInput}`}
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                  />
+                  <PasswordToggle show={showNewPassword} onToggle={() => setShowNewPassword(v => !v)} />
+                </div>
+                <PasswordRules id="new-password-rules" password={newPassword} />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="confirm-password">Confirm new password</label>
+                <div className={styles.pwWrap}>
+                  <input
+                    id="confirm-password"
+                    name="confirm-password"
+                    autoComplete="new-password"
+                    className={`${styles.input} ${styles.pwInput}`}
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                  />
+                  <PasswordToggle show={showConfirmPassword} onToggle={() => setShowConfirmPassword(v => !v)} />
+                </div>
+              </div>
             </div>
-            <div className={styles.pwWrap}>
-              <input
-                className={`${styles.input} ${styles.pwInput}`}
-                type={showConfirmPassword ? "text" : "password"}
-                placeholder="Confirm new password"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleSetNewPassword()}
-              />
-              <PasswordToggle show={showConfirmPassword} onToggle={() => setShowConfirmPassword(v => !v)} />
-            </div>
-          </div>
 
-          {recoveryError && <div className={styles.error}>{recoveryError}</div>}
-          {recoveryDone && <div className={styles.success}>Password updated — taking you in...</div>}
+            {recoveryError && <div className={styles.error} role="alert">{recoveryError}</div>}
+            {recoveryDone && <div className={styles.success} role="status">Password updated — taking you in...</div>}
 
-          <button
-            className={styles.submitBtn}
-            onClick={handleSetNewPassword}
-            disabled={recoveryLoading || recoveryDone}
-          >
-            {recoveryLoading ? "..." : "Set New Password →"}
-          </button>
+            <button
+              type="submit"
+              className={styles.submitBtn}
+              disabled={recoveryLoading || recoveryDone}
+            >
+              {recoveryLoading ? "Saving…" : "Set new password →"}
+            </button>
+          </form>
         </div>
       </div>
     );
@@ -249,14 +285,28 @@ function LoginPage() {
           <button
             className={`${styles.modeTab} ${mode === "signin" ? styles.modeActive : ""}`}
             onClick={() => { setMode("signin"); setError(null); setForgotOpen(false); }}
-          >Sign In</button>
+          >Sign in</button>
           <button
             className={`${styles.modeTab} ${mode === "signup" ? styles.modeActive : ""}`}
             onClick={() => { setMode("signup"); setError(null); setForgotOpen(false); }}
-          >Create Account</button>
+          >Create account</button>
         </div>
 
-        <button className={styles.googleBtn} onClick={handleGoogle} disabled={loading}>
+        {mode === "signup" && selectedPlan && (
+          <div className={styles.planSummary}>
+            <div className={styles.planSummaryHead}>
+              <span className={styles.planSummaryName}>{selectedPlan.name}</span>
+              <span className={styles.planSummaryPrice}>{selectedPlan.price}</span>
+            </div>
+            <div className={styles.planSummaryIncludes}>{selectedPlan.includes}</div>
+            <div className={styles.planSummaryNote}>
+              Checkout comes right after you create your account.{" "}
+              <a href="/pricing" className={styles.planSummaryLink}>Change plan</a>
+            </div>
+          </div>
+        )}
+
+        <button type="button" className={styles.googleBtn} onClick={handleGoogle} disabled={loading}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -269,78 +319,101 @@ function LoginPage() {
         <div className={styles.divider}><span>or</span></div>
 
         {forgotOpen ? (
-          <>
+          <form onSubmit={e => { e.preventDefault(); handleForgotPassword(); }} noValidate>
             <div className={styles.fields}>
               <div className={styles.sectionNote}>
                 Enter your email and we&apos;ll send you a reset link.
               </div>
-              <input
-                className={styles.input}
-                type="email"
-                placeholder="Email address"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleForgotPassword()}
-              />
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="forgot-email">Email</label>
+                <input
+                  id="forgot-email"
+                  name="email"
+                  autoComplete="email"
+                  className={styles.input}
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                />
+              </div>
             </div>
 
-            {error && <div className={styles.error}>{error}</div>}
-            {forgotSent && <div className={styles.success}>Reset email sent — check your inbox.</div>}
+            {error && <div className={styles.error} role="alert">{error}</div>}
+            {forgotSent && <div className={styles.success} role="status">Reset email sent — check your inbox.</div>}
 
             <button
+              type="submit"
               className={styles.submitBtn}
-              onClick={handleForgotPassword}
               disabled={forgotLoading || forgotSent}
             >
-              {forgotLoading ? "..." : forgotSent ? "✓ Email Sent" : "Send Reset Link →"}
+              {forgotLoading ? "Sending…" : forgotSent ? "✓ Email sent" : "Send reset link →"}
             </button>
 
             <button
+              type="button"
               className={styles.backLink}
               onClick={() => { setForgotOpen(false); setForgotSent(false); setError(null); }}
             >← Back to sign in</button>
-          </>
+          </form>
         ) : (
-          <>
+          <form onSubmit={e => { e.preventDefault(); handleEmail(); }} noValidate>
             <div className={styles.fields}>
               {mode === "signup" && (
                 <div className={styles.nameRow}>
-                  <input
-                    className={styles.input}
-                    type="text"
-                    placeholder="First name"
-                    value={firstName}
-                    onChange={e => setFirstName(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleEmail()}
-                  />
-                  <input
-                    className={styles.input}
-                    type="text"
-                    placeholder="Last name"
-                    value={lastName}
-                    onChange={e => setLastName(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleEmail()}
-                  />
+                  <div className={styles.field}>
+                    <label className={styles.label} htmlFor="first-name">First name</label>
+                    <input
+                      id="first-name"
+                      name="given-name"
+                      autoComplete="given-name"
+                      className={styles.input}
+                      type="text"
+                      value={firstName}
+                      onChange={e => setFirstName(e.target.value)}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.label} htmlFor="last-name">Last name</label>
+                    <input
+                      id="last-name"
+                      name="family-name"
+                      autoComplete="family-name"
+                      className={styles.input}
+                      type="text"
+                      value={lastName}
+                      onChange={e => setLastName(e.target.value)}
+                    />
+                  </div>
                 </div>
               )}
-              <input
-                className={styles.input}
-                type="email"
-                placeholder="Email address"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleEmail()}
-              />
-              <div className={styles.pwWrap}>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="email">Email</label>
                 <input
-                  className={`${styles.input} ${styles.pwInput}`}
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleEmail()}
+                  id="email"
+                  name="email"
+                  autoComplete={mode === "signup" ? "email" : "username"}
+                  className={styles.input}
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
                 />
-                <PasswordToggle show={showPassword} onToggle={() => setShowPassword(v => !v)} />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="password">Password</label>
+                <div className={styles.pwWrap}>
+                  <input
+                    id="password"
+                    name="password"
+                    autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                    aria-describedby={mode === "signup" ? "password-rules" : undefined}
+                    className={`${styles.input} ${styles.pwInput}`}
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                  />
+                  <PasswordToggle show={showPassword} onToggle={() => setShowPassword(v => !v)} />
+                </div>
+                {mode === "signup" && <PasswordRules id="password-rules" password={password} />}
               </div>
             </div>
 
@@ -355,23 +428,26 @@ function LoginPage() {
                   Remember me
                 </label>
                 <button
+                  type="button"
                   className={styles.forgotLink}
                   onClick={() => { setForgotOpen(true); setError(null); setMessage(null); }}
                 >Forgot password?</button>
               </div>
             )}
 
-            {error   && <div className={styles.error}>{error}</div>}
-            {message && <div className={styles.success}>{message}</div>}
+            {error   && <div className={styles.error} role="alert">{error}</div>}
+            {message && <div className={styles.success} role="status">{message}</div>}
 
             <button
+              type="submit"
               className={styles.submitBtn}
-              onClick={handleEmail}
               disabled={loading}
             >
-              {loading ? "..." : mode === "signin" ? "Sign In →" : "Create Account →"}
+              {loading
+                ? (mode === "signin" ? "Signing in…" : "Creating account…")
+                : mode === "signin" ? "Sign in →" : "Create account →"}
             </button>
-          </>
+          </form>
         )}
       </div>
     </div>

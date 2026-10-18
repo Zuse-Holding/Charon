@@ -34,7 +34,7 @@ export async function getPendingRunForUser() {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("research_runs")
-    .select("id, type, subject, generated_at")
+    .select("id, type, subject, generated_at, bundle")
     .eq("status", "pending")
     .order("generated_at", { ascending: false })
     .limit(1);
@@ -46,6 +46,9 @@ export async function getPendingRunForUser() {
     type: row.type as string,
     subject: row.subject as string,
     generatedAt: row.generated_at as string,
+    // Per-source progress the agent server writes while the run is in
+    // flight (P1-9). Empty for run types that don't report it.
+    progress: ((row.bundle as { progress?: unknown[] } | null)?.progress ?? []) as unknown[],
   };
 }
 

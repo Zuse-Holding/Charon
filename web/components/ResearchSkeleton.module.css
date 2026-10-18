@@ -119,3 +119,38 @@
   0%, 100% { opacity: 0.4; }
   50%       { opacity: 0.8; }
 }
+
+/* Live per-source progress (P1-9). */
+.progressFillLive {
+  height: 100%;
+  background: var(--orange);
+  border-radius: 2px;
+  transition: width 0.25s cubic-bezier(0.16, 0.8, 0.3, 1);
+}
+.liveSteps {
+  list-style: none;
+  margin: 0 0 28px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.liveStep {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+.liveGlyph { font-family: var(--font-mono); text-align: center; }
+.liveName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.liveState { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-align: right; }
+.running .liveGlyph { color: var(--orange); animation: scan-pulse 1.4s ease-in-out infinite; }
+.done .liveGlyph, .done .liveState { color: var(--green); }
+.empty { color: var(--muted); }
+.failed .liveGlyph, .failed .liveState { color: var(--red); }
+@media (prefers-reduced-motion: reduce) {
+  .running .liveGlyph { animation: none; }
+  .progressFillLive { transition: none; }
+}

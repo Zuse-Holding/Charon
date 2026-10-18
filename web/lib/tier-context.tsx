@@ -7,8 +7,9 @@ import { createClient } from "../lib/supabase/client";
 export type Tier = "internal" | "team" | "pro" | "basic" | "free" | "trial";
 
 export interface TierConfig {
-  dailyResearchLimit: number;   // -1 = unlimited
-  dailyDeepDiveLimit: number;
+  // Per work window (8 hours from the first run); -1 = unlimited.
+  windowResearchLimit: number;
+  windowDeepDiveLimit: number;
   deepDiveAccess: boolean;
   politicalAccess: boolean;
   watchlistLimit: number;       // -1 = unlimited
@@ -49,6 +50,16 @@ export interface MonthlyUsage {
   resetsAt: string;
 }
 
+/** Work-window usage: quick profiles and Deep Dives share one window,
+ *  opened by the first run and reset `hours` later. resetsAt is null when
+ *  no window is open (the next run opens one). */
+export interface WindowUsage {
+  hours: number;
+  resetsAt: string | null;
+  research: { used: number; limit: number } | null;
+  deepDives: { used: number; limit: number } | null;
+}
+
 /** profiles.notification_preferences — persisted now even though no
  *  notification-sending code reads it yet (see Settings #67). */
 export interface NotificationPreferences {
@@ -73,6 +84,7 @@ interface TierContextValue {
   monthlyUsage: MonthlyUsage | null;
   /** Pro's monthly Deep Dive usage; null when the tier has no Deep Dive cap. */
   monthlyDeepDiveUsage: MonthlyUsage | null;
+  windowUsage: WindowUsage | null;
   notificationPreferences: NotificationPreferences;
   /** profiles.subscription_status, mirrored from Stripe by the webhook —
    *  null for accounts that have never checked out (Free, or hand-assigned
@@ -95,8 +107,8 @@ interface TierContextValue {
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: TierConfig = {
-  dailyResearchLimit: -1,
-  dailyDeepDiveLimit: 0,
+  windowResearchLimit: -1,
+  windowDeepDiveLimit: 0,
   deepDiveAccess: false,
   politicalAccess: false,
   watchlistLimit: 1,
@@ -122,6 +134,7 @@ const TierContext = createContext<TierContextValue>({
   email: null,
   monthlyUsage: null,
   monthlyDeepDiveUsage: null,
+  windowUsage: null,
   notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
   subscriptionStatus: null,
   cancelAtPeriodEnd: false,
@@ -162,6 +175,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
   const [monthlyUsage, setMonthlyUsage] = useState<MonthlyUsage | null>(null);
   const [monthlyDeepDiveUsage, setMonthlyDeepDiveUsage] = useState<MonthlyUsage | null>(null);
+  const [windowUsage, setWindowUsage] = useState<WindowUsage | null>(null);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(false);
@@ -192,6 +206,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
           setConfig(data.config);
           setMonthlyUsage(data.monthlyUsage ?? null);
           setMonthlyDeepDiveUsage(data.monthlyDeepDiveUsage ?? null);
+          setWindowUsage(data.windowUsage ?? null);
           // Prefer the user's own saved preference over the email guess.
           if (data.displayName) setDisplayName(data.displayName);
           setNotificationPreferences({ ...DEFAULT_NOTIFICATION_PREFERENCES, ...(data.notificationPreferences ?? {}) });
@@ -204,6 +219,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
           setConfig(DEFAULT_CONFIG);
           setMonthlyUsage(null);
           setMonthlyDeepDiveUsage(null);
+          setWindowUsage(null);
           setSubscriptionStatus(null);
           setCancelAtPeriodEnd(false);
         }
@@ -300,7 +316,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, monthlyUsage, monthlyDeepDiveUsage, notificationPreferences, subscriptionStatus, cancelAtPeriodEnd, can, refresh, updateDisplayName, updateNotificationPreferences }}>
+    <TierContext.Provider value={{ tier, config, loading, isInternal, displayName, email, monthlyUsage, monthlyDeepDiveUsage, windowUsage, notificationPreferences, subscriptionStatus, cancelAtPeriodEnd, can, refresh, updateDisplayName, updateNotificationPreferences }}>
       {children}
     </TierContext.Provider>
   );

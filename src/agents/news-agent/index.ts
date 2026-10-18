@@ -1,6 +1,7 @@
 import { NewsAgentResult, NewsEntry, Source } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
+import { isNewsIndexPage, isNewsNoise, newsDate, outletFromUrl } from "../../lib/news-noise.js";
 
 /**
  * News Agent
@@ -28,9 +29,8 @@ export class NewsAgent {
       7
     );
 
-    const NOISE_DOMAINS = ["youtube.com", "facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com"];
     const filtered = results
-      .filter(r => !NOISE_DOMAINS.some(d => r.url?.includes(d)))
+      .filter(r => !isNewsNoise(r.url) && !isNewsIndexPage(r.url))
       .filter(r => !isRejectedDomain(r.url, override));
     const top = filtered.slice(0, 5);
 
@@ -40,11 +40,15 @@ export class NewsAgent {
       top.slice(0, 2).map(r => fetchPageText(r.url, this.fetcher, 2000))
     );
 
+    // The report shows headline · outlet · date · link. The fetched text
+    // only feeds synthesis: it's raw extraction (nav, "Ja nuary"-style
+    // breaks), not something to print.
     const news: NewsEntry[] = top.map((r, i) => ({
       headline: r.title,
-      summary: fetchedTexts[i]
-        ? fetchedTexts[i]!.slice(0, 600)  // use full article text if available
-        : r.snippet,                        // fall back to snippet
+      outlet: outletFromUrl(r.url),
+      date: newsDate(r.date, r.url),
+      summary: r.snippet,
+      articleText: fetchedTexts[i]?.slice(0, 600) || undefined,
       url: r.url,
     }));
 

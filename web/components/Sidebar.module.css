@@ -174,3 +174,60 @@
 
 .navSpinner { margin-left: auto; display: inline-flex; }
 .navSpinner > span { margin-right: 0; }
+
+/* Usage meters + upgrade prompt, above the user row. */
+.planCard {
+  margin: 8px 12px 0;
+  padding: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.planCardWarn { border-color: rgba(255, 212, 71, 0.45); }
+
+.meter { display: flex; flex-direction: column; gap: 5px; }
+.meterHead {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+}
+.meterCount { font-family: var(--font-mono); color: var(--text); }
+.meterTrack {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.meterFill {
+  height: 100%;
+  background: var(--orange);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+.meterNote { font-family: var(--font-mono); font-size: 10px; }
+
+.warn { color: var(--yellow); }
+.meterFill.warn { background: var(--yellow); }
+.danger { color: var(--red); }
+.meterFill.danger { background: var(--red); }
+
+.planPitch { font-size: 11px; color: var(--muted); line-height: 1.45; }
+.upgradeBtn {
+  display: block;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--orange);
+  text-decoration: none;
+  padding: 7px 10px;
+  border: 1px solid var(--orange);
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.upgradeBtn:hover { background: var(--orange); color: white; }
+.meterTag { font-family: var(--font-mono); font-size: 10px; }

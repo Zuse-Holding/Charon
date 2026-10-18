@@ -17,6 +17,9 @@ export interface SearchResult {
   title: string;
   url: string;
   snippet?: string;
+  /** Publish date as the search engine reports it ("Aug 19, 2026",
+   *  "3 days ago"). Only some providers return one. */
+  date?: string;
 }
 
 export interface SearchProvider {
@@ -108,12 +111,13 @@ export class SerperSearchProvider implements SearchProvider {
       });
       if (!res.ok) return [];
       const data = (await res.json()) as {
-        organic?: { title: string; link: string; snippet?: string }[];
+        organic?: { title: string; link: string; snippet?: string; date?: string }[];
       };
       return (data.organic ?? []).map((r) => ({
         title: r.title,
         url: r.link,
         snippet: r.snippet,
+        date: r.date,
       }));
     } catch {
       return [];

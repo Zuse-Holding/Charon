@@ -1,9 +1,35 @@
 "use client";
 import styles from "./ResearchSkeleton.module.css";
 
+/** One source's live state, written by the agent server while the run
+ *  is in flight (src/lib/coverage/recorder.ts ProgressEvent). */
+export interface RunProgress {
+  id: string;
+  name: string;
+  state: "running" | "done" | "empty" | "failed";
+  count?: number;
+  reason?: string;
+}
+
 interface Props {
   subject: string;
   type: "company" | "person" | "product" | "political" | "creator";
+  /** Real per-source progress. Company and person runs report it; other
+   *  types (and the first second of any run) fall back to the generic
+   *  step list below. */
+  progress?: RunProgress[];
+}
+
+// Glyph + word for every state, so status never relies on color alone.
+const STATE_GLYPH: Record<RunProgress["state"], string> = { running: "▸", done: "✓", empty: "–", failed: "✕" };
+
+function stateLabel(p: RunProgress): string {
+  switch (p.state) {
+    case "running": return "Searching…";
+    case "done":    return `${p.count ?? 0} found`;
+    case "empty":   return "Nothing found";
+    case "failed":  return p.reason ? `Failed · ${p.reason.replace(/\.$/, "")}` : "Failed";
+  }
 }
 
 const STEPS = [
@@ -16,7 +42,11 @@ const STEPS = [
   "Synthesizing report",
 ];
 
-export default function ResearchSkeleton({ subject, type }: Props) {
+export default function ResearchSkeleton({ subject, type, progress }: Props) {
+  const live = progress && progress.length > 0 ? progress : null;
+  const finished = live ? live.filter(p => p.state !== "running").length : 0;
+  const failed = live ? live.filter(p => p.state === "failed").length : 0;
+
   return (
     <div className={styles.skeleton}>
       <div className={styles.header}>
@@ -27,14 +57,31 @@ export default function ResearchSkeleton({ subject, type }: Props) {
         </div>
         <div>
           <div className={styles.title}>{subject}</div>
-          <div className={styles.sub}>Research in progress</div>
+          <div className={styles.sub}>
+            {live
+              ? `${finished} of ${live.length} sources checked${failed ? ` · ${failed} failed, the report will cover the rest` : ""}`
+              : "Research in progress"}
+          </div>
         </div>
       </div>
 
       <div className={styles.progressTrack}>
-        <div className={styles.progressFill} />
+        {live
+          ? <div className={styles.progressFillLive} style={{ width: `${Math.max(6, Math.round((finished / live.length) * 100))}%` }} />
+          : <div className={styles.progressFill} />}
       </div>
 
+      {live ? (
+        <ul className={styles.liveSteps} aria-live="polite">
+          {live.map(p => (
+            <li key={p.id} className={`${styles.liveStep} ${styles[p.state]}`}>
+              <span className={styles.liveGlyph} aria-hidden="true">{STATE_GLYPH[p.state]}</span>
+              <span className={styles.liveName}>{p.name}</span>
+              <span className={styles.liveState}>{stateLabel(p)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
       <div className={styles.steps}>
         {STEPS.map((step, i) => (
           <div
@@ -51,6 +98,8 @@ export default function ResearchSkeleton({ subject, type }: Props) {
           </div>
         ))}
       </div>
+
+      )}
 
       <div className={styles.blocks}>
         {[180, 120, 200, 90, 150].map((w, i) => (

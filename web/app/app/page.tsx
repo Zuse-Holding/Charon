@@ -9,7 +9,7 @@ import DeepDiveProgress from "../../components/DeepDiveProgress";
 import DeepDiveViewer from "../../components/DeepDiveViewer";
 import ReportIssueForm from "../../components/ReportIssueForm";
 import ErrorBoundary from "../../components/ErrorBoundary";
-import ResearchSkeleton from "../../components/ResearchSkeleton";
+import ResearchSkeleton, { type RunProgress } from "../../components/ResearchSkeleton";
 import EmptyState from "../../components/EmptyState";
 import { Skeleton, SkeletonText, Spinner } from "../../components/Skeleton";
 import { trackClientEvent } from "../../lib/analytics-client";
@@ -69,6 +69,7 @@ function Dashboard() {
   const selectedRef               = useRef<Run | null>(null);
   const [isWatching, setIsWatching] = useState(false);
   const pendingPollRef            = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [progress, setProgress]   = useState<RunProgress[]>([]);
 
   const loadRuns = useCallback(async () => {
     const res = await fetch("/api/runs");
@@ -89,8 +90,9 @@ function Dashboard() {
   const checkPendingRun = useCallback(async (): Promise<boolean> => {
     const res = await fetch("/api/runs/pending");
     if (!res.ok) return false;
-    const data: { id: string; type: string; subject: string; generatedAt: string } | null = await res.json();
+    const data: { id: string; type: string; subject: string; generatedAt: string; progress?: RunProgress[] } | null = await res.json();
     if (!data) return false;
+    setProgress(Array.isArray(data.progress) ? data.progress : []);
 
     // A pending row stuck for 10+ minutes means the process that was
     // running it almost certainly crashed or redeployed mid-run — treat
@@ -123,6 +125,7 @@ function Dashboard() {
   useEffect(() => {
     if (!pending) {
       if (pendingPollRef.current) { clearInterval(pendingPollRef.current); pendingPollRef.current = null; }
+      setProgress([]);
       return;
     }
     pendingPollRef.current = setInterval(async () => {
@@ -132,7 +135,7 @@ function Dashboard() {
         const data = await loadRuns();
         if (data.length > 0) await selectRun(data[0]);
       }
-    }, 4000);
+    }, 2000);
     return () => {
       if (pendingPollRef.current) clearInterval(pendingPollRef.current);
     };
@@ -313,7 +316,7 @@ function Dashboard() {
           <div className={styles.reportPanel}>
             {pending ? (
               <div className={styles.reportBody} style={{ paddingTop: 32 }}>
-                <ResearchSkeleton subject={pending.subject} type={pending.type} />
+                <ResearchSkeleton subject={pending.subject} type={pending.type} progress={progress} />
               </div>
             ) : initialLoading ? (
               <div className={styles.reportBody} aria-hidden style={{ paddingTop: 32 }}>
@@ -379,6 +382,10 @@ function Dashboard() {
                         const currentSubject = selected.subject;
                         const currentType = selected.type;
                         setRerunning(true);
+                        // The poll above only runs while a run is pending;
+                        // checking now starts it, so a re-run shows live
+                        // per-source progress too.
+                        setTimeout(() => { checkPendingRun(); }, 1500);
                         try {
                           await fetch("/api/research", {
                             method: "POST",

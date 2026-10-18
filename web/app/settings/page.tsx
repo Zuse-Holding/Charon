@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
 import { useTier } from "../../lib/tier-context";
+import { usageRows as sharedUsageRows } from "../../lib/usage";
 import Sidebar from "../../components/Sidebar";
 import Topbar from "../../components/Topbar";
 import { Skeleton } from "../../components/Skeleton";
@@ -55,7 +56,7 @@ const NOTIFICATION_ITEMS: { key: "watchlistRefresh" | "weeklyDigest" | "productU
 ];
 
 export default function Settings() {
-  const { displayName, updateDisplayName, tier, monthlyUsage, monthlyDeepDiveUsage, notificationPreferences, updateNotificationPreferences, can } = useTier();
+  const { displayName, updateDisplayName, tier, monthlyUsage, monthlyDeepDiveUsage, windowUsage, notificationPreferences, updateNotificationPreferences, can } = useTier();
   const [email, setEmail]           = useState<string>("");
   const [resetSent, setResetSent]   = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
@@ -211,18 +212,10 @@ export default function Settings() {
     ]},
   ];
 
-  // A usage row per monthly cap the tier has (server-side): quick profiles
-  // on Basic and Pro, Deep Dives on Pro. Tiers without a cap get none.
-  const usageRows = [
-    { label: "Quick Profiles", usage: monthlyUsage },
-    { label: "Deep Dives", usage: monthlyDeepDiveUsage },
-  ].flatMap(({ label, usage }) => {
-    if (!usage) return [];
-    const pct = Math.min(100, Math.round((usage.used / usage.limit) * 100));
-    const status = pct >= 100 ? "danger" : pct >= 80 ? "warn" : "active";
-    const resets = new Date(usage.resetsAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    return [{ label, usage, pct, status, resets }];
-  });
+  // A usage row per cap the tier has (server-side): the 8-hour work
+  // window, then the monthly caps on Basic and Pro.
+  const usageRows = sharedUsageRows({ monthlyUsage, monthlyDeepDiveUsage, windowUsage })
+    .map(row => ({ ...row, status: row.status === "ok" ? "active" : row.status }));
 
   return (
     <div className={styles.shell}>
@@ -274,8 +267,8 @@ export default function Settings() {
                 </div>
               ))}
               {group.section === "ACCOUNT" && usageRows.map((row) => (
-                <div key={row.label} className={styles.row}>
-                  <span className={styles.rowLabel}>{row.label}</span>
+                <div key={row.key} className={styles.row}>
+                  <span className={styles.rowLabel}>{row.label} · {row.periodTag}</span>
                   <div className={styles.usageRow}>
                     <div className={styles.usageBarTrack}>
                       <div
@@ -284,7 +277,7 @@ export default function Settings() {
                       />
                     </div>
                     <span className={styles.usageCount}>
-                      {row.usage.used}/{row.usage.limit} · resets {row.resets}
+                      {row.used}/{row.limit} · {row.resets ? `resets ${row.resets}` : "window starts with your next run"}
                     </span>
                   </div>
                   <span className={`${styles.badge} ${styles[row.status]}`}>
@@ -412,17 +405,6 @@ export default function Settings() {
             {exportError && <div className={styles.fieldError}>{exportError}</div>}
           </div>
 
-          <div className={styles.group}>
-            <div className={styles.groupLabel}>UPGRADE</div>
-            <div className={styles.upgradeCard}>
-              <div className={styles.upgradeText}>
-                Unlock Deep Dive, Knowledge Graph, and unlimited watchlist tracking with Pro.
-              </div>
-              <a href="mailto:support@metisanalytic.com?subject=Metis Pro Upgrade" className={styles.upgradeBtn}>
-                Contact us to upgrade →
-              </a>
-            </div>
-          </div>
         </div>
       </main>
     </div>

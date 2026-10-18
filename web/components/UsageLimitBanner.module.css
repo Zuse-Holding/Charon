@@ -1,0 +1,44 @@
+.banner {
+  position: relative;
+  background: rgba(255, 212, 71, 0.12);
+  border-bottom: 1px solid rgba(255, 212, 71, 0.35);
+  color: var(--text, #E8E8F0);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  padding: 10px 44px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 12px;
+}
+.danger {
+  background: rgba(255, 68, 85, 0.12);
+  border-bottom-color: rgba(255, 68, 85, 0.4);
+}
+
+.link {
+  color: var(--yellow, #FFD447);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.danger .link { color: var(--red, #FF4455); }
+
+.close {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.close:hover { color: var(--text); }
+
+@media (max-width: 440px) {
+  .banner { padding: 10px 36px 10px 16px; text-align: left; justify-content: flex-start; }
+}

@@ -30,8 +30,8 @@ export async function GET() {
     return NextResponse.json({
       tier: "free",
       config: {
-        dailyResearchLimit: -1,
-        dailyDeepDiveLimit: 0,
+        windowResearchLimit: -1,
+        windowDeepDiveLimit: 0,
         deepDiveAccess: false,
         politicalAccess: false,
         watchlistLimit: 1,
@@ -50,6 +50,7 @@ export async function GET() {
       displayName: null,
       monthlyUsage: null,
       monthlyDeepDiveUsage: null,
+      windowUsage: null,
       subscriptionStatus: null,
       cancelAtPeriodEnd: false,
     });
