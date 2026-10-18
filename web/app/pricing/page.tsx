@@ -25,7 +25,8 @@ const PLANS = [
     forWho: "For individuals and casual research",
     value: "25 quick profiles a month — enough to check out a company, person, or product without committing to more.",
     features: [
-      "25 quick profiles / mo",
+      "25 quick profiles a month",
+      "Up to 10 per 8-hour window",
       "Company, person, and product research",
       "Watchlist (5 entities)",
       "Markdown export",
@@ -44,6 +45,7 @@ const PLANS = [
     features: [
       "Everything in Basic",
       "300 quick profiles a month",
+      "Up to 50 per 8-hour window",
       "50 Deep Dive reports a month (10 sections)",
       "Unlimited Watchlist",
       "PDF export",
@@ -57,13 +59,13 @@ const PLANS = [
     price: "$149",
     period: "/mo",
     forWho: "For small firms and deal teams",
-    value: "Pro with higher daily limits. Team features (a shared workspace, team watchlists and API access) are in development and not included yet.",
+    value: "Pro with higher limits, for teams that run research every day.",
     features: [
       "Pro features with higher limits",
-      "200 quick profiles a day",
-      "20 Deep Dive reports a day",
+      "200 quick profiles per 8-hour window",
+      "20 Deep Dive reports per 8-hour window",
+      "No monthly cap",
       "Watchlist (50 entities)",
-      "Team features in development",
     ],
     cta: "Contact Us →",
     highlight: false,
@@ -72,16 +74,20 @@ const PLANS = [
 ];
 
 const COMPARE_ROWS: [string, string, string, string][] = [
-  ["Quick profiles / month", "25", "300", "200 a day"],
-  ["Deep Dive reports", "—", "50 a month", "20 a day"],
+  ["Quick profiles a month", "25", "300", "No cap"],
+  ["Quick profiles per 8-hour window", "10", "50", "200"],
+  ["Deep Dive reports a month", "—", "50", "No cap"],
+  ["Deep Dive reports per 8-hour window", "—", "No cap", "20"],
   ["Watchlist entities", "5", "Unlimited", "50"],
   ["Knowledge Graph", "—", "Included", "Included"],
   ["Export formats", "Markdown", "Markdown + PDF", "Markdown + PDF"],
-  ["Shared workspace", "—", "—", "In development"],
-  ["API access", "—", "—", "In development"],
 ];
 
 const FAQS = [
+  {
+    q: "How does the 8-hour window work?",
+    a: "Your first report or Deep Dive starts an 8-hour window. Each plan gets a set number of runs inside it, and the count resets when the window ends. Your next run after that starts a new one. The sidebar shows what's left and when it resets.",
+  },
   {
     q: "What happens when I hit my Basic profile limit?",
     a: "You'll be prompted to upgrade to Pro for 300 profiles a month, or wait until your monthly limit resets. Nothing runs automatically or bills you without confirmation.",
@@ -145,6 +151,7 @@ export default function PricingPage() {
           ))}
         </div>
         <p className={styles.finePrint}>
+          The 8-hour window starts with your first run and resets 8 hours later, so a full work day never runs into tomorrow&apos;s limit.<br />
           Refunds within 7 days of your first charge, on request.<br />
           Need higher limits? Email <a href="mailto:support@metisanalytic.com">support@metisanalytic.com</a>.
         </p>

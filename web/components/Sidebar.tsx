@@ -6,6 +6,7 @@ import { createClient } from "../lib/supabase/client";
 import { useResearch } from "../lib/research-context";
 import { useTier } from "../lib/tier-context";
 import { BUSINESS_INTELLIGENCE_PATH, DILIGENCE_URL } from "../lib/products";
+import { upgradeTarget, usageRows } from "../lib/usage";
 import { Spinner } from "./Skeleton";
 import styles from "./Sidebar.module.css";
 
@@ -38,7 +39,7 @@ export default function Sidebar() {
   const router   = useRouter();
   const supabase = createClient();
   const { pending } = useResearch();
-  const { isInternal, tier, displayName } = useTier();
+  const { isInternal, tier, displayName, monthlyUsage, monthlyDeepDiveUsage, windowUsage } = useTier();
   const initials = displayName
     ? displayName.split(" ").filter(Boolean).map(w => w[0]).slice(0, 2).join("").toUpperCase()
     : "?";
@@ -46,6 +47,13 @@ export default function Sidebar() {
   // that designator stays low-profile, visible only in Settings > Account
   // for the account holder themselves rather than displayed at a glance.
   const badge = tier && tier !== "internal" ? TIER_BADGE[tier] : undefined;
+
+  // Usage meters + upgrade prompt. Free/Basic always see the upgrade
+  // button; Pro only once a cap is near, since Team is a sales email.
+  const usage = usageRows({ monthlyUsage, monthlyDeepDiveUsage, windowUsage });
+  const nearLimit = usage.some(r => r.status !== "ok");
+  const upgrade = upgradeTarget(tier);
+  const showUpgrade = !!upgrade && (tier !== "pro" || nearLimit);
 
   // Nav items are click-handlers rather than <Link>s, so there's no
   // built-in feedback between the click and the next page rendering.
@@ -110,6 +118,38 @@ export default function Sidebar() {
           <span className={styles.toastText}>
             Researching {pending.subject}...
           </span>
+        </div>
+      )}
+
+      {(usage.length > 0 || showUpgrade) && (
+        <div className={`${styles.planCard} ${nearLimit ? styles.planCardWarn : ""}`}>
+          {usage.map(row => (
+            <div key={row.key} className={styles.meter}>
+              <div className={styles.meterHead}>
+                <span>{row.label} <span className={styles.meterTag}>· {row.periodTag}</span></span>
+                <span className={`${styles.meterCount} ${row.status !== "ok" ? styles[row.status] : ""}`}>
+                  {row.used}/{row.limit}
+                </span>
+              </div>
+              <div className={styles.meterTrack}>
+                <div
+                  className={`${styles.meterFill} ${row.status !== "ok" ? styles[row.status] : ""}`}
+                  style={{ width: `${row.pct}%` }}
+                />
+              </div>
+              {row.status !== "ok" && (
+                <div className={`${styles.meterNote} ${styles[row.status]}`}>
+                  {row.status === "danger" ? "Limit reached" : "Almost out"}{row.resets ? ` · resets ${row.resets}` : ""}
+                </div>
+              )}
+            </div>
+          ))}
+          {showUpgrade && upgrade && (
+            <>
+              {!nearLimit && <div className={styles.planPitch}>{upgrade.pitch}</div>}
+              <a className={styles.upgradeBtn} href={upgrade.href}>{upgrade.label} →</a>
+            </>
+          )}
         </div>
       )}
 
