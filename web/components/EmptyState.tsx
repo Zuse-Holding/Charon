@@ -1,6 +1,6 @@
 "use client";
 import { ReactNode } from "react";
-import styles from "./EmptyState.module.css";
+import { StateView } from "../metis-ui";
 
 interface EmptyStateAction {
   label: string;
@@ -8,40 +8,33 @@ interface EmptyStateAction {
 }
 
 interface EmptyStateProps {
-  /** Single glyph/icon, matches the app's icon set (◈ ◎ ◆ ⊞ ⊕ etc.) */
+  /** Kept for existing callers; the shared state view uses its own glyph. */
   icon?: string;
+  /** What happened ("No research yet"). */
   title: string;
-  /** Supporting copy. Accepts a node so callers can bold/link/break as needed. */
+  /** What the person can do, or more detail when there's also a button. */
   description?: ReactNode;
   action?: EmptyStateAction;
-  /** "compact" for tight spaces — table cells, narrow panels, list rows. */
+  /** When this changes on its own; null when only the person can change it. */
+  when: string | null;
+  /** "compact" for tight spaces: table cells, narrow panels, list rows. */
   size?: "default" | "compact";
 }
 
 /**
- * Shared empty-state pattern used across Dashboard, Watchlist, Reports,
- * Intel Feed, and the Research view — replaces one-off inline
- * "No X yet." text so empty states look and read consistently everywhere.
+ * Intelligence's empty state, now the shared Metis StateView (web/metis-ui)
+ * so empty states read the same on every Metis site: what happened, what
+ * you can do, when it changes.
  */
-export default function EmptyState({
-  icon = "◈",
-  title,
-  description,
-  action,
-  size = "default",
-}: EmptyStateProps) {
+export default function EmptyState({ title, description, action, when, size = "default" }: EmptyStateProps) {
   return (
-    <div className={`${styles.empty} ${size === "compact" ? styles.compact : ""}`}>
-      <div className={styles.iconWrap}>
-        <span className={styles.icon}>{icon}</span>
-      </div>
-      <div className={styles.title}>{title}</div>
-      {description && <div className={styles.description}>{description}</div>}
-      {action && (
-        <button className={styles.action} onClick={action.onClick}>
-          {action.label}
-        </button>
-      )}
-    </div>
+    <StateView
+      kind="empty"
+      compact={size === "compact"}
+      what={title}
+      detail={action ? description : undefined}
+      action={action ? <button className="m-btn m-btn-ghost" onClick={action.onClick}>{action.label}</button> : description ?? null}
+      when={when}
+    />
   );
 }

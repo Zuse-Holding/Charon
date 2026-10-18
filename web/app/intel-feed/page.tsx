@@ -215,7 +215,7 @@ export default function IntelFeed() {
                         );
                       })}
                       {feed.items.length === 0 && (
-                        <EmptyState size="compact" icon="◆" title="No signals found" />
+                        <EmptyState size="compact" icon="◆" title="No signals found for this company yet." description="Check back after its next refresh, or run fresh research on it." when="Signals refresh with each watchlist update." />
                       )}
                     </div>
                   )}

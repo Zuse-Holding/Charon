@@ -351,6 +351,7 @@ export default function DashboardPage() {
                       size="compact"
                       icon="◈"
                       title="Nothing to brief yet"
+                      when="Your brief updates after each research run."
                       description="Run some research to populate your brief."
                     />
                   )}
@@ -387,6 +388,7 @@ export default function DashboardPage() {
                       size="compact"
                       icon="◎"
                       title="Watchlist is empty"
+                      when={null}
                       description="Add companies from the research view to track them here."
                       action={{ label: "Go to Research", onClick: () => router.push("/app") }}
                     />
@@ -432,7 +434,7 @@ export default function DashboardPage() {
                   </div>
                   {!loaded.intel && <GhostCards count={3} />}
                   {loaded.intel && intel.length === 0 && (
-                    <EmptyState size="compact" icon="◆" title="Feed is quiet" description="No intel items yet." />
+                    <EmptyState size="compact" icon="◆" title="Feed is quiet" description="No intel items yet." when="New items appear as the companies you watch change." />
                   )}
                   {intel.slice(0, 6).map((item) => (
                     <div key={item.id} style={{ ...S.card, cursor: "pointer" }}
@@ -455,7 +457,7 @@ export default function DashboardPage() {
                   <div style={S.panelTitle}>Recent Research</div>
                   {!loaded.runs && <GhostCards count={4} />}
                   {loaded.runs && recentRuns.length === 0 && (
-                    <EmptyState size="compact" icon="⊞" title="No research yet" description="Run your first query above." />
+                    <EmptyState size="compact" icon="⊞" title="No research yet" description="Run your first query above." when={null} />
                   )}
                   {recentRuns.slice(0, 8).map((run) => (
                     <div

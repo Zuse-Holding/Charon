@@ -1,22 +1,23 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:       #0A0A0F;
-  --surface:  #1A1A24;
-  --surface2: #22222E;
-  --border:   #2A2A38;
-  --orange:   #FF6B2B;
-  --cyan:     #00E5FF;
-  --green:    #00FF94;
-  --red:      #FF4455;
-  --yellow:   #FFD447;
-  --text:     #E8E8F0;
-  --muted:    #8E8EA3; /* text: 6.2:1 on --bg, 5.4:1 on --surface (WCAG AA) */
+  /* Mapped onto the shared metis-ui tokens (web/metis-ui/metis-ui.css). */
+  --bg: var(--m-bg);
+  --surface: var(--m-surface);
+  --surface2: var(--m-surface-2);
+  --border: var(--m-border);
+  --orange: var(--m-accent);
+  --cyan: var(--m-info);
+  --green: var(--m-good);
+  --red: var(--m-bad);
+  --yellow: var(--m-warn);
+  --text: var(--m-text);
+  --muted: var(--m-muted); /* text: 7.2:1 on --bg, 6.6:1 on --surface (WCAG AA) */
   --muted-line: #6B6B80; /* non-text only: hover borders, toggles */
   --sw:       220px;
-  --font-display: 'Space Grotesk', sans-serif;
-  --font-body:    'Inter', sans-serif;
-  --font-mono:    'JetBrains Mono', monospace;
+  --font-display: var(--m-font-display);
+  --font-body: var(--m-font-body);
+  --font-mono: var(--m-font-mono);
 }
 
 html, body {

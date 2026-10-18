@@ -126,6 +126,7 @@ export default function Reports() {
                         size="compact"
                         icon="⊞"
                         title="No reports found"
+                        when={null}
                         description="Run your first research query above."
                         action={{ label: "Start Research", onClick: () => router.push("/app") }}
                       />
