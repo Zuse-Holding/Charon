@@ -195,12 +195,14 @@ export class ReportAgent {
     }
 
     lines.push(`## Recent News`);
-    if (bundle.news.length === 0) {
+    // An undated item can't claim to be recent, so it's left out here.
+    const datedNews = bundle.news.filter((n) => n.date);
+    if (datedNews.length === 0) {
       lines.push(`_No recent news found._`);
     } else {
       // headline · outlet · date, as a link. ReportViewer renders the
       // part after " — " as the card's subline.
-      for (const n of bundle.news) {
+      for (const n of datedNews) {
         const meta = [n.outlet, n.date].filter(Boolean).join(" · ");
         lines.push(`- [${n.headline}](${n.url ?? "#"})${meta ? ` — ${meta}` : ""}`);
       }
