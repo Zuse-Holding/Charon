@@ -1,5 +1,5 @@
 .shell {
-  min-height: 100vh;
+  min-height: calc(100vh - 64px); /* below the shared 64px header */
   background: var(--bg);
   display: flex;
   align-items: center;
@@ -16,24 +16,6 @@
   padding: 32px;
 }
 
-.logo {
-  text-align: center;
-  margin-bottom: 28px;
-}
-.logoMark {
-  font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: var(--orange);
-}
-.logoSub {
-  font-family: var(--font-mono);
-  font-size: 8px;
-  color: var(--muted);
-  letter-spacing: 0.12em;
-  margin-top: 4px;
-}
 
 .tabRow {
   display: flex;
