@@ -34,8 +34,8 @@ export function MetisHeader({ product, homeHref = "/", links = [], actions, sign
       </a>
 
       <details className="m-switcher">
-        <summary>
-          Products <span aria-hidden>▾</span>
+        <summary aria-label="Metis products">
+          <span className="m-switcher-label">Products</span> <span aria-hidden>▾</span>
         </summary>
         <ul className="m-switcher-menu">
           {PRODUCTS.map((p) => (

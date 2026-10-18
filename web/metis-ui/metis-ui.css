@@ -155,11 +155,26 @@ body { font-variant-numeric: tabular-nums; }
 .m-header-links + .m-header-actions { margin-left: 0; }
 .m-switcher + .m-header-actions { margin-left: auto; }
 
+.m-switcher summary, .m-btn, .m-brand-text { white-space: nowrap; }
+
 @media (max-width: 720px) {
   .m-header { gap: var(--m-space-3); padding: 0 var(--m-space-4); }
   .m-header-links { display: none; }
   .m-header-actions { margin-left: auto; }
-  .m-switcher-menu { width: min(300px, calc(100vw - 32px)); }
+  /* Anchor the menu to the header, not the button, so it never runs off
+     the right edge of a phone. */
+  .m-switcher { position: static; }
+  .m-switcher-menu { left: var(--m-space-4); right: var(--m-space-4); width: auto; }
+}
+
+/* Phones: one header button. When there's a primary action, the ghost one
+   (usually "Sign in") steps aside; the signup page links to sign-in. */
+@media (max-width: 480px) {
+  .m-header { gap: var(--m-space-2); }
+  .m-header-actions .m-btn-ghost:not(:only-child) { display: none; }
+  .m-btn { padding: 0 var(--m-space-3); }
+  .m-switcher summary { padding: var(--m-space-2); }
+  .m-switcher-label { display: none; }
 }
 
 /* ---------- footer ---------- */

@@ -771,7 +771,10 @@ function ReportGlance({ sections }: { sections: Section[] }) {
   const confirmed = findings?.match(/(\d+) confirmed/)?.[1];
   const unverified = findings?.match(/(\d+) unverified/)?.[1];
   const total = findings?.match(/(\d+) findings/)?.[1];
-  const risk = parseListItems(find("Risks")?.content ?? [])[0];
+  // Sourced sections only: an unverified risk shouldn't be the headline.
+  const risks = find("Risks");
+  const risksSourced = risks && !risks.content.some((l) => /Unverified — no sources/.test(l));
+  const risk = risksSourced ? parseListItems(risks.content)[0] : undefined;
   if (!summary && !coverage && !findings) return null;
 
   const stats: [string, string][] = [];
