@@ -101,8 +101,14 @@ export function buildCompanyProvenance(b: ResearchBundle, snapshots: Snapshot[])
     const term = f.amount ?? f.round;
     if (claim) c.push({ section: "Funding", claim, terms: term ? [term] : [], method: "ai_extracted" });
   }
-  for (const r of b.risks ?? []) c.push({ section: "Risks", claim: clean(r), terms: numericTerms(r), method: "ai_extracted" });
-  for (const o of b.opportunities ?? []) c.push({ section: "Opportunities", claim: clean(o), terms: numericTerms(o), method: "ai_extracted" });
+  // Risks/Opportunities are analysis: traced to the sources they were
+  // synthesized from when the run recorded them (see synthesis-agent).
+  const analysis = (section: string, text: string): Candidate => {
+    const cited = b.synthesisCitations?.[text];
+    return { section, claim: clean(text), terms: numericTerms(text), method: "ai_extracted", recordUrl: cited?.[0], citedUrls: cited };
+  };
+  for (const r of b.risks ?? []) c.push(analysis("Risks", r));
+  for (const o of b.opportunities ?? []) c.push(analysis("Opportunities", o));
   for (const n of b.news) {
     c.push({ section: "Recent News", claim: clean(n.headline), terms: [n.headline], method: "api", recordUrl: n.url });
   }

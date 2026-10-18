@@ -55,6 +55,33 @@ describe("company provenance", () => {
     assert.equal(by("Risks", "Customer concentration")?.verification, "unverified");
   });
 
+  it("traces a cited risk or opportunity to the sources it was synthesized from", () => {
+    const cited = buildCompanyProvenance({
+      ...company,
+      risks: ["Globex competes head to head"],
+      opportunities: ["Widget Pro demand from new buyers"],
+      synthesisCitations: {
+        "Globex competes head to head": ["https://news.example.com/acme"],
+        "Widget Pro demand from new buyers": ["https://acme.com/about", "https://news.example.com/acme"],
+      },
+    }, snapshots).record.findings;
+    const risk = cited.find((x) => x.section === "Risks");
+    assert.equal(risk?.verification, "single_source");
+    assert.equal(risk?.source_url, "https://news.example.com/acme");
+    assert.equal(cited.find((x) => x.section === "Opportunities")?.verification, "confirmed");
+  });
+
+  it("points an uncited analysis claim at its cited source even when that page wasn't stored", () => {
+    const r = buildCompanyProvenance({
+      ...company,
+      risks: ["Thin margins"],
+      synthesisCitations: { "Thin margins": ["https://elsewhere.example.org/report"] },
+    }, snapshots).record.findings.find((x) => x.section === "Risks");
+    assert.equal(r?.verification, "unverified");
+    assert.equal(r?.source_url, "https://elsewhere.example.org/report");
+    assert.equal(r?.source_name, "example.org"); // not the section fallback's "About Acme"
+  });
+
   it("stores a stand-in record for every claim no response contained", () => {
     const stored = new Set(built.snapshots.map((s) => s.sha256));
     for (const x of f) assert.ok(stored.has(x.snapshot_hash), `${x.claim} has no stored snapshot`);

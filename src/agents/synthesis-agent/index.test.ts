@@ -18,16 +18,16 @@ test("only input-section sources are citable, deduped by url", () => {
 
 test("cited items are kept and their sources tagged; uncited or out-of-range items are dropped", () => {
   const pool = [src("https://a.com", ["news"]), src("https://c.com", ["competitors"])];
-  const texts = resolveCitations(
+  const kept = resolveCitations(
     [
-      { text: "PayPal competition", sources: [2] },
+      { text: "PayPal competition", sources: [2, 2] },
       { text: "No citation", sources: [] },
       { text: "Bad citation", sources: [9] },
     ],
     pool,
     "risks"
   );
-  assert.deepEqual(texts, ["PayPal competition"]);
+  assert.deepEqual(kept, [{ text: "PayPal competition", urls: ["https://c.com"] }]);
   assert.deepEqual(pool[1].usedFor, ["competitors", "risks"]);
   assert.deepEqual(pool[0].usedFor, ["news"]);
 });

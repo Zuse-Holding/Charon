@@ -38,26 +38,31 @@ export function citableSources(sources: Source[]): Source[] {
 }
 
 /**
- * Keeps items with at least one valid citation and tags each cited source
- * (pool entries are the bundle's own Source objects) with `tag`.
+ * Keeps items with at least one valid citation, returning each with its
+ * cited URLs, and tags each cited source (pool entries are the bundle's
+ * own Source objects) with `tag`.
  */
-export function resolveCitations(items: { text: string; sources: number[] }[], pool: Source[], tag: string): string[] {
-  const texts: string[] = [];
+export function resolveCitations(
+  items: { text: string; sources: number[] }[],
+  pool: Source[],
+  tag: string
+): { text: string; urls: string[] }[] {
+  const kept: { text: string; urls: string[] }[] = [];
   for (const item of items) {
-    const valid = item.sources.filter((n) => Number.isInteger(n) && n >= 1 && n <= pool.length);
+    const valid = [...new Set(item.sources.filter((n) => Number.isInteger(n) && n >= 1 && n <= pool.length))];
     if (valid.length === 0) continue;
-    texts.push(item.text);
+    kept.push({ text: item.text, urls: valid.map((n) => pool[n - 1].url) });
     for (const n of valid) {
       const s = pool[n - 1];
       if (!s.usedFor.includes(tag)) s.usedFor.push(tag);
     }
   }
-  return texts;
+  return kept;
 }
 
 export async function synthesizeRisksOpportunities(
   bundle: ResearchBundle
-): Promise<{ risks: string[]; opportunities: string[] } | null> {
+): Promise<{ risks: string[]; opportunities: string[]; citations: Record<string, string[]> } | null> {
   const pool = citableSources(bundle.sources);
   const context = JSON.stringify(
     {
@@ -90,8 +95,11 @@ RULES — these are non-negotiable:
 
   if (!result) return null;
 
+  const risks = resolveCitations(result.risks ?? [], pool, "risks");
+  const opportunities = resolveCitations(result.opportunities ?? [], pool, "opportunities");
   return {
-    risks: resolveCitations(result.risks ?? [], pool, "risks"),
-    opportunities: resolveCitations(result.opportunities ?? [], pool, "opportunities"),
+    risks: risks.map((r) => r.text),
+    opportunities: opportunities.map((o) => o.text),
+    citations: Object.fromEntries([...risks, ...opportunities].map((i) => [i.text, i.urls])),
   };
 }

@@ -249,6 +249,10 @@ export interface ResearchBundle {
   sources: Source[];
   risks?: string[];
   opportunities?: string[];
+  /** The source URLs each risk/opportunity was synthesized from, keyed by
+   *  the item's text (see synthesis-agent). Provenance traces those items
+   *  to these sources, since their text never appears in any response. */
+  synthesisCitations?: Record<string, string[]>;
   federalSpending?: FederalSpendingEntry[];
   insiderActivity?: Form4Entry[];
   // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess).

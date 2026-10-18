@@ -1,19 +1,19 @@
 # Stripe — Research Report
 
-*Generated 2026-10-18T18:45:19.132Z*
+*Generated 2026-10-18T18:52:25.378Z*
 
 ## Executive Summary
-Stripe is a technology company that provides financial infrastructure for businesses to accept payments and manage their operations online.
+A financial services platform that helps businesses accept payments, build billing models, and manage money movement.
 
 **Sources:**
 1. [Stripe](https://www.stripe.com)
 2. [Stripe | Financial Infrastructure to Grow Your Revenue](https://stripe.com/)
-3. [What Is Stripe and How Does It Work? Quick Guide for Small ...](https://www.youtube.com/watch?v=XSMfwiZBOvs&xstg=CAMSBhUDze3xHw%3D%3D)
+3. [What Is Stripe and How Does It Work? Quick Guide for Small ...](https://www.youtube.com/watch?v=XSMfwiZBOvs)
 4. [Stripe, Inc.](https://en.wikipedia.org/wiki/Stripe,_Inc.)
 
 ## Source Coverage
 _6 of 15 sources searched; 9 require manual check._
-- [results] Company website and web search | Global | web | 5 results, see Leadership | -
+- [results] Company website and web search | Global | web | 9 results, see Leadership | -
 - [results] News search | Global | news | 5 results, see Recent News | -
 - [results] Competitor search | Global | web | 8 results, see Competitors | -
 - [results] SEC EDGAR filings and funding news | US federal | corporate filings | 4 results, see Funding | -
@@ -33,28 +33,32 @@ _6 of 15 sources searched; 9 require manual check._
 - **Website:** https://www.stripe.com
 - **Founded:** 2010
 - **Headquarters:** San Francisco and Dublin
-- **Industry:** Financial Technology
+- **Industry:** Financial Services
 
 **Sources:**
 1. [Stripe](https://www.stripe.com)
 2. [Stripe | Financial Infrastructure to Grow Your Revenue](https://stripe.com/)
-3. [What Is Stripe and How Does It Work? Quick Guide for Small ...](https://www.youtube.com/watch?v=XSMfwiZBOvs&xstg=CAMSBhUDze3xHw%3D%3D)
+3. [What Is Stripe and How Does It Work? Quick Guide for Small ...](https://www.youtube.com/watch?v=XSMfwiZBOvs)
 4. [Stripe, Inc.](https://en.wikipedia.org/wiki/Stripe,_Inc.)
 
 ## Leadership
 - **Patrick Collison** — Cofounder and CEO
 - **John Collison** — Cofounder and President
 - **William Alvarado** — Chief Business Officer
+- **Claire Johnson** — Chief Operating Officer
 
 **Sources:**
 1. [Stripe Newsroom | Information and assets](https://stripe.com/newsroom/information)
 2. [Stripe CEO and Key Executive Team](https://craft.co/stripe/executives)
 3. [Patrick Collison - Stripe CEO](https://www.linkedin.com/in/patrickcollison)
 4. [Who is the CEO of Stripe in 2026? Patrick Collison](https://www.unifygtm.com/insights/executives/stripe-ceo)
-5. [Stripe executive team & leadership](https://derrick-app.com/company/stripe/executives)
+5. [Stripe Executive Team](https://www.comparably.com/companies/stripe/executive-team)
 
 ## Products
 - **Stripe Dashboard**
+- **SDKs**
+- **APIs**
+- **MCP server**
 
 **Sources:**
 1. [Stripe | Financial Infrastructure to Grow Your Revenue](https://stripe.com/)
@@ -84,15 +88,11 @@ _6 of 15 sources searched; 9 require manual check._
 - Stripe faces direct competition from established payment processors including PayPal, Adyen, and Square.
 
 **Sources:**
-1. [Stripe](https://www.stripe.com)
-2. [Stripe Alternatives | Top 7 Providers in 2026](https://www.paddle.com/alternatives/stripe)
-3. [Best Stripe Connect Alternatives for Business Payouts](https://tipalti.com/resources/learn/stripe-competitors-and-alternatives/)
-4. [3 Reasons Why You're Searching for Stripe Competitors](https://www.bluesnap.com/stripe-competitors/)
-5. [Stripe competitors: Finding the best payment processor for ...](https://memberful.com/blog/stripe-competitors/)
+1. [Stripe Statistics 2026: Volume, Valuation and Users](https://www.chargeflow.io/blog/stripe-statistics)
 
 ## Opportunities
-- John Collison identifies agentic commerce and increased stablecoin usage as primary drivers for new product investment.
-- Stripe is expanding its footprint in the AI sector through the acquisition of OpenRouter and four other companies since the start of 2025.
+- John Collison identifies growth potential in agentic commerce and the increasing use of stablecoins.
+- Stripe is expanding its footprint in AI-driven commerce through the acquisition of OpenRouter and four other companies since the start of 2025.
 
 **Sources:**
 1. [Stripe tips toward staying private](https://www.paymentsdive.com/news/stripe-tips-toward-staying-private/828572/)
@@ -138,18 +138,22 @@ _stripe.com: no flags. Public records only: registration (RDAP), public DNS and 
 - [ok] TLS certificate | Certificate valid until 2026-12-10, issued by DigiCert, Inc. | - | [TLS certificate (HTTPS handshake)](https://stripe.com/)
 
 ## Findings and Sources
-_34 findings: 8 confirmed by two or more sources, 24 from a single source, 2 unverified. 30 source responses stored._
+_38 findings: 10 confirmed by two or more sources, 28 from a single source, 0 unverified. 30 source responses stored._
 - [confirmed] Company Overview | Founded: 2010 | [paymentsdive.com](https://www.paymentsdive.com/news/stripe-tips-toward-staying-private/828572/) | 2026-10-18 | ai_extracted
 - [single_source] Company Overview | Headquarters: San Francisco and Dublin | [stripe.com](https://stripe.com/newsroom/information) | 2026-10-18 | ai_extracted
-- [single_source] Company Overview | Industry: Financial Technology | [wikipedia.org](https://en.wikipedia.org/wiki/Stripe,_Inc.) | 2026-10-18 | ai_extracted
+- [confirmed] Company Overview | Industry: Financial Services | [stripe.com](https://www.stripe.com/) | 2026-10-18 | ai_extracted
 - [confirmed] Leadership | Patrick Collison — Cofounder and CEO | [stripe.com](https://www.stripe.com/) | 2026-10-18 | ai_extracted
 - [confirmed] Leadership | John Collison — Cofounder and President | [stripe.com](https://www.stripe.com/) | 2026-10-18 | ai_extracted
 - [single_source] Leadership | William Alvarado — Chief Business Officer | [craft.co](https://craft.co/stripe/executives) | 2026-10-18 | ai_extracted
+- [single_source] Leadership | Claire Johnson — Chief Operating Officer | [comparably.com](https://www.comparably.com/companies/stripe/executive-team) | 2026-10-18 | ai_extracted
 - [single_source] Products | Stripe Dashboard | [stripe.com](https://www.stripe.com/) | 2026-10-18 | ai_extracted
+- [single_source] Products | SDKs | [stripe.com](https://www.stripe.com/) | 2026-10-18 | ai_extracted
+- [confirmed] Products | APIs | [stripe.com](https://www.stripe.com/) | 2026-10-18 | ai_extracted
+- [single_source] Products | MCP server | [stripe.com](https://www.stripe.com/) | 2026-10-18 | ai_extracted
 - [confirmed] Competitors | PayPal | [stripe.com](https://www.stripe.com/) | 2026-10-18 | ai_extracted
 - [confirmed] Competitors | Square | [paymentsdive.com](https://www.paymentsdive.com/news/stripe-tips-toward-staying-private/828572/) | 2026-10-18 | ai_extracted
-- [confirmed] Competitors | Adyen | [wikipedia.org](https://en.wikipedia.org/wiki/Stripe,_Inc.) | 2026-10-18 | ai_extracted
-- [confirmed] Competitors | Braintree | [wikipedia.org](https://en.wikipedia.org/wiki/Stripe,_Inc.) | 2026-10-18 | ai_extracted
+- [confirmed] Competitors | Adyen | [chargeflow.io](https://www.chargeflow.io/blog/stripe-statistics) | 2026-10-18 | ai_extracted
+- [confirmed] Competitors | Braintree | [chargeflow.io](https://www.chargeflow.io/blog/stripe-statistics) | 2026-10-18 | ai_extracted
 - [single_source] Competitors | Checkout.com | [chargeflow.io](https://www.chargeflow.io/blog/stripe-statistics) | 2026-10-18 | ai_extracted
 - [single_source] Competitors | Authorize.net | [chargeflow.io](https://www.chargeflow.io/blog/stripe-statistics) | 2026-10-18 | ai_extracted
 - [single_source] Competitors | BlueSnap | [bluesnap.com](https://www.bluesnap.com/stripe-competitors/) | 2026-10-18 | ai_extracted
@@ -157,9 +161,9 @@ _34 findings: 8 confirmed by two or more sources, 24 from a single source, 2 unv
 - [single_source] Funding | $2.3 billion | [equitybee.com](https://equitybee.com/companies/company?company=stripe) | 2026-10-18 | ai_extracted
 - [single_source] Funding | $150 million | [retaildive.com](https://www.retaildive.com/news/stripe-raises-more-funding-to-pursue-acquisitions-expansion/431126/) | 2026-10-18 | ai_extracted
 - [single_source] Funding | $10 billion | [equitybee.com](https://equitybee.com/companies/company?company=stripe) | 2026-10-18 | ai_extracted
-- [unverified] Risks | Stripe faces direct competition from established payment processors including PayPal, Adyen, and Square. | [Stripe](https://www.stripe.com/) | 2026-10-18 | ai_extracted
-- [unverified] Opportunities | John Collison identifies agentic commerce and increased stablecoin usage as primary drivers for new product investment. | [Stripe](https://www.stripe.com/) | 2026-10-18 | ai_extracted
-- [confirmed] Opportunities | Stripe is expanding its footprint in the AI sector through the acquisition of OpenRouter and four other companies since the start of 2025. | [usaspending.gov](https://api.usaspending.gov/api/v2/search/spending_by_award/) | 2026-10-18 | ai_extracted
+- [single_source] Risks | Stripe faces direct competition from established payment processors including PayPal, Adyen, and Square. | [chargeflow.io](https://www.chargeflow.io/blog/stripe-statistics) | 2026-10-18 | ai_extracted
+- [single_source] Opportunities | John Collison identifies growth potential in agentic commerce and the increasing use of stablecoins. | [paymentsdive.com](https://www.paymentsdive.com/news/stripe-tips-toward-staying-private/828572/) | 2026-10-18 | ai_extracted
+- [confirmed] Opportunities | Stripe is expanding its footprint in AI-driven commerce through the acquisition of OpenRouter and four other companies since the start of 2025. | [ft.com](https://www.ft.com/content/b536b114-8a82-41ef-8e44-42df0716dd03?syn-25a6b1a6=1) | 2026-10-18 | ai_extracted
 - [single_source] Recent News | Stripe tips toward staying private | [paymentsdive.com](https://www.paymentsdive.com/news/stripe-tips-toward-staying-private/828572/) | 2026-10-18 | api
 - [single_source] Recent News | Stripe Statistics 2026: Volume, Valuation and Users | [chargeflow.io](https://www.chargeflow.io/blog/stripe-statistics) | 2026-10-18 | api
 - [single_source] Recent News | 2026 Update: Lemon Squeezy + Stripe Managed Payments | [lemonsqueezy.com](https://www.lemonsqueezy.com/blog/2026-update) | 2026-10-18 | api
