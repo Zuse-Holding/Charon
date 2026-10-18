@@ -95,6 +95,31 @@
 .fields { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 .nameRow { display: flex; gap: 10px; }
 .nameRow .input { flex: 1; min-width: 0; }
+.nameRow .field { flex: 1; min-width: 0; }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.label { font-size: 12px; font-weight: 500; color: var(--text); }
+
+.pwRules { font-size: 11px; color: var(--muted); }
+.pwRuleMet { color: var(--green); }
+
+/* Plan carried in from a pricing CTA (?plan=basic|pro). */
+.planSummary {
+  border: 1px solid rgba(255, 107, 43, 0.35);
+  background: rgba(255, 107, 43, 0.06);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.planSummaryHead { display: flex; justify-content: space-between; align-items: baseline; }
+.planSummaryName { font-family: var(--font-display); font-size: 14px; font-weight: 700; color: var(--orange); }
+.planSummaryPrice { font-family: var(--font-mono); font-size: 13px; color: var(--text); }
+.planSummaryIncludes { font-size: 12px; color: var(--text); }
+.planSummaryNote { font-size: 11px; color: var(--muted); }
+.planSummaryLink { color: var(--orange); text-decoration: underline; }
 
 .sectionNote {
   font-size: 12px;
