@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import { useTier } from "../../lib/tier-context";
+import { SiteNav } from "../../components/marketing/MarketingShell";
 import styles from "./page.module.css";
 
 // Show/hide toggle for password fields — plain SVG eye / eye-off icons,
@@ -213,13 +214,10 @@ function LoginPage() {
   // ── Recovery landing view ──────────────────────────────────────────
   if (recoveryMode) {
     return (
+      <>
+      <SiteNav />
       <div className={styles.shell}>
         <div className={styles.card}>
-          <div className={styles.logo}>
-            <div className={styles.logoMark}>METIS</div>
-            <div className={styles.logoSub}>INTELLIGENCE</div>
-          </div>
-
           <form onSubmit={e => { e.preventDefault(); handleSetNewPassword(); }} noValidate>
             <div className={styles.fields}>
               <div className={styles.sectionNote}>Set a new password for your account.</div>
@@ -270,17 +268,15 @@ function LoginPage() {
           </form>
         </div>
       </div>
+      </>
     );
   }
 
   return (
+    <>
+    <SiteNav />
     <div className={styles.shell}>
       <div className={styles.card}>
-        <div className={styles.logo}>
-          <div className={styles.logoMark}>METIS</div>
-          <div className={styles.logoSub}>INTELLIGENCE</div>
-        </div>
-
         <div className={styles.tabRow}>
           <button
             className={`${styles.modeTab} ${mode === "signin" ? styles.modeActive : ""}`}
@@ -451,6 +447,7 @@ function LoginPage() {
         )}
       </div>
     </div>
+    </>
   );
 }
 
