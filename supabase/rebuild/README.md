@@ -55,7 +55,7 @@ key and the service-role (secret) key.
 | Railway agent server | `SUPABASE_URL` | project URL |
 | | `SUPABASE_SERVICE_ROLE_KEY` | service-role key |
 | | `SUPABASE_SECRET_KEY` (only if it's set there) | service-role key |
-| Local `.env` / `web/.env.local` | same names | same values |
+| Local `.env` and `web/.env` | same names | same values |
 
 Then redeploy `charon_v1` on Vercel and restart the Railway service. A new
 environment value only takes effect after a redeploy.
@@ -73,9 +73,9 @@ know which account is theirs, so they'd show as Free.
 1. Ask each subscriber to sign up again **with the same email** they pay with.
    Their emails are in the Stripe dashboard under Customers.
 2. Preview the links (changes nothing):
-   `cd web && npx tsx --env-file=.env.local scripts/relink-stripe-customers.ts`
+   `cd web && npx tsx --env-file=../.env scripts/relink-stripe-customers.ts`
 3. Write them:
-   `cd web && npx tsx --env-file=.env.local scripts/relink-stripe-customers.ts --apply`
+   `cd web && npx tsx --env-file=../.env scripts/relink-stripe-customers.ts --apply`
 4. Run it again whenever more subscribers have signed up again. It lists who
    is still missing.
 
