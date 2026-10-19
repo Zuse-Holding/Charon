@@ -49,16 +49,19 @@ ALTER TABLE research_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE watchlist     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE deep_dives    ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users manage own research runs" ON research_runs;
 CREATE POLICY "Users manage own research runs"
   ON research_runs FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users manage own watchlist" ON watchlist;
 CREATE POLICY "Users manage own watchlist"
   ON watchlist FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users manage own deep dives" ON deep_dives;
 CREATE POLICY "Users manage own deep dives"
   ON deep_dives FOR ALL
   USING (auth.uid() = user_id)
@@ -95,11 +98,13 @@ CREATE TABLE IF NOT EXISTS kg_relationships (
 ALTER TABLE kg_entities      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE kg_relationships ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users manage own entities" ON kg_entities;
 CREATE POLICY "Users manage own entities"
   ON kg_entities FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users manage own relationships" ON kg_relationships;
 CREATE POLICY "Users manage own relationships"
   ON kg_relationships FOR ALL
   USING (auth.uid() = user_id)
@@ -473,6 +478,7 @@ CREATE TABLE IF NOT EXISTS report_issues (
 
 ALTER TABLE report_issues ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users manage own report issues" ON report_issues;
 CREATE POLICY "Users manage own report issues"
   ON report_issues FOR ALL
   USING (auth.uid() = user_id)
