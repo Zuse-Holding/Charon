@@ -122,14 +122,25 @@ export default function Reports() {
                 {loaded && filtered.length === 0 && (
                   <tr>
                     <td colSpan={4} className={styles.empty}>
-                      <EmptyState
-                        size="compact"
-                        icon="⊞"
-                        title="No reports found"
-                        when={null}
-                        description="Run your first research query above."
-                        action={{ label: "Start Research", onClick: () => router.push("/app") }}
-                      />
+                      {runs.length === 0 ? (
+                        <EmptyState
+                          size="compact"
+                          icon="⊞"
+                          title="No reports yet"
+                          when={null}
+                          description={<>Type a company, person or product in the search bar above to run your first report, or <a href="/sample-report">see a finished sample</a>.</>}
+                          action={{ label: "Start research", onClick: () => router.push("/app") }}
+                        />
+                      ) : (
+                        <EmptyState
+                          size="compact"
+                          icon="⊞"
+                          title={search ? `No reports match "${search}"` : `No ${filter} reports yet`}
+                          when={null}
+                          description="Try part of the name, or show every report."
+                          action={{ label: "Show all reports", onClick: () => { setSearch(""); setFilter("all"); } }}
+                        />
+                      )}
                     </td>
                   </tr>
                 )}
