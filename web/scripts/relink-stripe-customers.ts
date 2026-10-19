@@ -9,8 +9,9 @@
  * writes the same fields the webhook writes.
  *
  * Dry run by default: prints what it would do and changes nothing.
- *   cd web && npx tsx --env-file=.env.local scripts/relink-stripe-customers.ts
- *   cd web && npx tsx --env-file=.env.local scripts/relink-stripe-customers.ts --apply
+ *   cd web && npx tsx --env-file=../.env scripts/relink-stripe-customers.ts
+ *   cd web && npx tsx --env-file=../.env scripts/relink-stripe-customers.ts --apply
+ * (the root .env has the Stripe keys; web/.env doesn't)
  *
  * Needs STRIPE_SECRET_KEY, STRIPE_PRICE_BASIC_MONTHLY, STRIPE_PRICE_PRO_MONTHLY,
  * NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (the NEW project's).
