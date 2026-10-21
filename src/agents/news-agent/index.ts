@@ -1,7 +1,7 @@
-import { NewsAgentResult, NewsEntry, Source } from "../../types/research.js";
+import { CompanyAnchor, NewsAgentResult, NewsEntry, Source } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
-import { isNewsIndexPage, isNewsNoise, newsDate, outletFromUrl } from "../../lib/news-noise.js";
+import { isNewsIndexPage, isNewsNoise, isUsableHeadline, mentionsCompany, newsDate, outletFromUrl } from "../../lib/news-noise.js";
 
 /**
  * News Agent
@@ -16,7 +16,9 @@ export class NewsAgent {
     private searcher: SearchProvider
   ) {}
 
-  async run(companyName: string): Promise<NewsAgentResult> {
+  /** @param anchor City/state the user gave (Fix 1): narrows the search
+   *  to that business instead of a better-documented namesake. */
+  async run(companyName: string, anchor: CompanyAnchor = {}): Promise<NewsAgentResult> {
     const currentYear = new Date().getFullYear();
     // 7/20 fix — same entity-override reject list website-agent uses, now
     // applied here too, both at the query (-site: exclusion) and as a
@@ -25,13 +27,16 @@ export class NewsAgent {
     // needs the per-entity registry specifically.
     const override = findOverride(companyName);
     const results = await this.searcher.search(
-      appendDomainExclusions(`"${companyName}" news ${currentYear}`, override),
+      appendDomainExclusions(`"${companyName}"${anchor.location ? ` ${anchor.location}` : ""} news ${currentYear}`, override),
       7
     );
 
     const filtered = results
       .filter(r => !isNewsNoise(r.url) && !isNewsIndexPage(r.url))
-      .filter(r => !isRejectedDomain(r.url, override));
+      .filter(r => !isRejectedDomain(r.url, override))
+      // An item must have a real headline and name this company; a hit
+      // that only matched loosely is usually about someone else.
+      .filter(r => isUsableHeadline(r.title) && mentionsCompany(`${r.title} ${r.snippet ?? ""}`, companyName));
     const top = filtered.slice(0, 5);
 
     // Fetch full text for top 2 articles in parallel — gives the LLM

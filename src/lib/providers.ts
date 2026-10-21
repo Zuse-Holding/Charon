@@ -13,6 +13,43 @@
 // SERPER_API_KEY is unset, search calls are skipped and the orchestrator
 // degrades gracefully (reports which sections lack data).
 
+import { isRefreshRun, recordSearchCall } from "./cost-tracking.js";
+
+/**
+ * Source cache (Fix 3): reruns within the window read the same search
+ * results and pages, so the same company gives the same facts. A run
+ * marked refresh (the user's "Run again") skips it. Only non-empty
+ * results are kept, so a failed call is retried next time.
+ */
+const CACHE_TTL_MS = Number(process.env.SOURCE_CACHE_HOURS ?? 72) * 3.6e6;
+
+class TtlCache<V> {
+  private map = new Map<string, { at: number; value: V }>();
+  constructor(private max: number) {}
+  get(key: string): V | undefined {
+    if (isRefreshRun()) return undefined;
+    const hit = this.map.get(key);
+    if (!hit) return undefined;
+    if (Date.now() - hit.at > CACHE_TTL_MS) { this.map.delete(key); return undefined; }
+    return hit.value;
+  }
+  set(key: string, value: V): void {
+    if (this.map.size >= this.max) this.map.delete(this.map.keys().next().value as string);
+    this.map.set(key, { at: Date.now(), value });
+  }
+}
+
+const searchCache = new TtlCache<SearchResult[]>(5000);
+const placesCache = new TtlCache<PlaceResult[]>(1000);
+// Raw HTML, so a smaller cap and only pages under 500 KB.
+const pageCache = new TtlCache<string>(300);
+
+export interface PlaceResult {
+  title: string;
+  address?: string;
+  website?: string;
+}
+
 export interface SearchResult {
   title: string;
   url: string;
@@ -64,6 +101,8 @@ export class DirectFetchProvider implements FetchProvider {
 
   async fetchText(url: string): Promise<string | null> {
     if (isUnfetchable(url)) return null;
+    const cached = pageCache.get(url);
+    if (cached !== undefined) return cached;
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -79,7 +118,9 @@ export class DirectFetchProvider implements FetchProvider {
       if (!res.ok) return null;
       const contentType = res.headers.get("content-type") ?? "";
       if (!contentType.includes("text/html") && !contentType.includes("text/plain")) return null;
-      return await res.text();
+      const text = await res.text();
+      if (text && text.length < 500_000) pageCache.set(url, text);
+      return text;
     } catch {
       return null;
     }
@@ -100,6 +141,10 @@ export class SerperSearchProvider implements SearchProvider {
 
   async search(query: string, count = 5, tbs?: string): Promise<SearchResult[]> {
     if (!this.apiKey) return [];
+    const key = `${query}|${count}|${tbs ?? ""}`;
+    const cached = searchCache.get(key);
+    if (cached) return cached;
+    recordSearchCall();
     try {
       const res = await fetch("https://google.serper.dev/search", {
         method: "POST",
@@ -113,12 +158,39 @@ export class SerperSearchProvider implements SearchProvider {
       const data = (await res.json()) as {
         organic?: { title: string; link: string; snippet?: string; date?: string }[];
       };
-      return (data.organic ?? []).map((r) => ({
+      const results = (data.organic ?? []).map((r) => ({
         title: r.title,
         url: r.link,
         snippet: r.snippet,
         date: r.date,
       }));
+      if (results.length > 0) searchCache.set(key, results);
+      return results;
+    } catch {
+      return [];
+    }
+  }
+
+  /** Google Maps-style business listings (Serper /places): name, street
+   *  address and website, used to list same-named businesses (Fix 1). */
+  async places(query: string): Promise<PlaceResult[]> {
+    if (!this.apiKey) return [];
+    const cached = placesCache.get(query);
+    if (cached) return cached;
+    recordSearchCall();
+    try {
+      const res = await fetch("https://google.serper.dev/places", {
+        method: "POST",
+        headers: { "X-API-KEY": this.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ q: query }),
+      });
+      if (!res.ok) return [];
+      const data = (await res.json()) as { places?: { title?: string; address?: string; website?: string }[] };
+      const results = (data.places ?? [])
+        .filter((p): p is { title: string; address?: string; website?: string } => Boolean(p.title))
+        .map((p) => ({ title: p.title, address: p.address, website: p.website }));
+      if (results.length > 0) placesCache.set(query, results);
+      return results;
     } catch {
       return [];
     }

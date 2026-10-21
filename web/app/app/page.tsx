@@ -390,7 +390,8 @@ function Dashboard() {
                           await fetch("/api/research", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ subject: currentSubject, type: currentType }),
+                            // A rerun is an explicit refresh: fresh sources, not the cache (Fix 3).
+                            body: JSON.stringify({ subject: currentSubject, type: currentType, refresh: true }),
                           });
                           await new Promise(r => setTimeout(r, 1500));
                           const data = await loadRuns();

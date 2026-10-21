@@ -33,6 +33,8 @@ export async function POST(req: NextRequest) {
   // Validate input
   const body = await req.json();
   const { subject, type } = body;
+  // "Run again" asks for fresh sources instead of the cached ones (Fix 3).
+  const refresh = body.refresh === true;
   if (!subject || !type || !CLI_COMMANDS[type]) {
     return NextResponse.json({ error: "subject and valid type required" }, { status: 400 });
   }
@@ -62,7 +64,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         "x-agent-secret": getAgentSecret(),
       },
-      body: JSON.stringify({ subject: sanitizedSubject, type, userId: user.id }),
+      body: JSON.stringify({ subject: sanitizedSubject, type, userId: user.id, refresh }),
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });

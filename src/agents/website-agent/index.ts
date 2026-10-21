@@ -1,4 +1,5 @@
 import {
+  CompanyAnchor,
   CompanyProfile,
   LeadershipEntry,
   ProductEntry,
@@ -15,8 +16,30 @@ import {
 import {
   extractPeopleWithTitles,
   extractProductCandidates,
+  cleanProducts,
   PRODUCT_STOPWORDS,
 } from "../../lib/nlp.js";
+import { mentionsCompany, normalizeWords } from "../../lib/news-noise.js";
+import { cityOf, detectClosure } from "../../lib/closure.js";
+import { hostOf, tiedToSubject } from "../../lib/entities/subject.js";
+
+const FILLER_WORDS = new Set(["a", "an", "and", "the", "of", "for", "to", "in", "on", "at", "by", "with", "our", "&"]);
+const wordSet = (t: string) => new Set(normalizeWords(t).trim().split(" "));
+
+/** The first text that contains every word of `name`: where the item came
+ *  from. Undefined when no tied source names it. */
+function sourceFor(name: string, texts: { words: Set<string>; url: string }[]): string | undefined {
+  const words = normalizeWords(name).trim().split(" ").filter((w) => w && !FILLER_WORDS.has(w));
+  if (words.length === 0) return undefined;
+  return texts.find((t) => words.every((w) => t.words.has(w)))?.url;
+}
+
+// The extracted description calls the business a chain or franchise.
+const CHAIN_DESCRIPTION = /\b(chain|franchis\w*|\d+\+? locations)\b/i;
+
+// A brand site's location finder or franchise pages: a location search
+// that lands here is reading the brand, not the location.
+const BRAND_SITE = /\b(our locations|all locations|find a (?:store|location|restaurant)|store locator|franchis(?:e|ing) opportunit)/i;
 import { CompanyExtractionSchema, extractStructured } from "../../lib/llm.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
 
@@ -136,47 +159,100 @@ export class WebsiteAgent {
     return `https://www.${slug}.com`;
   }
 
-  async run(companyName: string): Promise<WebsiteAgentResult> {
+  /** The page, or its contact page, names the city: the site belongs to
+   *  the business at that location, not a same-named one elsewhere. */
+  private async siteMatchesCity(page: { url: string; text: string }, city: string): Promise<boolean> {
+    const has = (t: string | null | undefined) => !!t && normalizeWords(t).includes(normalizeWords(city));
+    if (has(page.text)) return true;
+    let origin: string;
+    try { origin = new URL(page.url).origin; } catch { return false; }
+    for (const path of ["/contact", "/contact-us"]) {
+      if (has(await fetchPageText(`${origin}${path}`, this.fetcher, 4000))) return true;
+    }
+    return false;
+  }
+
+  /**
+   * @param anchor What the user gave to pin down which business (Fix 1).
+   *   A website replaces the domain guess; a location narrows every
+   *   search, and a site that doesn't name that city is not used.
+   */
+  async run(companyName: string, anchor: CompanyAnchor = {}): Promise<WebsiteAgentResult> {
     const sources: Source[] = [];
+    // The user saw the same-named businesses and none was theirs: nothing
+    // found by name alone can be trusted to be about it.
+    if (anchor.unlisted) {
+      return { company: { name: companyName, anchor, thin: true }, leadership: [], products: [], sources };
+    }
     const override = findOverride(companyName);
+    const city = cityOf(anchor.location);
+    const loc = anchor.location ? ` ${anchor.location}` : "";
     // A known override's own domain is a better direct guess than the
     // generic slugify-the-name heuristic (e.g. "Alan Health" -> guessed
     // "alanhealth.com", which either doesn't resolve or isn't the real
     // site — the override already knows it's alanmeds.com).
-    const directUrl = override
-      ? `https://${override.canonical_domain}`
-      : this.guessDomain(companyName);
+    const directUrl = anchor.website
+      ? anchor.website
+      : override
+        ? `https://${override.canonical_domain}`
+        : this.guessDomain(companyName);
 
     // 7/20 hardening — exclude a known-wrong domain (e.g. alan.com) at
     // the query itself via Serper/Google's -site: operator, on top of
     // the isRejectedDomain post-filter below. Query-level exclusion
     // means the result-count budget (5, 3, etc per call) isn't partly
     // spent on hits that were only going to be dropped anyway.
-    const [pageRaw, leadershipResultsRaw, productResultsRaw, overviewResultsRaw] =
+    const [pageRaw, leadershipResultsRaw, productResultsRaw, overviewResultsRaw, locationResultsRaw] =
       await Promise.all([
         resolveAndFetch(
           directUrl,
-          appendDomainExclusions(`${companyName} official website`, override),
+          appendDomainExclusions(`${companyName}${loc} official website`, override),
           this.fetcher,
           this.searcher
         ),
-        this.searcher.search(appendDomainExclusions(`${companyName} CEO founder executive leadership team`, override), 5),
-        this.searcher.search(appendDomainExclusions(`${companyName} products and services`, override), 5),
-        this.searcher.search(appendDomainExclusions(`${companyName} overview what is`, override), 3),
+        this.searcher.search(appendDomainExclusions(`${companyName}${loc} CEO founder executive leadership team`, override), 5),
+        this.searcher.search(appendDomainExclusions(`${companyName}${loc} products and services`, override), 5),
+        this.searcher.search(appendDomainExclusions(`${companyName}${loc} overview what is`, override), 3),
+        // The location itself (Fix 4): its listing carries the address and
+        // "permanently closed", which the brand's own site never says.
+        anchor.location
+          ? this.searcher.search(`"${companyName}" ${anchor.location} address hours`, 5)
+          : Promise.resolve([]),
       ]);
 
     // Drop any result whose domain is on this entity's reject list before
     // it can influence sources, the LLM prompt, or the heuristic fallback.
-    const page = pageRaw && !isRejectedDomain(pageRaw.url, override) ? pageRaw : null;
+    let page = pageRaw && !isRejectedDomain(pageRaw.url, override) ? pageRaw : null;
+    // Anchor fields must agree: with a city given, a site that never names
+    // it is a same-named business elsewhere, so neither its URL nor its
+    // text goes into the report. A website the user typed is trusted.
+    if (page && city && !anchor.website && !(await this.siteMatchesCity(page, city))) {
+      console.log(`[website-agent] "${companyName}" — ${page.url} doesn't name ${city}; not used`);
+      page = null;
+    }
     const leadershipResults = leadershipResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
     const productResults = productResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
     const overviewResults = overviewResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
+    const locationResults = locationResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
 
     const company: CompanyProfile = { name: companyName };
+    if (anchor.location || anchor.website) company.anchor = anchor;
 
     if (page) {
+      // Search snippets mean the site itself was never reached, so the
+      // guessed domain isn't shown as the website unless the user gave it.
       const resolvedUrl = page.fromSnippets ? directUrl : page.url;
-      company.website = isOfficialDomain(resolvedUrl) ? resolvedUrl : directUrl;
+      if (!page.fromSnippets || anchor.website) {
+        company.website = isOfficialDomain(resolvedUrl) ? resolvedUrl : directUrl;
+      }
+      // Snippets only: the guessed domain still counts when search results
+      // come from it (the site exists, it just didn't serve this fetcher).
+      const guessedHost = hostOf(directUrl);
+      if (page.fromSnippets && !company.website && guessedHost
+        && [...overviewResults, ...leadershipResults, ...productResults, ...locationResults].some((r) => hostOf(r.url) === guessedHost)) {
+        company.website = directUrl.replace("://www.", "://");
+      }
+      if (city && !page.fromSnippets && BRAND_SITE.test(page.text)) company.brandLevel = true;
       sources.push({
         url: page.url,
         title: companyName,
@@ -261,10 +337,10 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
             .filter((l) => l.name.length > 0 && l.name.length < 80);
         }
         if (llmResult.products) {
-          products = llmResult.products.map((p) => ({
+          products = cleanProducts(llmResult.products.map((p) => ({
             name: p.name,
             description: p.description,
-          }));
+          })), companyName, combinedText);
         }
       }
     }
@@ -335,6 +411,65 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
       }
     }
 
-    return { company, leadership, products, sources };
+    products = cleanProducts(products, companyName);
+
+    // Every leader and product links to a page tied to this company (its
+    // own site, or one naming it and the city); anything else is dropped.
+    const subject = { name: companyName, anchor, domain: hostOf(company.website) };
+    // A location search that turns up the brand's own franchise or
+    // locations pages is a location of a larger brand (Fix 4).
+    if (city && !company.brandLevel && (CHAIN_DESCRIPTION.test(company.description ?? "")
+      || [...overviewResults, ...leadershipResults, ...productResults]
+        .some((r) => (hostOf(r.url) === subject.domain || mentionsCompany(r.title, companyName)) && BRAND_SITE.test(`${r.title} ${r.snippet ?? ""}`)))) {
+      company.brandLevel = true;
+    }
+    const tiedTexts = [
+      ...(page && !page.fromSnippets ? [{ text: page.text, url: page.url }] : []),
+      ...leadershipPages.map((t, i) => ({ text: t ?? "", url: leadershipResults[i]?.url ?? "" })),
+      ...productPages.map((t, i) => ({ text: t ?? "", url: productResults[i]?.url ?? "" })),
+      ...[...leadershipResults, ...productResults, ...overviewResults, ...locationResults]
+        .map((r) => ({ text: `${r.title}. ${r.snippet ?? ""}`, url: r.url })),
+    ].filter((t) => t.text && t.url && tiedToSubject(t.text, t.url, subject))
+      .map((t) => ({ words: wordSet(t.text), url: t.url }));
+    leadership = leadership
+      .map((l) => ({ ...l, sourceUrl: sourceFor(l.name, tiedTexts) }))
+      .filter((l) => l.sourceUrl);
+    products = products
+      .map((p) => ({ ...p, sourceUrl: sourceFor(p.name, tiedTexts) }))
+      .filter((p) => p.sourceUrl);
+
+    // Never echo the query as a finding: the city the user typed is the
+    // headquarters only if a source used here names it.
+    const locationText = locationResults.map((r) => `${r.title} ${r.snippet ?? ""}`).join("\n");
+    if (anchor.location) {
+      const hqNamesCity = !!company.headquarters && normalizeWords(company.headquarters).includes(normalizeWords(city!));
+      if (!hqNamesCity) {
+        company.headquarters = anchor.location;
+        if (!normalizeWords(`${combinedText}\n${locationText}`).includes(normalizeWords(city!))) company.headquartersUnverified = true;
+      }
+    }
+
+    company.closure = detectClosure([
+      ...(page && !page.fromSnippets ? [{ text: page.text, url: page.url }] : []),
+      ...[...locationResults, ...overviewResults, ...leadershipResults, ...productResults].map((r) => ({ text: `${r.title}. ${r.snippet ?? ""}`, url: r.url })),
+    ], companyName, city);
+
+    // No website could be tied to this business: say so plainly instead
+    // of filling the report from whatever shares the name (Fix 1).
+    if (!page) {
+      company.thin = true;
+      delete company.description;
+      return { company, leadership: [], products: [], sources: [] };
+    }
+
+    // Section citations list only pages about this company: its own site,
+    // or a page whose title names it (a same-named or unrelated page out).
+    const cited = sources.filter((s) => {
+      const host = hostOf(s.url);
+      return (!!subject.domain && !!host && (host === subject.domain || host.endsWith(`.${subject.domain}`)))
+        || mentionsCompany(s.title ?? "", companyName);
+    });
+
+    return { company, leadership, products, sources: cited };
   }
 }

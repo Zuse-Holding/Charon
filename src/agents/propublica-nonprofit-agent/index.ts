@@ -46,6 +46,8 @@ export class ProPublicaNonprofitAgent {
           ein: String(r.ein).padStart(9, "0"),
           name: r.name,
           ntee: r.ntee_code,
+          city: r.city,
+          state: r.state,
           url: `https://projects.propublica.org/nonprofits/organizations/${r.ein}`,
         }));
 

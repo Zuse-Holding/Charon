@@ -12,8 +12,12 @@ import { SanctionsMatch, Source } from "../../types/research.js";
  * The CSL API does that server-side and covers strictly more ground.
  *
  * Requires TRADE_GOV_API_KEY (free, instant signup at developer.trade.gov —
- * register + subscribe to "Consolidated Screening List API"). Missing key
- * fails open to no results, same as every other keyed agent here.
+ * register + subscribe to "Consolidated Screening List API"), sent as the
+ * `subscription-key` header. The old api.trade.gov host (key in the query
+ * string) now serves an expired TLS certificate, which Node reports as
+ * "fetch failed" (Oct 20, 2026). A missing key or a failed lookup returns
+ * `unavailable: true`, so the report says screening didn't run instead of
+ * reading as "no matches".
  *
  * A match here is not an accusation — sanctions lists include historical/
  * delisted entries and name collisions happen constantly (common names,
@@ -21,7 +25,7 @@ import { SanctionsMatch, Source } from "../../types/research.js";
  * match," never asserted as fact.
  */
 
-const CSL_BASE = "https://api.trade.gov/consolidated_screening_list/search";
+const CSL_BASE = "https://data.trade.gov/consolidated_screening_list/v1/search";
 
 interface CslResult {
   name?: string;
@@ -39,18 +43,22 @@ interface CslResponse {
 export class SanctionsAgent {
   private apiKey = process.env.TRADE_GOV_API_KEY;
 
-  async run(name: string): Promise<{ matches: SanctionsMatch[]; sources: Source[] }> {
-    if (!this.apiKey) return { matches: [], sources: [] };
+  async run(name: string): Promise<{ matches: SanctionsMatch[]; sources: Source[]; unavailable?: boolean }> {
+    const unavailable = { matches: [], sources: [], unavailable: true };
+    if (!this.apiKey) {
+      console.warn("[sanctions-agent] TRADE_GOV_API_KEY not set — screening unavailable");
+      return unavailable;
+    }
 
     try {
       const res = await fetch(
-        `${CSL_BASE}?api_key=${this.apiKey}&name=${encodeURIComponent(name)}&fuzzy_name=true`,
-        { signal: AbortSignal.timeout(15_000) }
+        `${CSL_BASE}?name=${encodeURIComponent(name)}&fuzzy_name=true`,
+        { headers: { "subscription-key": this.apiKey }, signal: AbortSignal.timeout(15_000) }
       );
 
       if (!res.ok) {
         console.warn(`[sanctions-agent] "${name}" — HTTP ${res.status}`);
-        return { matches: [], sources: [] };
+        return unavailable;
       }
 
       // trade.gov occasionally returns a 200 with an HTML maintenance/WAF
@@ -60,7 +68,7 @@ export class SanctionsAgent {
       const contentType = res.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) {
         console.warn(`[sanctions-agent] "${name}" — non-JSON response (content-type: "${contentType}"), treating as unavailable`);
-        return { matches: [], sources: [] };
+        return unavailable;
       }
 
       const data = (await res.json()) as CslResponse;
@@ -92,7 +100,7 @@ export class SanctionsAgent {
       return { matches, sources };
     } catch (err) {
       console.warn(`[sanctions-agent] "${name}" — lookup failed:`, err instanceof Error ? err.message : err);
-      return { matches: [], sources: [] };
+      return unavailable;
     }
   }
 }

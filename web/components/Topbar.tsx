@@ -11,6 +11,18 @@ import styles from "./Topbar.module.css";
 
 type ResearchType = "company" | "person" | "product" | "political" | "creator";
 
+// The candidate picker's "None of these" for a company (src/lib/nlp.ts
+// UNLISTED_ANCHOR): a thin report that leaves same-named businesses out.
+const UNLISTED_ANCHOR = "not listed online";
+
+interface Picker {
+  query: string;
+  title?: string;
+  subtitle: string;
+  options: AmbiguousOption[];
+  onPick: (option: AmbiguousOption) => void;
+}
+
 interface TopbarProps {
   onResearchStart?: (subject: string, type: ResearchType) => void;
   onResearchComplete?: () => void;
@@ -18,6 +30,9 @@ interface TopbarProps {
 
 export default function Topbar({ onResearchStart, onResearchComplete }: TopbarProps) {
   const [query, setQuery]       = useState("");
+  // Company searches only (Fix 1): a city, state or website that pins down
+  // which business, sent as "Name · Anchor" so reruns keep it.
+  const [anchor, setAnchor]     = useState("");
   const [type, setType]         = useState<ResearchType>("company");
   // Tracks whether the user has explicitly picked a type (pill click or
   // mobile dropdown) for the search currently being typed. Auto-detect
@@ -30,7 +45,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
   const [loading, setLoading]   = useState(false);
   const [status, setStatus]     = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [ambiguousOptions, setAmbiguousOptions] = useState<AmbiguousOption[] | null>(null);
+  const [picker, setPicker]     = useState<Picker | null>(null);
   const router = useRouter();
   const { startResearch, completeResearch } = useResearch();
   const { can, isInternal } = useTier();
@@ -65,35 +80,117 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
       return;
     }
 
-    // Known name collisions (e.g. "Alan Health" vs "Alan" the French
-    // insurer) — ask which one instead of silently picking one, or
-    // worse, mixing sources from both into one report.
+    const name = query.trim();
     if (type === "company") {
+      const where = anchor.trim().replace(/·/g, " ");
+      if (where) return runResearch(`${name} · ${where}`);
+      // Known name collisions (e.g. "Alan Health" vs "Alan" the French
+      // insurer) — ask which one instead of silently picking one, or
+      // worse, mixing sources from both into one report.
       const ambiguous = findAmbiguousMatch(query);
       if (ambiguous) {
-        setAmbiguousOptions(ambiguous.options);
+        setPicker({ query: name, subtitle: "Several companies match this name. Pick the one you mean.", options: ambiguous.options, onPick: (o) => runResearch(o.subject) });
         return;
       }
+      return findCandidates(name, "company");
     }
-
-    await runResearch(query.trim());
+    // Person reports always start from a picked match (Fix 5), unless the
+    // subject already carries one ("Name · Organization").
+    if (type === "person" && !name.includes("·")) return findCandidates(name, "person");
+    await runResearch(name);
   }
 
-  async function runResearch(subject: string) {
-    setAmbiguousOptions(null);
+  /** Lists who or what shares the name before any report runs (Fix 1, Fix 5). */
+  async function findCandidates(name: string, kind: "company" | "person") {
+    setLoading(true);
+    setStatus(`Looking for matches for "${name}"...`);
+    let data: { ok?: boolean; candidates?: AmbiguousOption[]; suggestType?: "company" | "person"; error?: string; message?: string } = {};
+    let status = 0;
+    try {
+      const res = await fetch("/api/candidates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: name, type: kind }),
+      });
+      status = res.status;
+      data = await res.json();
+    } catch {
+      data = { ok: false };
+    }
+    setLoading(false);
+    setStatus("");
+
+    if (status === 401 || status === 403 || status === 429) {
+      setStatus(`✗ ${data.error ?? data.message ?? "Couldn't look up matches."}`);
+      setTimeout(() => setStatus(""), 6000);
+      return;
+    }
+    if (!data.ok) {
+      // Lookup unavailable: a company search runs as before (the report
+      // still resolves on its own); a person search stops, since it needs a match.
+      if (kind === "company") return runResearch(name, "company");
+      setStatus("✗ Couldn't look up matches right now. Add where this person works after a · (e.g. Jane Smith · Acme) and run it again.");
+      setTimeout(() => setStatus(""), 8000);
+      return;
+    }
+
+    const options = data.candidates ?? [];
+    if (data.suggestType) {
+      const other = data.suggestType;
+      setPicker({
+        query: name,
+        title: kind === "company" ? "No company found" : "No person found",
+        subtitle: kind === "company"
+          ? `Metis didn't find a business named "${name}". It reads like a person's name.`
+          : `Metis didn't find a person named "${name}", but businesses use that name.`,
+        options: [{ label: other === "person" ? "Search people instead" : "Search companies instead", description: `Look for "${name}" as a ${other}.`, subject: name }],
+        onPick: () => { setType(other); setTypeManuallySet(true); findCandidates(name, other); },
+      });
+      return;
+    }
+
+    if (kind === "company") {
+      // No business online: an honest thin report. One: that's the match.
+      if (options.length === 0) return runResearch(`${name} · ${UNLISTED_ANCHOR}`, "company");
+      if (options.length === 1) return runResearch(options[0].subject, "company");
+      setPicker({
+        query: name,
+        subtitle: "These businesses share this name. Pick yours, or add its city or website.",
+        options: [...options, { label: "None of these", description: "Report only what's on record for this name, without these businesses.", subject: `${name} · ${UNLISTED_ANCHOR}` }],
+        onPick: (o) => runResearch(o.subject, "company"),
+      });
+      return;
+    }
+
+    if (options.length === 0) {
+      setStatus("✗ Metis couldn't find anyone by that name. Add where they work after a · (e.g. Jane Smith · Acme) and run it again.");
+      setTimeout(() => setStatus(""), 8000);
+      return;
+    }
+    setPicker({
+      query: name,
+      subtitle: "Pick the person you mean. If none of these is right, close this and add where they work.",
+      options,
+      onPick: (o) => runResearch(o.subject, "person"),
+    });
+  }
+
+  async function runResearch(subject: string, researchType: ResearchType = type) {
+    setPicker(null);
     setLoading(true);
     setStatus(`Researching "${subject}"...`);
     setQuery("");
+    setAnchor("");
     setTypeManuallySet(false);
 
-    startResearch(subject, type as "company" | "person" | "product");
-    onResearchStart?.(subject, type);
+    startResearch(subject, researchType as "company" | "person" | "product");
+    onResearchStart?.(subject, researchType);
 
     try {
       const res = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, type }),
+        body: JSON.stringify({ subject, type: researchType }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -158,6 +255,19 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
             onKeyDown={(e) => e.key === "Enter" && handleRun()}
           />
         </div>
+
+        {type === "company" && (
+          <input
+            className={`${styles.input} ${styles.anchorInput}`}
+            type="text"
+            aria-label="City, state or website"
+            placeholder="City, state or website"
+            maxLength={100}
+            value={anchor}
+            onChange={(e) => setAnchor(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleRun()}
+          />
+        )}
 
         {/* Desktop pills */}
         <div className={styles.pills}>
@@ -253,12 +363,14 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
         </div>
       )}
 
-      {ambiguousOptions && (
+      {picker && (
         <DisambiguationModal
-          query={query.trim()}
-          options={ambiguousOptions}
-          onSelect={(opt) => runResearch(opt.subject)}
-          onCancel={() => setAmbiguousOptions(null)}
+          query={picker.query}
+          title={picker.title}
+          subtitle={picker.subtitle}
+          options={picker.options}
+          onSelect={(opt) => { setPicker(null); picker.onPick(opt); }}
+          onCancel={() => setPicker(null)}
         />
       )}
     </div>

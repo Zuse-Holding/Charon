@@ -20,6 +20,9 @@ import { DomainPostureAgent } from "../domain-posture-agent/index.js";
 import { RelatedEntitiesAgent } from "../related-entities-agent/index.js";
 import { guardFromEnv } from "../../lib/exclusions/adapters.js";
 import { siteOf } from "../../lib/provenance/findings.js";
+import { cityOf, detectClosure } from "../../lib/closure.js";
+import { applyCompanyConsistency, applyPersonConsistency, plausibleAnalysis } from "../../lib/consistency.js";
+import { hostOf, type SubjectRecord } from "../../lib/entities/subject.js";
 import { synthesizeRisksOpportunities } from "../synthesis-agent/index.js";
 import { ReportAgent } from "../report-agent/index.js";
 import {
@@ -28,6 +31,7 @@ import {
   SearchProvider,
 } from "../../lib/providers.js";
 import {
+  CompanyAnchor,
   CreatorResearchBundle,
   PersonResearchBundle,
   PoliticalResearchBundle,
@@ -109,8 +113,10 @@ export class ResearchOrchestrator {
    *   TierConfig.publicRecordsAccess, checked by the caller.
    * @param deep Charon Protocol (internal tier only) — passed through to
    *   LittleSis for relationship pulling.
+   * @param options.anchor City/state or website the user gave (Fix 1);
+   *   the website and news searches are narrowed to it.
    */
-  async researchCompany(companyName: string, proAccess = false, deep = false, options: { relatedHops?: number; onProgress?: ProgressListener } = {}): Promise<{
+  async researchCompany(companyName: string, proAccess = false, deep = false, options: { relatedHops?: number; onProgress?: ProgressListener; anchor?: CompanyAnchor } = {}): Promise<{
     bundle: ResearchBundle;
     report: string;
     // Charon/internal-only (deep) — LittleSis relationships (board/officer
@@ -123,7 +129,7 @@ export class ResearchOrchestrator {
   }> {
     const cov = new CoverageRecorder(isEnabled("coverage"), "company", companyName, process.env, undefined, options.onProgress);
     const { value, snapshots } = await recordSnapshots(isEnabled("provenance"), () =>
-      this.gatherCompany(companyName, proAccess, deep, cov, options.relatedHops));
+      this.gatherCompany(companyName, proAccess, deep, cov, options.relatedHops, options.anchor ?? {}));
     const { bundle, littleSisRelationships } = value;
     bundle.coverage = cov.result();
     const stored = attachProvenance(bundle, snapshots, buildCompanyProvenance);
@@ -131,18 +137,23 @@ export class ResearchOrchestrator {
     return { bundle, report, littleSisRelationships, snapshots: stored };
   }
 
-  private async gatherCompany(companyName: string, proAccess: boolean, deep: boolean, cov: CoverageRecorder, relatedHops?: number): Promise<{
+  private async gatherCompany(companyName: string, proAccess: boolean, deep: boolean, cov: CoverageRecorder, relatedHops: number | undefined, anchor: CompanyAnchor): Promise<{
     bundle: ResearchBundle;
     littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
-    const [siteResult, newsResult, competitorResult, corporateResult, spendingResult] =
+    // Resolve once, up front (Fix 1): the website step settles which
+    // business this is (its domain and city), and every other source
+    // searches and is checked against that one record.
+    const siteResult = await cov.run("website", () => this.websiteAgent.run(companyName, anchor),
+      { company: { name: companyName }, leadership: [], products: [], sources: [] },
+      (r) => r.leadership.length + r.products.length + (r.company.description ? 1 : 0));
+    const subject: SubjectRecord = { name: companyName, anchor, domain: hostOf(siteResult.company.website) };
+
+    const [newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
-        cov.run("website", () => this.websiteAgent.run(companyName),
-          { company: { name: companyName }, leadership: [], products: [], sources: [] },
-          (r) => r.leadership.length + r.products.length + (r.company.description ? 1 : 0)),
-        cov.run("news", () => this.newsAgent.run(companyName), { news: [], sources: [] }, (r) => r.news.length),
-        cov.run("competitors", () => this.competitorAgent.run(companyName), { competitors: [], sources: [] }, (r) => r.competitors.length),
-        cov.run("sec", () => this.corporateAgent.run(companyName), { funding: [], insiderActivity: [], sources: [] },
+        cov.run("news", () => this.newsAgent.run(companyName, anchor), { news: [], sources: [] }, (r) => r.news.length),
+        cov.run("competitors", () => this.competitorAgent.run(companyName, anchor), { competitors: [], sources: [] }, (r) => r.competitors.length),
+        cov.run("sec", () => this.corporateAgent.run(companyName, subject), { funding: [], insiderActivity: [], sources: [] },
           (r) => r.funding.length + r.insiderActivity.length + (r.ownership ? 1 : 0)),
         // Free public API, no tier gating — every research run gets this.
         cov.run("usaspending", () => this.usaSpendingAgent.run(companyName), { awards: [], sources: [] }, (r) => r.awards.length),
@@ -178,8 +189,8 @@ export class ResearchOrchestrator {
     const [sanctionsResult, waybackResult, nonprofitResult, littleSisResult, postureResult, relatedResult] =
       await Promise.all([
         proAccess
-          ? cov.run("sanctions", () => this.sanctionsAgent.run(companyName), { matches: [], sources: [] }, (r) => r.matches.length)
-          : Promise.resolve({ matches: [], sources: [] }),
+          ? cov.run("sanctions", () => this.sanctionsAgent.run(companyName), { matches: [], sources: [], unavailable: true }, (r) => r.matches.length)
+          : Promise.resolve({ matches: [], sources: [], unavailable: false }),
         proAccess && website
           ? cov.run("wayback", () => this.waybackAgent.run(website), { summary: {} as WebArchiveSummary, sources: [] },
             (r) => r.summary.snapshotCount ?? 0, siteHost)
@@ -225,6 +236,7 @@ export class ResearchOrchestrator {
       federalSpending: spendingResult.awards,
       insiderActivity: corporateResult.insiderActivity,
       sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
+      sanctionsUnavailable: sanctionsResult.unavailable || undefined,
       webArchive: waybackResult.summary.snapshotCount ? waybackResult.summary : undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
@@ -232,13 +244,24 @@ export class ResearchOrchestrator {
       relatedEntities: relatedResult.graph,
     };
 
+    // Closure can surface in news as well as on the business's own pages.
+    bundle.company.closure ??= detectClosure(
+      bundle.news.map((n) => ({ text: `${n.headline}. ${n.summary ?? ""}`, url: n.url ?? "" })).filter((n) => n.url),
+      companyName, cityOf(anchor.location));
+
+    // Consistency pass before synthesis and output: anything not tied to
+    // the resolved record, or out of scale for it, is dropped.
+    const { dropped } = applyCompanyConsistency(bundle, subject);
+    if (dropped.length) console.log(`[consistency] "${companyName}" — dropped ${dropped.join("; ")}`);
+
     // Risks/Opportunities is pure LLM synthesis with no heuristic
     // fallback — see synthesis-agent for why. Runs after the rest of
     // the bundle is assembled since it needs the full picture as input.
-    const synthesis = await synthesizeRisksOpportunities(bundle);
+    // A thin report has nothing tied to the business to analyse.
+    const synthesis = bundle.company.thin ? null : await synthesizeRisksOpportunities(bundle);
     if (synthesis) {
-      bundle.risks = synthesis.risks;
-      bundle.opportunities = synthesis.opportunities;
+      bundle.risks = plausibleAnalysis(synthesis.risks, bundle);
+      bundle.opportunities = plausibleAnalysis(synthesis.opportunities, bundle);
       bundle.synthesisCitations = synthesis.citations;
     }
 
@@ -301,8 +324,8 @@ export class ResearchOrchestrator {
         ? cov.run("muckrock", () => this.muckRockAgent.run(personName), { requests: [], sources: [] }, (r) => r.requests.length)
         : Promise.resolve({ requests: [], sources: [] }),
       proAccess
-        ? cov.run("sanctions", () => this.sanctionsAgent.run(personName), { matches: [], sources: [] }, (r) => r.matches.length)
-        : Promise.resolve({ matches: [], sources: [] }),
+        ? cov.run("sanctions", () => this.sanctionsAgent.run(personName), { matches: [], sources: [], unavailable: true }, (r) => r.matches.length)
+        : Promise.resolve({ matches: [], sources: [], unavailable: false }),
       proAccess
         ? cov.run("nonprofits", () => this.nonprofitAgent.run(personName), { organizations: [], sources: [] }, (r) => r.organizations.length)
         : Promise.resolve({ organizations: [], sources: [] }),
@@ -325,9 +348,12 @@ export class ResearchOrchestrator {
       corporateAffiliations: corporateResult.affiliations.length > 0 ? corporateResult.affiliations : undefined,
       foiaRequests: foiaResult.requests.length > 0 ? foiaResult.requests : undefined,
       sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
+      sanctionsUnavailable: sanctionsResult.unavailable || undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
     };
+
+    applyPersonConsistency(bundle);
 
     return {
       bundle,

@@ -8,7 +8,10 @@ import {
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractRoleAndCompany, splitSentences } from "../../lib/nlp.js";
 import { PersonExtractionSchema, extractStructured } from "../../lib/llm.js";
-import { isNewsNoise } from "../../lib/news-noise.js";
+import { isNewsNoise, isUsableHeadline, mentionsPerson, normalizeWords } from "../../lib/news-noise.js";
+
+// Words that start many organization names and identify none of them.
+const GENERIC_ORG_WORDS = new Set(["the", "city", "county", "state", "university", "college", "school", "of", "inc", "group", "company", "department"]);
 
 // Placeholder employers the extractor sometimes fills in ("Actor at
 // Various") instead of leaving the field out.
@@ -86,23 +89,28 @@ export class PeopleAgent {
       this.searcher.search(appendDomainExclusions(`${searchSubject} education net worth background biography`, override), bgResultCount),
     ]);
 
-    const bioResults = bioResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
+    // Never merge candidates (Fix 5): a source must name this person, and
+    // the affiliation when one was given. A same-named stranger's page is
+    // dropped, not blended into the profile.
+    // "UCLA Health" also matches a page that just says "UCLA": its first
+    // distinctive word stands in for the full name.
+    const affKey = affiliation?.toLowerCase().split(/\s+/).find((w) => w.length >= 3 && !GENERIC_ORG_WORDS.has(w));
+    const aboutThisPerson = (r: { title: string; snippet?: string }) => {
+      const text = `${r.title} ${r.snippet ?? ""}`;
+      const lower = text.toLowerCase();
+      return mentionsPerson(text, personName)
+        && (!affiliation || lower.includes(affiliation.toLowerCase()) || (!!affKey && normalizeWords(lower).includes(` ${affKey} `)));
+    };
+    const bioResults = bioResultsRaw.filter((r) => !isRejectedDomain(r.url, override) && aboutThisPerson(r));
+    // News must have a real headline and name this person (and the
+    // affiliation, when one was given): a same-name stranger's coverage
+    // is worse than no news item.
     const newsResults = newsResultsRaw
       .filter((r) => !isRejectedDomain(r.url, override) && !isNewsNoise(r.url))
+      .filter((r) => isUsableHeadline(r.title) && aboutThisPerson(r))
       .slice(0, resultCount);
-    const backgroundResults = backgroundResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
+    const backgroundResults = backgroundResultsRaw.filter((r) => !isRejectedDomain(r.url, override) && aboutThisPerson(r));
 
-    // Filtering: when an affiliation was given, sources that actually
-    // mention it are much more likely to be about the right person (vs.
-    // a same-named stranger) — bias full-text fetch and fallback
-    // extraction toward those first rather than treating all results as
-    // equally trustworthy.
-    if (affiliation) {
-      const affLower = affiliation.toLowerCase();
-      const matchesAffiliation = (r: { title: string; snippet?: string }) =>
-        `${r.title} ${r.snippet ?? ""}`.toLowerCase().includes(affLower);
-      bioResults.sort((a, b) => Number(matchesAffiliation(b)) - Number(matchesAffiliation(a)));
-    }
     const sources: Source[] = [
       ...bioResults.map((r) => ({
         url: r.url,

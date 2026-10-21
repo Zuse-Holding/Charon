@@ -58,21 +58,39 @@ export class ReportAgent {
     lines.push(`*Generated ${bundle.generatedAt}*`);
     lines.push(``);
 
+    // Closed status leads the report (Fix 4); ReportViewer shows the
+    // Status section as a banner under the title.
+    if (bundle.company.closure) {
+      lines.push(`## Status`);
+      lines.push(`**Closed.** A source says this business has closed: "${bundle.company.closure.evidence}" ([source](${bundle.company.closure.url}))`);
+      lines.push(``);
+    }
+
     lines.push(`## Executive Summary`);
-    lines.push(
-      bundle.company.description
-        ? bundle.company.description
-        : `_No summary data found for ${bundle.company.name}. Try refining the company name or check network/source access._`
-    );
+    if (bundle.company.thin) {
+      // Honest thin report (Fix 1): never trade up to a namesake.
+      lines.push(`Little public presence. Metis couldn't tie a website or other public pages to this business, so this report covers only public records that match the name.${bundle.company.anchor?.unlisted ? " Other companies share this name; they're not included." : ""} Add the city or website and run it again for more.`);
+    } else {
+      lines.push(
+        bundle.company.description
+          ? `${bundle.company.brandLevel ? `Brand-level: this describes ${bundle.company.name} overall, not the ${bundle.company.anchor?.location} location. ` : ""}${bundle.company.description}`
+          : `_No summary data found for ${bundle.company.name}. Try refining the company name or check network/source access._`
+      );
+    }
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["overview"]);
     pushCoverageSection(lines, bundle.coverage);
 
     lines.push(`## Company Overview`);
+    const anchor = bundle.company.anchor;
+    if (anchor?.location || anchor?.website) lines.push(`- **Matched on:** ${[anchor.location, anchor.website].filter(Boolean).join(" · ")} (from your search)`);
+    if (bundle.company.brandLevel) lines.push(`- **Location:** ${anchor?.location} — franchise location of ${bundle.company.name}`);
     lines.push(`- **Website:** ${bundle.company.website ?? "Unknown"}`);
     lines.push(`- **Founded:** ${bundle.company.founded ?? "Unknown"}`);
     lines.push(
-      `- **Headquarters:** ${bundle.company.headquarters ?? "Unknown"}`
+      `- **Headquarters:** ${bundle.company.headquarters
+        ? `${bundle.company.headquarters}${bundle.company.headquartersUnverified ? " (location from your search, not verified)" : ""}`
+        : "Unknown"}`
     );
     lines.push(`- **Industry:** ${bundle.company.industry ?? "Unknown"}`);
     lines.push(``);
@@ -82,8 +100,9 @@ export class ReportAgent {
     if (bundle.leadership.length === 0) {
       lines.push(`_No leadership data collected in this pass._`);
     } else {
+      if (bundle.company.brandLevel) lines.push(`_Brand-level: leadership of ${bundle.company.name}, not the location._`);
       for (const l of bundle.leadership) {
-        lines.push(`- **${l.name}** — ${l.title}${l.bio ? `: ${l.bio}` : ""}`);
+        lines.push(`- **${l.name}** — ${l.title}${l.bio ? `: ${l.bio}` : ""}${l.sourceUrl ? ` ([source](${l.sourceUrl}))` : ""}`);
       }
     }
     lines.push(``);
@@ -93,11 +112,12 @@ export class ReportAgent {
     if (bundle.products.length === 0) {
       lines.push(`_No product data collected in this pass._`);
     } else {
+      if (bundle.company.brandLevel) lines.push(`_Brand-level: products of ${bundle.company.name} overall._`);
       for (const p of bundle.products) {
         lines.push(
           `- **${p.name}**${p.category ? ` (${p.category})` : ""}${
             p.description ? ` — ${p.description}` : ""
-          }`
+          }${p.sourceUrl ? ` ([source](${p.sourceUrl}))` : ""}`
         );
       }
     }
@@ -153,7 +173,7 @@ export class ReportAgent {
       lines.push(``);
     }
     if (bundle.funding.length === 0) {
-      lines.push(`_No funding data collected in this pass._`);
+      lines.push(`_No public funding records found._`);
     } else {
       for (const f of bundle.funding) {
         lines.push(
@@ -234,9 +254,10 @@ export class ReportAgent {
    */
   private pushPublicRecordsSection(
     lines: string[],
-    bundle: Pick<ResearchBundle, "sanctionsMatches" | "webArchive" | "nonprofitFilings" | "powerMapConnections">
+    bundle: Pick<ResearchBundle, "sanctionsMatches" | "sanctionsUnavailable" | "webArchive" | "nonprofitFilings" | "powerMapConnections">
   ) {
     const hasAny =
+      bundle.sanctionsUnavailable ||
       (bundle.sanctionsMatches && bundle.sanctionsMatches.length > 0) ||
       bundle.webArchive ||
       (bundle.nonprofitFilings && bundle.nonprofitFilings.length > 0) ||
@@ -244,6 +265,11 @@ export class ReportAgent {
     if (!hasAny) return;
 
     lines.push(`## Public Records`);
+
+    if (bundle.sanctionsUnavailable) {
+      lines.push(`**Sanctions Screening:** Screening unavailable. The Consolidated Screening List couldn't be checked on this run, so this is not a clean result. [Check it by hand](https://www.trade.gov/consolidated-screening-list).`);
+      lines.push(``);
+    }
 
     if (bundle.sanctionsMatches && bundle.sanctionsMatches.length > 0) {
       lines.push(`**Sanctions Screening** _(possible matches — not confirmed identity, verify before acting)_`);

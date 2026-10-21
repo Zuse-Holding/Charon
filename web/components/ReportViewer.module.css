@@ -277,6 +277,12 @@
   .postureRow { grid-template-columns: max-content 1fr; }
   .postureRow .postureDetail { grid-column: 1 / -1; }
 }
+.statusBanner {
+  border: 1px solid var(--red); color: var(--red); border-radius: 8px;
+  padding: 10px 14px; font-size: 13px; font-weight: 600; margin-bottom: 20px;
+}
+.statusBanner a { color: inherit; text-decoration: underline; }
+
 .legacyBanner {
   border: 1px solid var(--yellow); color: var(--yellow); border-radius: 8px;
   padding: 10px 14px; font-size: 12.5px; margin-bottom: 20px;
