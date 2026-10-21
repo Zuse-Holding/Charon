@@ -8,10 +8,8 @@ import {
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractRoleAndCompany, splitSentences } from "../../lib/nlp.js";
 import { PersonExtractionSchema, extractStructured } from "../../lib/llm.js";
-import { isNewsNoise, isUsableHeadline, mentionsPerson, normalizeWords } from "../../lib/news-noise.js";
-
-// Words that start many organization names and identify none of them.
-const GENERIC_ORG_WORDS = new Set(["the", "city", "county", "state", "university", "college", "school", "of", "inc", "group", "company", "department"]);
+import { isNewsNoise, isUsableHeadline, mentionsPerson } from "../../lib/news-noise.js";
+import { mentionsAffiliation } from "../../lib/entities/affiliation.js";
 
 // Placeholder employers the extractor sometimes fills in ("Actor at
 // Various") instead of leaving the field out.
@@ -92,14 +90,11 @@ export class PeopleAgent {
     // Never merge candidates (Fix 5): a source must name this person, and
     // the affiliation when one was given. A same-named stranger's page is
     // dropped, not blended into the profile.
-    // "UCLA Health" also matches a page that just says "UCLA": its first
-    // distinctive word stands in for the full name.
-    const affKey = affiliation?.toLowerCase().split(/\s+/).find((w) => w.length >= 3 && !GENERIC_ORG_WORDS.has(w));
+    // Employer variants count as one (round 2, Fix 2): "UCLA Health",
+    // "UCLA" and "University of California, Los Angeles".
     const aboutThisPerson = (r: { title: string; snippet?: string }) => {
       const text = `${r.title} ${r.snippet ?? ""}`;
-      const lower = text.toLowerCase();
-      return mentionsPerson(text, personName)
-        && (!affiliation || lower.includes(affiliation.toLowerCase()) || (!!affKey && normalizeWords(lower).includes(` ${affKey} `)));
+      return mentionsPerson(text, personName) && (!affiliation || mentionsAffiliation(text, affiliation));
     };
     const bioResults = bioResultsRaw.filter((r) => !isRejectedDomain(r.url, override) && aboutThisPerson(r));
     // News must have a real headline and name this person (and the

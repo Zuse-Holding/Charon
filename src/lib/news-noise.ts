@@ -94,11 +94,36 @@ export function normalizeWords(text: string): string {
 
 const LEGAL_SUFFIX = /\s(?:inc|llc|ltd|corp|corporation|co|company|lp|llp|pc|plc)\s*$/;
 
+// Sentence and title breaks a company's name never spans: "...ORANGE
+// JUICE. Equity partners..." doesn't name Juice Equity (round 2, Fix 3).
+// A bare dot doesn't break ("Amazon.com", "U.S. Steel" keep working).
+const PHRASE_BREAK = /(?<!\b[A-Z])[.!?;:]\s+|[|•·()[\]"“”]|\s[-–—]\s/;
+
+/**
+ * The words appear as a name, not a phrase: each starts with a capital
+ * ("Juice Equity"), unless the writer used no capitals at all. "ORANGE
+ * JUICE equity" is another company's equity, not Juice Equity (round 2,
+ * Fix 3).
+ */
+function namedAsProperNoun(part: string, words: string[]): boolean {
+  if (words.length < 2 || !/[A-Z]/.test(part)) return true;
+  const raw = part.split(/[^A-Za-z0-9'’&]+/).filter(Boolean);
+  const norm = raw.map((t) => normalizeWords(t).trim());
+  for (let i = 0; i + words.length <= norm.length; i++) {
+    if (words.every((w, j) => norm[i + j] === w) && words.every((_, j) => /^[A-Z0-9]/.test(raw[i + j]))) return true;
+  }
+  // Tokens that don't line up one-to-one (punctuation inside the name):
+  // fall back to the phrase match.
+  return !words.every((w) => norm.includes(w));
+}
+
 /** The text names this company: its name, legal suffix aside, appears as
- *  a whole phrase. */
+ *  a whole phrase within one sentence or title part, written as a name. */
 export function mentionsCompany(text: string, companyName: string): boolean {
   const name = normalizeWords(companyName).replace(LEGAL_SUFFIX, " ").trim();
-  return name.length > 0 && normalizeWords(text).includes(` ${name} `);
+  if (name.length === 0) return false;
+  const words = name.split(" ");
+  return text.split(PHRASE_BREAK).some((part) => normalizeWords(part).includes(` ${name} `) && namedAsProperNoun(part, words));
 }
 
 /** The text names this person: the surname, plus a first name starting

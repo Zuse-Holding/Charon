@@ -99,7 +99,11 @@ export class SanctionsAgent {
 
       return { matches, sources };
     } catch (err) {
-      console.warn(`[sanctions-agent] "${name}" — lookup failed:`, err instanceof Error ? err.message : err);
+      // "fetch failed" alone hides the cause (DNS, TLS, refused): log it so
+      // a host that can't reach data.trade.gov shows why (round 2, Fix 7).
+      const cause = (err as { cause?: { code?: string; message?: string } })?.cause;
+      console.warn(`[sanctions-agent] "${name}" — lookup failed:`, err instanceof Error ? err.message : err,
+        cause ? `(${cause.code ?? ""} ${cause.message ?? ""})`.trim() : "");
       return unavailable;
     }
   }

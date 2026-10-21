@@ -82,7 +82,7 @@ describe("company report rendering", () => {
       ...base,
       company: {
         name: "Foster's Freeze", headquarters: "Ventura", headquartersUnverified: true,
-        anchor: { location: "Ventura" }, closure: { evidence: "permanently closed", url: "https://example.com/c" },
+        anchor: { location: "Ventura" }, closure: { evidence: "permanently closed", url: "https://example.com/c", sources: 1, communityOnly: false },
       },
     } as ResearchBundle);
     const sections = md.split("\n").filter((l) => l.startsWith("## "));
@@ -143,11 +143,19 @@ describe("person candidates", () => {
   });
 
   it("lists same-named people separately, never merged (Nick Olmos)", async () => {
-    const { candidates } = await personCandidates("Nick Olmos", "Santa Paula", fakeSearcher([], [
+    const { candidates } = await personCandidates("Nick Olmos", undefined, fakeSearcher([], [
       { title: "Nick Olmos - Professor - Ventura College", url: "https://a.edu/x", snippet: "Nick Olmos teaches" },
       { title: "Nick Olmos - Zuse Holdings | LinkedIn", url: "https://linkedin.com/in/x", snippet: "Nick Olmos founder" },
+      { title: "Nick Olmos - Zuse Holdings", url: "https://zuse.example/x", snippet: "Nick Olmos founder" },
     ]));
     assert.deepEqual(candidates.map((c) => c.subject), ["Nick Olmos · Ventura College", "Nick Olmos · Zuse Holdings"]);
+  });
+
+  it("with an anchor, only a page naming it counts, and the anchor is what's researched (round 2)", async () => {
+    const r = await personCandidates("Nick Olmos", "Santa Paula", fakeSearcher([], [
+      { title: "Nick Olmos - Professor - Ventura College", url: "https://a.edu/x", snippet: "Nick Olmos teaches" },
+    ]));
+    assert.deepEqual(r, { candidates: [], namesFound: true });
   });
 
   it("treats a city or state alone as not enough", () => {

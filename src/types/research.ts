@@ -2,6 +2,7 @@ import type { ProvenanceRecord } from "../lib/provenance/build.js";
 import type { CoverageEntry } from "../lib/coverage/recorder.js";
 import type { DomainPosture } from "../agents/domain-posture-agent/index.js";
 import type { RelatedGraph } from "../lib/expansion/engine.js";
+import type { ClosureEvidence } from "../lib/closure.js";
 
 // Core data models shared across agents.
 // These map directly to the spec's per-agent output shapes, plus a Source
@@ -24,6 +25,8 @@ export interface CompanyAnchor {
   /** The user saw the businesses sharing this name and picked none of
    *  them: report only what ties to the name, never a namesake. */
   unlisted?: boolean;
+  /** Only a website was typed: the business's name comes from the site. */
+  nameFromSite?: boolean;
 }
 
 export interface CompanyProfile {
@@ -38,13 +41,24 @@ export interface CompanyProfile {
   /** The anchor the report was matched on, shown in the overview. */
   anchor?: CompanyAnchor;
   /** Closed, dissolved or inactive, with the source that says so. */
-  closure?: { evidence: string; url: string };
+  closure?: ClosureEvidence;
   /** No website could be tied to this business: a thin report, never a
    *  better-documented namesake's (Fix 1). */
   thin?: boolean;
   /** A location of a larger brand (Fix 4): the site is the brand's, so
    *  overview, leadership and products describe the brand, not the location. */
   brandLevel?: boolean;
+  /** Street address, phone and hours read from the business's own site or
+   *  listing (round 2, Fix 1). */
+  address?: string;
+  phone?: string;
+  hours?: string;
+  /** The website the user gave couldn't be read, and why. Nothing found by
+   *  name alone replaces it (round 2, Fix 1). */
+  siteUnreadable?: string;
+  /** A business listing or license record tied this business to the
+   *  anchor city, standing in for (or confirming) a website (round 2, Fix 2). */
+  listing?: { title: string; address?: string; url: string };
 }
 
 export interface LeadershipEntry {

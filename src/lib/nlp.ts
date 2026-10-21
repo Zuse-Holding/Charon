@@ -1,4 +1,5 @@
 import nlp from "compromise";
+import { findWebsite, hostLabel } from "./entities/site-record.js";
 
 /**
  * Local, offline named-entity helpers built on `compromise` (a
@@ -413,14 +414,27 @@ const PRODUCT_FILLER = new Set([
 
 const words = (s: string) => s.toLowerCase().replace(/['’]/g, "").split(/[^a-z0-9&]+/).filter(Boolean);
 
+// Page furniture and headline words: an item carrying one is a page title
+// or a news fragment ("Crunchbase Company Profile", "MJW Investments
+// Acquires"), not something the company sells (round 2, Fix 5).
+const NOT_AN_OFFERING = /\b(crunchbase|linkedin|wikipedia|bloomberg|profile|overview|home ?page|homepage|about us|contact us|reviews?|press release|news|blog|acquires?|acquired|acquisition|announces?|raises?|funding|valuation|ipo|hiring|careers?|jobs?|log ?in|sign ?up|privacy|terms|cookies?|copyright|all rights reserved|click here|read more|learn more|information|details|locations?|directions|hours|address)\b/i;
+const DATE_WORD = /\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?|mon(day)?|tue(sday)?|wed(nesday)?|thu(rsday)?|fri(day)?|sat(urday)?|sun(day)?|(19|20)\d{2})\b/i;
+// A one-word offering reads as a field of work ("Orthodontics",
+// "Bookkeeping"); other single words are fragments ("Off", "Market").
+const ONE_WORD_OFFERING = /^[a-z]{4,}(ics|ing|tion|sion|ment|ance|ence|ery|ogy|ism|ure|ship)$/i;
+
 /**
- * Products cleanup pass (Fix 2): drops fragments ("for"), repeated words
- * ("engineering engineering"), items that only repeat the company name,
- * duplicates, and, when `sourceText` is given, anything whose words don't
- * all appear in the text it was extracted from.
+ * Products cleanup pass (Fix 2, round 2 Fix 5): keeps only offerings — a
+ * noun phrase naming something the company sells or does. Drops fragments
+ * ("for"), single words that aren't a field of work ("Off", "Market"),
+ * page titles and site names, months and dates, headline fragments,
+ * repeated words, anything naming the company itself, duplicates, and,
+ * when `sourceText` is given, anything whose words don't all appear in the
+ * text it was extracted from.
  */
 export function cleanProducts<T extends { name: string }>(products: T[], companyName: string, sourceText?: string): T[] {
   const companyWords = new Set(words(companyName));
+  const companyPhrase = words(companyName).join(" ");
   const generic = new Set([...PRODUCT_FILLER, ...[...PRODUCT_STOPWORDS].map((w) => w.toLowerCase())]);
   const source = sourceText ? new Set(words(sourceText)) : undefined;
   const seen = new Set<string>();
@@ -428,7 +442,10 @@ export function cleanProducts<T extends { name: string }>(products: T[], company
   for (const p of products) {
     const name = p.name.replace(/\*\*/g, "").replace(/\s+/g, " ").replace(/^[\s\-–—•,.;:]+|[\s\-–—•,.;:]+$/g, "");
     const w = words(name);
-    if (name.length < 3 || w.length === 0) continue;
+    if (name.length < 3 || w.length === 0 || name.length > 80) continue;
+    if (w.length === 1 && !ONE_WORD_OFFERING.test(w[0])) continue;
+    if (/[|]/.test(name) || NOT_AN_OFFERING.test(name) || DATE_WORD.test(name)) continue;
+    if (companyPhrase && ` ${w.join(" ")} `.includes(` ${companyPhrase} `)) continue;
     if (w.some((x, i) => i > 0 && x === w[i - 1])) continue;
     if (w.every((x) => generic.has(x) || companyWords.has(x))) continue;
     if (source && !w.every((x) => generic.has(x) || source.has(x))) continue;
@@ -440,14 +457,28 @@ export function cleanProducts<T extends { name: string }>(products: T[], company
   return out;
 }
 
+/**
+ * A leadership entry names a person (round 2, Fix 5): a first and last
+ * name, letters only, and not just words from the company's own name
+ * ("Alan" for Alan Health).
+ */
+export function isPersonName(name: string, companyName: string): boolean {
+  const parts = name.replace(/\b(Dr|Mr|Mrs|Ms|Prof)\.?\s+/gi, "").replace(/,.*$/, "").trim().split(/\s+/);
+  if (parts.length < 2 || parts.length > 5) return false;
+  if (!parts.every((p) => /^[A-Z][A-Za-z'’\-.]*$/.test(p))) return false;
+  const company = new Set(words(companyName));
+  return !parts.every((p) => company.has(p.toLowerCase().replace(/['’.]/g, "")));
+}
+
 /** Anchor text the candidate picker sends for "None of these" (Fix 1). */
 export const UNLISTED_ANCHOR = "not listed online";
 
 export interface ParsedCompanyQuery {
   /** The business name alone. */
   name: string;
-  /** The city/state or website typed after " · " (Fix 1). */
-  anchor: { location?: string; website?: string; unlisted?: boolean };
+  /** The city/state or website typed after " · " (Fix 1), or a website
+   *  typed anywhere (round 2, Fix 1). */
+  anchor: { location?: string; website?: string; unlisted?: boolean; nameFromSite?: boolean };
 }
 
 /**
@@ -455,21 +486,27 @@ export interface ParsedCompanyQuery {
  * "Juice Equity · juiceequity.com" into the name and its anchor. The web
  * search bar joins its two fields this way, so the stored run subject
  * keeps the anchor and a rerun searches the same business.
+ *
+ * A website anywhere in the input drives the match (round 2, Fix 1):
+ * "sdsdentistry.com" alone is a search for whatever business that site is,
+ * named from the site itself once it's read.
  */
 export function parseCompanyQuery(raw: string): ParsedCompanyQuery {
-  const [name, ...rest] = raw.split("·").map((p) => p.trim());
+  const [namePart, ...rest] = raw.split("·").map((p) => p.trim());
   const value = rest.join(" ").replace(/\s+/g, " ").trim().slice(0, 100);
-  if (!value) return { name: raw.trim(), anchor: {} };
   // The candidate picker's "None of these": a thin report, no namesakes.
-  if (value.toLowerCase() === UNLISTED_ANCHOR) return { name, anchor: { unlisted: true } };
-  const looksLikeSite = /^https?:\/\//i.test(value) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(value);
-  if (!looksLikeSite) return { name, anchor: { location: value } };
-  try {
-    const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
-    return { name, anchor: { website: url.origin } };
-  } catch {
-    return { name, anchor: { location: value } };
-  }
+  if (value.toLowerCase() === UNLISTED_ANCHOR) return { name: namePart, anchor: { unlisted: true } };
+
+  const inName = findWebsite(namePart);
+  const inAnchor = value ? findWebsite(value) : undefined;
+  const site = inAnchor ?? inName;
+  const name = (inName ? inName.rest : namePart).trim();
+  const location = (inAnchor ? inAnchor.rest : value).trim() || undefined;
+  if (!site) return { name: namePart || raw.trim(), anchor: location ? { location } : {} };
+  return {
+    name: name || hostLabel(site.website),
+    anchor: { website: site.website, ...(location ? { location } : {}), ...(name ? {} : { nameFromSite: true }) },
+  };
 }
 
 /** Reads as a person's name ("Doug Shapses", "Doug Shapses UCLA"): used to
