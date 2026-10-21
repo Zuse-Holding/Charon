@@ -1,7 +1,8 @@
 import {
   CompetitorAgentResult,
   CompetitorEntry,
-  Source, CompanyAnchor } from "../../types/research.js";
+  Source } from "../../types/research.js";
+import { tiedToSubject, type SubjectRecord } from "../../lib/entities/subject.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractOrganizations } from "../../lib/nlp.js";
 import { CompetitorExtractionSchema, extractStructured } from "../../lib/llm.js";
@@ -35,9 +36,12 @@ export class CompetitorAgent {
     private searcher: SearchProvider
   ) {}
 
-  /** @param anchor City/state the user gave (Fix 1): a local business's
-   *  competitors are the ones near it, not a namesake's. */
-  async run(companyName: string, anchor: CompanyAnchor = {}): Promise<CompetitorAgentResult> {
+  /** @param subject The resolved business (Fix 1): a local business's
+   *  competitors are the ones near it, and only pages tied to this
+   *  business (its domain, or its name and city) are read, so a namesake's
+   *  rivals never become its chips (round 2, Fix 3). */
+  async run(companyName: string, subject: SubjectRecord = { name: companyName, anchor: {} }): Promise<CompetitorAgentResult> {
+    const anchor = subject.anchor;
     // 7/20 fix — a competitor-comparison article sourced from a known-
     // wrong domain (e.g. alan.com when researching "Alan Health") could
     // both mislabel a competitor list AND get fetched as the "full
@@ -53,7 +57,8 @@ export class CompetitorAgent {
       5
     );
 
-    const results = rawResults.filter((r) => !isRejectedDomain(r.url, override));
+    const results = rawResults.filter((r) => !isRejectedDomain(r.url, override)
+      && tiedToSubject(`${r.title}. ${r.snippet ?? ""}`, r.url, subject));
 
     const sources: Source[] = results.map((r) => ({
       url: r.url,

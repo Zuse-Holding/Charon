@@ -29,9 +29,13 @@ const LATE_ROUND = /\bseries\s+[d-z]\b/i;
 // namesake's (Alan Health's $8.9B, Promise ABA's funding).
 const SMALL_COMPANY_CEILING = 100e6;
 
-export function isSmallCompany(bundle: Pick<ResearchBundle, "company">): boolean {
+export function isSmallCompany(bundle: Pick<ResearchBundle, "company"> & Partial<Pick<ResearchBundle, "funding" | "insiderActivity" | "ownership">>): boolean {
   const c = bundle.company;
-  return !!(c.thin || c.anchor?.location || c.anchor?.unlisted);
+  if (c.thin || c.anchor?.location || c.anchor?.unlisted || c.anchor?.website) return true;
+  // No funding, filings or ownership on record: the footprint of a small
+  // private company, whatever the name suggests (round 2, Fix 3).
+  return bundle.funding !== undefined && bundle.funding.length === 0
+    && !bundle.insiderActivity?.length && !bundle.ownership;
 }
 
 export interface ConsistencyReport {
@@ -72,6 +76,10 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
     if (bundle.competitors.length) dropped.push(`competitors (thin report): ${bundle.competitors.length}`);
     bundle.competitors = [];
     bundle.insiderActivity = undefined;
+    // News found by the name alone is a namesake's as often as not
+    // (a Singapore "Zuse Labs" in a Zuse Holdings report).
+    if (bundle.news.length) dropped.push(`news (thin report): ${bundle.news.length}`);
+    bundle.news = [];
     bundle.funding = [];
     bundle.ownership = undefined;
   }
@@ -88,17 +96,68 @@ function factFigures(bundle: ResearchBundle): number[] {
   return parseMoney(text);
 }
 
+const FUNDING_TERMS = /\b(raised?|raising|seed|series [a-z]|funding|funded|valuation|valued at|investors?|venture[- ]backed|vc[- ]backed|ipo)\b/i;
+
+// Capitalized words that aren't names: sentence words, units, months.
+const COMMON_CAPS = new Set([
+  "a", "an", "the", "its", "it", "their", "this", "that", "these", "those", "as", "with", "without", "no", "not", "if", "in", "on", "at",
+  "for", "by", "from", "to", "of", "and", "or", "but", "while", "because", "since", "after", "before", "over", "under", "more", "less",
+  "u.s", "us", "usa", "llc", "inc", "ltd", "co", "corp", "ceo", "cfo", "coo", "cto", "founder", "owner", "president",
+  "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
+]);
+
+/** Capitalized words and acronyms past the first word: the names an item brings in. */
+function namesIn(item: string): string[] {
+  const words = item.match(/[A-Za-z][A-Za-z0-9&.'’-]*/g) ?? [];
+  return words.slice(1)
+    .map((w) => w.replace(/['’]s$/, "").replace(/[.'’-]+$/, ""))
+    .filter((w) => /^[A-Z]/.test(w) && !COMMON_CAPS.has(w.toLowerCase()));
+}
+
+// Words an analyst sentence uses whatever the business: they ground nothing.
+const ANALYSIS_WORDS = new Set([
+  "company", "companys", "could", "would", "should", "might", "their", "there", "which", "while",
+  "about", "other", "more", "most", "less", "than", "into", "from", "with", "without", "this", "that", "these", "those",
+  "risk", "risks", "opportunity", "opportunities", "growth", "market", "markets", "customers", "revenue", "brand",
+  "offering", "offers", "keeps", "makes", "gives", "help", "helps", "limits", "limited", "expand", "expands", "attract",
+  "increase", "reduce", "position", "strong", "public",
+]);
+
+/** The item shares a substantive word (not the company's own name) with
+ *  the facts: it's about something the report states. */
+function grounded(item: string, factWords: Set<string>, companyWords: Set<string>): boolean {
+  const stem = (w: string) => w.slice(0, 5);
+  return normalizeWords(item).trim().split(" ")
+    .filter((w) => w.length >= 4 && !ANALYSIS_WORDS.has(w) && !companyWords.has(w))
+    .some((w) => factWords.has(stem(w)));
+}
+
 /**
  * Analysis cites facts (Fix 3): a risk or opportunity whose dollar figure
  * isn't in the funding, spending or news facts is dropped — that's how a
  * namesake's $8.9B valuation reached Alan Health's opportunities.
+ *
+ * With the locked fact set (round 2, Fix 3), an item is also dropped when
+ * it names something no fact mentions (Juice Equity's "Bitcoin treasury"),
+ * or talks about funding when the report found none (its "$40M seed"):
+ * the report never contradicts its own Funding section.
  */
-export function plausibleAnalysis(items: string[], bundle: ResearchBundle): string[] {
+export function plausibleAnalysis(items: string[], bundle: ResearchBundle, lockedFacts?: { text: string }[]): string[] {
   const facts = factFigures(bundle);
   const small = isSmallCompany(bundle);
+  const factText = lockedFacts ? normalizeWords([bundle.company.name, ...lockedFacts.map((f) => f.text)].join(" ")) : undefined;
+  const companyWords = new Set(normalizeWords(bundle.company.name).trim().split(" "));
+  // Fact words by stem, minus the labels lockedFacts puts in front ("Offers:").
+  const factWords = new Set((lockedFacts ?? [])
+    .flatMap((f) => normalizeWords(f.text.replace(/^[^:]{1,30}:/, "")).trim().split(" "))
+    .filter((w) => w.length >= 4 && !companyWords.has(w))
+    .map((w) => w.slice(0, 5)));
   return items.filter((item) => {
     const figures = parseMoney(item);
     if (small && (LATE_ROUND.test(item) || figures.some((v) => v >= SMALL_COMPANY_CEILING))) return false;
+    if (bundle.funding.length === 0 && FUNDING_TERMS.test(item)) return false;
+    if (factText && namesIn(item).some((n) => !factText.includes(normalizeWords(n)))) return false;
+    if (lockedFacts && !grounded(item, factWords, companyWords)) return false;
     return figures.every((v) => facts.some((f) => Math.abs(f - v) <= v * 0.01));
   });
 }

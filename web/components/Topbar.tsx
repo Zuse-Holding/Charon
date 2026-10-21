@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { detectEntityType } from "../lib/detect-entity-type";
@@ -14,6 +14,12 @@ type ResearchType = "company" | "person" | "product" | "political" | "creator";
 // The candidate picker's "None of these" for a company (src/lib/nlp.ts
 // UNLISTED_ANCHOR): a thin report that leaves same-named businesses out.
 const UNLISTED_ANCHOR = "not listed online";
+
+// A website typed in the search box ("sdsdentistry.com", "https://..."):
+// the site drives the match, so no name lookup first (round 2, Fix 1).
+// The agent server parses it; this only decides to skip the picker.
+const HAS_WEBSITE = /(?:^|\s)(?:https?:\/\/)?(?:www\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)*\.[a-z]{2,24}(?:\/\S*)?(?=\s|$)/i;
+const hasWebsite = (text: string) => HAS_WEBSITE.test(text) && !/\S+@\S+/.test(text);
 
 interface Picker {
   query: string;
@@ -46,6 +52,11 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
   const [status, setStatus]     = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [picker, setPicker]     = useState<Picker | null>(null);
+  // "None of these" asks for a city or website first (round 2, Fix 4).
+  // Running the same name again with the field still empty is the user
+  // saying there's nothing to add: then the thin report runs.
+  const [askedAnchorFor, setAskedAnchorFor] = useState<string | null>(null);
+  const anchorRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { startResearch, completeResearch } = useResearch();
   const { can, isInternal } = useTier();
@@ -81,9 +92,18 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
     }
 
     const name = query.trim();
+    // A website anywhere is a company search matched on that site (a
+    // person search keeps its profile link as the person's anchor).
+    if ((type !== "person" && hasWebsite(name)) || (type === "company" && hasWebsite(anchor))) {
+      const where = anchor.trim().replace(/·/g, " ");
+      return runResearch(where ? `${name.replace(/·/g, " ")} · ${where}` : name, "company");
+    }
     if (type === "company") {
       const where = anchor.trim().replace(/·/g, " ");
       if (where) return runResearch(`${name} · ${where}`);
+      if (askedAnchorFor && askedAnchorFor.toLowerCase() === name.toLowerCase()) {
+        return runResearch(`${name} · ${UNLISTED_ANCHOR}`, "company");
+      }
       // Known name collisions (e.g. "Alan Health" vs "Alan" the French
       // insurer) — ask which one instead of silently picking one, or
       // worse, mixing sources from both into one report.
@@ -104,7 +124,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
   async function findCandidates(name: string, kind: "company" | "person") {
     setLoading(true);
     setStatus(`Looking for matches for "${name}"...`);
-    let data: { ok?: boolean; candidates?: AmbiguousOption[]; suggestType?: "company" | "person"; error?: string; message?: string } = {};
+    let data: { ok?: boolean; candidates?: (AmbiguousOption & { exact?: boolean })[]; suggestType?: "company" | "person"; namesFound?: boolean; error?: string; message?: string } = {};
     let status = 0;
     try {
       const res = await fetch("/api/candidates", {
@@ -150,20 +170,36 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
     }
 
     if (kind === "company") {
-      // No business online: an honest thin report. One: that's the match.
+      // No business online: an honest thin report. One exact match: that's
+      // it. A near match (ACCO Engineering -> ACCO Engineered Systems) is
+      // shown, never picked for the user (round 2, Fix 4).
       if (options.length === 0) return runResearch(`${name} · ${UNLISTED_ANCHOR}`, "company");
-      if (options.length === 1) return runResearch(options[0].subject, "company");
+      if (options.length === 1 && options[0].exact) return runResearch(options[0].subject, "company");
+      const NONE = `${name} · ${UNLISTED_ANCHOR}`;
       setPicker({
         query: name,
-        subtitle: "These businesses share this name. Pick yours, or add its city or website.",
-        options: [...options, { label: "None of these", description: "Report only what's on record for this name, without these businesses.", subject: `${name} · ${UNLISTED_ANCHOR}` }],
-        onPick: (o) => runResearch(o.subject, "company"),
+        subtitle: options.some((o) => o.exact)
+          ? "These businesses share this name. Pick yours, or add its city or website."
+          : `No business is named exactly "${name}". Is it one of these?`,
+        options: [...options, { label: "None of these", description: "Add its city, state or website, and Metis will look again.", subject: NONE }],
+        onPick: (o) => {
+          if (o.subject !== NONE) return runResearch(o.subject, "company");
+          // Ask for an anchor rather than reporting a real business as unlisted.
+          setQuery(name);
+          setType("company");
+          setTypeManuallySet(true);
+          setAskedAnchorFor(name);
+          setStatus(`Add the city, state or website for "${name}", then run it again. Run it with the field empty for a report on the name alone.`);
+          setTimeout(() => anchorRef.current?.focus(), 0);
+        },
       });
       return;
     }
 
     if (options.length === 0) {
-      setStatus("✗ Metis couldn't find anyone by that name. Add where they work after a · (e.g. Jane Smith · Acme) and run it again.");
+      setStatus(data.namesFound
+        ? `✗ Couldn't confirm a match for "${name}". Add where they work after a · (e.g. Jane Smith · Acme) and run it again.`
+        : "✗ Metis couldn't find anyone by that name. Add where they work after a · (e.g. Jane Smith · Acme) and run it again.");
       setTimeout(() => setStatus(""), 8000);
       return;
     }
@@ -177,6 +213,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
 
   async function runResearch(subject: string, researchType: ResearchType = type) {
     setPicker(null);
+    setAskedAnchorFor(null);
     setLoading(true);
     setStatus(`Researching "${subject}"...`);
     setQuery("");
@@ -258,6 +295,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
 
         {type === "company" && (
           <input
+            ref={anchorRef}
             className={`${styles.input} ${styles.anchorInput}`}
             type="text"
             aria-label="City, state or website"

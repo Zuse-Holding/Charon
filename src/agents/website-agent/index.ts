@@ -8,15 +8,22 @@ import {
 } from "../../types/research.js";
 import {
   FetchProvider,
+  FetchedPage,
+  PlaceResult,
   SearchProvider,
+  SearchResult,
+  ResolvedPage,
   resolveAndFetch,
   extractBestChunk,
   fetchPageText,
+  htmlToFullText,
 } from "../../lib/providers.js";
+import { readSiteRecord, subpageLinks, type SiteRecord } from "../../lib/entities/site-record.js";
 import {
   extractPeopleWithTitles,
   extractProductCandidates,
   cleanProducts,
+  isPersonName,
   PRODUCT_STOPWORDS,
 } from "../../lib/nlp.js";
 import { mentionsCompany, normalizeWords } from "../../lib/news-noise.js";
@@ -66,6 +73,14 @@ const NON_OFFICIAL_DOMAINS = new Set([
   "pitchbook.com",
   "tracxn.com",
 ]);
+
+/** "19524 Nordhoff St #3B, Northridge, CA 91324" -> "Northridge"; undefined
+ *  when the address has no "City, ST" part. */
+function listingCity(address: string | undefined): string | undefined {
+  const parts = address?.split(",").map((p) => p.trim()) ?? [];
+  if (parts.length < 2 || !/\b[A-Z]{2}\b/.test(parts[parts.length - 1])) return undefined;
+  return parts[parts.length - 2] || undefined;
+}
 
 function isOfficialDomain(url: string): boolean {
   try {
@@ -159,57 +174,188 @@ export class WebsiteAgent {
     return `https://www.${slug}.com`;
   }
 
-  /** The page, or its contact page, names the city: the site belongs to
-   *  the business at that location, not a same-named one elsewhere. */
+  /** The page, or its contact or about page, names the city: the site
+   *  belongs to the business at that location, not a same-named one
+   *  elsewhere. Reads the full page: the address is usually in the footer. */
   private async siteMatchesCity(page: { url: string; text: string }, city: string): Promise<boolean> {
     const has = (t: string | null | undefined) => !!t && normalizeWords(t).includes(normalizeWords(city));
     if (has(page.text)) return true;
     let origin: string;
     try { origin = new URL(page.url).origin; } catch { return false; }
-    for (const path of ["/contact", "/contact-us"]) {
-      if (has(await fetchPageText(`${origin}${path}`, this.fetcher, 4000))) return true;
+    for (const url of [page.url, `${origin}/contact`, `${origin}/contact-us`, `${origin}/about`]) {
+      const html = await this.fetcher.fetchText(url);
+      if (html && has(htmlToFullText(html))) return true;
     }
     return false;
   }
 
+  /** Fetches a page with the reason it failed, from providers that report one. */
+  private async fetchPage(url: string): Promise<FetchedPage> {
+    if (this.fetcher.fetchPage) return this.fetcher.fetchPage(url);
+    const html = await this.fetcher.fetchText(url);
+    return html ? { html } : { html: null, reason: "the site couldn't be reached" };
+  }
+
+  /**
+   * Reads the website the user gave (round 2, Fix 1): the homepage plus a
+   * few of its own about, provider, services and contact pages. Returns
+   * the combined text and the record (name, address, phone, hours, people)
+   * the site states, or why it couldn't be read.
+   */
+  private async readSite(website: string): Promise<{ text: string; record: SiteRecord; url: string } | { error: string }> {
+    const home = await this.fetchPage(website);
+    if (!home.html) return { error: home.reason ?? "the site couldn't be reached" };
+    const homeText = htmlToFullText(home.html);
+    if (homeText.length < 80) return { error: "the site has no readable text (it may need a browser to load)" };
+    const subpages = await Promise.all(subpageLinks(home.html, website).map(async (url) => ({ url, html: await this.fetcher.fetchText(url) })));
+    const record = readSiteRecord(home.html);
+    for (const p of subpages) {
+      if (!p.html) continue;
+      const sub = readSiteRecord(p.html);
+      record.address ??= sub.address;
+      record.city ??= sub.city;
+      record.state ??= sub.state;
+      record.phone ??= sub.phone;
+      record.hours ??= sub.hours;
+      for (const person of sub.people) {
+        if (!record.people.some((x) => x.name.toLowerCase() === person.name.toLowerCase())) record.people.push(person);
+      }
+    }
+    const text = [homeText, ...subpages.filter((p) => p.html).map((p) => `PAGE (${p.url}):\n${htmlToFullText(p.html!)}`)].join("\n\n");
+    return { text, record, url: website };
+  }
+
+  /**
+   * The business listing whose own website is the one the user gave, for
+   * when the site itself can't be read. Matched on the domain, never the
+   * name: a URL-only search looks its name up from the site's search
+   * results first.
+   */
+  private async listingForSite(queryName: string, anchor: CompanyAnchor): Promise<PlaceResult | undefined> {
+    if (!this.searcher.places || !anchor.website) return undefined;
+    const domain = hostOf(anchor.website);
+    let name = queryName;
+    if (anchor.nameFromSite) {
+      const top = (await this.searcher.search(`site:${domain}`, 3)).find((r) => hostOf(r.url) === domain);
+      name = top?.title.split(/\s[|\-–—·:]\s/)[0].trim() ?? "";
+      if (!name) return undefined;
+    }
+    const places = await this.searcher.places(`${name}${anchor.location ? ` ${anchor.location}` : ""}`);
+    const found = places.find((p) => hostOf(p.website) === domain);
+    // Name-only listings sometimes give just the street ("19524 Nordhoff
+    // St #3B"): looking it up by that street returns the full address.
+    if (found && !listingCity(found.address) && found.address) {
+      const full = (await this.searcher.places(`${found.title} ${found.address}`)).find((p) => hostOf(p.website) === domain);
+      if (full && listingCity(full.address)) return full;
+    }
+    return found;
+  }
+
+  /**
+   * A business listing (Google Maps via Serper) with this exact name at the
+   * anchor city (round 2, Fix 2). Its website is accepted as the
+   * business's own; its address confirms the city.
+   */
+  private async findListing(companyName: string, location: string): Promise<{ title: string; address?: string; website?: string } | undefined> {
+    if (!this.searcher.places) return undefined;
+    const city = cityOf(location);
+    const places = await this.searcher.places(`${companyName} ${location}`);
+    return places.find((p) => mentionsCompany(p.title, companyName)
+      && !!city && normalizeWords(p.address ?? "").includes(normalizeWords(city)));
+  }
+
   /**
    * @param anchor What the user gave to pin down which business (Fix 1).
-   *   A website replaces the domain guess; a location narrows every
-   *   search, and a site that doesn't name that city is not used.
+   *   A website is read first and becomes the record every other source
+   *   is checked against (round 2, Fix 1); a location narrows every search,
+   *   and a site that doesn't name that city is not used unless a business
+   *   listing at that city links to it (round 2, Fix 2).
    */
-  async run(companyName: string, anchor: CompanyAnchor = {}): Promise<WebsiteAgentResult> {
+  async run(queryName: string, anchorIn: CompanyAnchor = {}): Promise<WebsiteAgentResult> {
     const sources: Source[] = [];
     // The user saw the same-named businesses and none was theirs: nothing
     // found by name alone can be trusted to be about it.
-    if (anchor.unlisted) {
-      return { company: { name: companyName, anchor, thin: true }, leadership: [], products: [], sources };
+    if (anchorIn.unlisted) {
+      return { company: { name: queryName, anchor: anchorIn, thin: true }, leadership: [], products: [], sources };
     }
+
+    // Website-first (round 2, Fix 1): the site the user gave settles which
+    // business this is. If it can't be read, the report says so and why;
+    // it never falls back to matching the name alone.
+    let site: { text: string; record: SiteRecord; url: string } | undefined;
+    let companyName = queryName;
+    let anchor = anchorIn;
+    let siteUnreadable: string | undefined;
+    let siteListing: PlaceResult | undefined;
+    if (anchorIn.website) {
+      const read = await this.readSite(anchorIn.website);
+      if ("error" in read) {
+        console.log(`[website-agent] "${queryName}" — couldn't read ${anchorIn.website}: ${read.error}`);
+        siteUnreadable = read.error;
+        // Still matched on the website, never the name: a business listing
+        // whose own website is this domain says which business it is.
+        siteListing = await this.listingForSite(queryName, anchorIn);
+        if (!siteListing) {
+          return {
+            company: { name: queryName, anchor: anchorIn, website: anchorIn.website, siteUnreadable, thin: true },
+            leadership: [], products: [], sources,
+          };
+        }
+        companyName = anchorIn.nameFromSite ? siteListing.title : queryName;
+        const city = listingCity(siteListing.address);
+        const state = siteListing.address?.match(/\b([A-Z]{2})\s+\d{5}\b/)?.[1];
+        if (!anchorIn.location && city) anchor = { ...anchorIn, location: [city, state].filter(Boolean).join(", ") };
+      } else {
+        site = read;
+      }
+    }
+    if (site) {
+      const read = site;
+      if (anchorIn.nameFromSite && read.record.name) companyName = read.record.name;
+      // The site's own city anchors every search below, so a same-named
+      // business elsewhere can't pass as this one.
+      if (!anchorIn.location && read.record.city) {
+        anchor = { ...anchorIn, location: [read.record.city, read.record.state].filter(Boolean).join(", ") };
+      }
+    }
+
     const override = findOverride(companyName);
     const city = cityOf(anchor.location);
     const loc = anchor.location ? ` ${anchor.location}` : "";
+    const userLocation = !anchor.website && anchor.location;
+    // A listing with this name at the anchor city proves its website, even
+    // when the site never names the city itself (round 2, Fix 2).
+    const listing = siteListing ?? (userLocation ? await this.findListing(companyName, anchor.location!) : undefined);
+    const listingSite = siteListing ? anchorIn.website
+      : listing?.website && isOfficialDomain(listing.website) ? new URL(listing.website).origin : undefined;
     // A known override's own domain is a better direct guess than the
     // generic slugify-the-name heuristic (e.g. "Alan Health" -> guessed
     // "alanhealth.com", which either doesn't resolve or isn't the real
     // site — the override already knows it's alanmeds.com).
     const directUrl = anchor.website
-      ? anchor.website
-      : override
-        ? `https://${override.canonical_domain}`
-        : this.guessDomain(companyName);
+      ?? listingSite
+      ?? (override ? `https://${override.canonical_domain}` : this.guessDomain(companyName));
+
+    const resolvePage = async (): Promise<ResolvedPage | null> => {
+      if (site) return { url: site.url, text: site.text, fromSnippets: false };
+      if (listingSite) {
+        // The listing already proved the site: read it, but never swap in a
+        // search result for it.
+        const html = await this.fetcher.fetchText(listingSite);
+        const text = html ? htmlToFullText(html) : "";
+        return text.length >= 120 ? { url: listingSite, text, fromSnippets: false } : null;
+      }
+      return resolveAndFetch(directUrl, appendDomainExclusions(`${companyName}${loc} official website`, override), this.fetcher, this.searcher);
+    };
 
     // 7/20 hardening — exclude a known-wrong domain (e.g. alan.com) at
     // the query itself via Serper/Google's -site: operator, on top of
     // the isRejectedDomain post-filter below. Query-level exclusion
     // means the result-count budget (5, 3, etc per call) isn't partly
     // spent on hits that were only going to be dropped anyway.
-    const [pageRaw, leadershipResultsRaw, productResultsRaw, overviewResultsRaw, locationResultsRaw] =
+    const [pageRaw, leadershipResultsRaw, productResultsRaw, overviewResultsRaw, locationResultsRaw, licenseResultsRaw] =
       await Promise.all([
-        resolveAndFetch(
-          directUrl,
-          appendDomainExclusions(`${companyName}${loc} official website`, override),
-          this.fetcher,
-          this.searcher
-        ),
+        resolvePage(),
         this.searcher.search(appendDomainExclusions(`${companyName}${loc} CEO founder executive leadership team`, override), 5),
         this.searcher.search(appendDomainExclusions(`${companyName}${loc} products and services`, override), 5),
         this.searcher.search(appendDomainExclusions(`${companyName}${loc} overview what is`, override), 3),
@@ -218,6 +364,12 @@ export class WebsiteAgent {
         anchor.location
           ? this.searcher.search(`"${companyName}" ${anchor.location} address hours`, 5)
           : Promise.resolve([]),
+        // Licensing boards and their public mirrors (round 2, Fix 2): a
+        // contractor or practice with no website still has a license
+        // record naming it and its city.
+        userLocation
+          ? this.searcher.search(`"${companyName}" ${anchor.location} license`, 5)
+          : Promise.resolve([]),
       ]);
 
     // Drop any result whose domain is on this entity's reject list before
@@ -225,26 +377,52 @@ export class WebsiteAgent {
     let page = pageRaw && !isRejectedDomain(pageRaw.url, override) ? pageRaw : null;
     // Anchor fields must agree: with a city given, a site that never names
     // it is a same-named business elsewhere, so neither its URL nor its
-    // text goes into the report. A website the user typed is trusted.
-    if (page && city && !anchor.website && !(await this.siteMatchesCity(page, city))) {
+    // text goes into the report. A website the user typed, or one a
+    // listing at that city links to, is trusted.
+    if (page && city && !site && !listingSite && !(await this.siteMatchesCity(page, city))) {
       console.log(`[website-agent] "${companyName}" — ${page.url} doesn't name ${city}; not used`);
       page = null;
     }
-    const leadershipResults = leadershipResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
-    const productResults = productResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
-    const overviewResults = overviewResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
-    const locationResults = locationResultsRaw.filter((r) => !isRejectedDomain(r.url, override));
 
     const company: CompanyProfile = { name: companyName };
     if (anchor.location || anchor.website) company.anchor = anchor;
+    if (siteUnreadable) company.siteUnreadable = siteUnreadable;
+
+    if (site) {
+      company.website = site.url;
+    } else if (listingSite) {
+      company.website = listingSite;
+    } else if (page && !page.fromSnippets) {
+      // Search snippets mean the site itself was never reached, so the
+      // guessed domain isn't shown as the website.
+      company.website = isOfficialDomain(page.url) ? page.url : directUrl;
+    }
+
+    // With an anchor, a search result counts only if it's on the business's
+    // own site or names it and the city (round 2, Fix 1): a namesake's
+    // pages never reach the extraction prompt.
+    const anchored = !!(anchor.location || anchor.website);
+    const tieRecord = { name: companyName, anchor, domain: hostOf(company.website) };
+    // A website with no city to go with it: only its own pages tie, since
+    // the name alone is exactly what a namesake shares.
+    const domainOnly = !!anchor.website && !anchor.location;
+    const onDomain = (url: string) => {
+      const host = hostOf(url);
+      return !!host && !!tieRecord.domain && (host === tieRecord.domain || host.endsWith(`.${tieRecord.domain}`));
+    };
+    const usable = (r: SearchResult) => !isRejectedDomain(r.url, override)
+      && (domainOnly ? onDomain(r.url) : !anchored || tiedToSubject(`${r.title}. ${r.snippet ?? ""}`, r.url, tieRecord));
+    const leadershipResults = leadershipResultsRaw.filter(usable);
+    const productResults = productResultsRaw.filter(usable);
+    const overviewResults = overviewResultsRaw.filter(usable);
+    const seenListing = new Set<string>();
+    const locationResults = [...locationResultsRaw, ...licenseResultsRaw].filter((r) => {
+      if (!usable(r) || seenListing.has(r.url)) return false;
+      seenListing.add(r.url);
+      return true;
+    });
 
     if (page) {
-      // Search snippets mean the site itself was never reached, so the
-      // guessed domain isn't shown as the website unless the user gave it.
-      const resolvedUrl = page.fromSnippets ? directUrl : page.url;
-      if (!page.fromSnippets || anchor.website) {
-        company.website = isOfficialDomain(resolvedUrl) ? resolvedUrl : directUrl;
-      }
       // Snippets only: the guessed domain still counts when search results
       // come from it (the site exists, it just didn't serve this fetcher).
       const guessedHost = hostOf(directUrl);
@@ -252,7 +430,7 @@ export class WebsiteAgent {
         && [...overviewResults, ...leadershipResults, ...productResults, ...locationResults].some((r) => hostOf(r.url) === guessedHost)) {
         company.website = directUrl.replace("://www.", "://");
       }
-      if (city && !page.fromSnippets && BRAND_SITE.test(page.text)) company.brandLevel = true;
+      if (city && !page.fromSnippets && !site && BRAND_SITE.test(page.text)) company.brandLevel = true;
       sources.push({
         url: page.url,
         title: companyName,
@@ -260,13 +438,21 @@ export class WebsiteAgent {
         usedFor: ["overview"],
       });
     }
+    if (listing) {
+      company.listing = {
+        title: listing.title,
+        address: listing.address,
+        url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${listing.title} ${listing.address ?? ""}`.trim())}`,
+      };
+      sources.push({ url: company.listing.url, title: `${listing.title} — business listing`, retrievedAt: new Date().toISOString(), usedFor: ["overview"] });
+    }
     for (const r of leadershipResults) {
       sources.push({ url: r.url, title: r.title, retrievedAt: new Date().toISOString(), usedFor: ["leadership"] });
     }
     for (const r of productResults) {
       sources.push({ url: r.url, title: r.title, retrievedAt: new Date().toISOString(), usedFor: ["products"] });
     }
-    for (const r of overviewResults) {
+    for (const r of [...overviewResults, ...locationResults]) {
       sources.push({ url: r.url, title: r.title, retrievedAt: new Date().toISOString(), usedFor: ["overview"] });
     }
 
@@ -279,9 +465,14 @@ export class WebsiteAgent {
       Promise.all(productResults.slice(0, 2).map((r) => fetchPageText(r.url, this.fetcher, 2000))),
     ]);
 
-    // Combine everything gathered into one block for a single LLM call
+    // Combine everything gathered into one block for a single LLM call.
+    // The business's own site leads, in full (its nav lists the services).
     const combinedText = [
-      page ? `OFFICIAL SITE TEXT:\n${extractBestChunk(cleanPageText(page.text), 2000)}` : "",
+      site ? `OFFICIAL SITE TEXT (${site.url}):\n${site.text.slice(0, 6000)}`
+        : page ? `OFFICIAL SITE TEXT:\n${extractBestChunk(cleanPageText(page.text), 2000)}` : "",
+      locationResults.length
+        ? `LISTINGS AND LICENSE RECORDS:\n${locationResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}`
+        : "",
       overviewResults.length
         ? `OVERVIEW SEARCH:\n${overviewResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}`
         : "",
@@ -432,15 +623,39 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
     ].filter((t) => t.text && t.url && tiedToSubject(t.text, t.url, subject))
       .map((t) => ({ words: wordSet(t.text), url: t.url }));
     leadership = leadership
+      .filter((l) => isPersonName(l.name, companyName) && !/\b(of|and|&|for|at|the)$|[,:]$/i.test(l.title.trim()))
       .map((l) => ({ ...l, sourceUrl: sourceFor(l.name, tiedTexts) }))
       .filter((l) => l.sourceUrl);
+    // A place is never an offering ("Arleta CA" off a listing title).
+    // Offerings come from the business's own pages when it has a site
+    // (round 2, Fix 5): a headline elsewhere ("MJW Leans Into Student
+    // Housing") isn't a service. With no site, listing and license pages
+    // are all there is.
+    const ownPage = (url: string | undefined) => !company.website || (!!url && onDomain(url));
     products = products
-      .map((p) => ({ ...p, sourceUrl: sourceFor(p.name, tiedTexts) }))
+      .filter((p) => !city || !normalizeWords(p.name).includes(normalizeWords(city)))
+      .map((p) => ({ ...p, sourceUrl: sourceFor(p.name, tiedTexts.filter((t) => ownPage(t.url))) }))
       .filter((p) => p.sourceUrl);
+
+    // The site's own record (round 2, Fix 1): its address, phone, hours and
+    // the people it names with a credential are facts, not extractions.
+    if (site) {
+      const r = site.record;
+      if (r.address) company.address = r.address;
+      if (r.phone) company.phone = r.phone;
+      if (r.hours) company.hours = r.hours;
+      if (r.city) company.headquarters = [r.city, r.state].filter(Boolean).join(", ");
+      for (const p of r.people) {
+        if (!leadership.some((l) => l.name.toLowerCase() === p.name.toLowerCase())) {
+          leadership.push({ name: p.name, title: p.title, sourceUrl: site.url });
+        }
+      }
+    }
+    if (listing?.address) company.address ??= listing.address;
 
     // Never echo the query as a finding: the city the user typed is the
     // headquarters only if a source used here names it.
-    const locationText = locationResults.map((r) => `${r.title} ${r.snippet ?? ""}`).join("\n");
+    const locationText = [...locationResults.map((r) => `${r.title} ${r.snippet ?? ""}`), listing?.address ?? ""].join("\n");
     if (anchor.location) {
       const hqNamesCity = !!company.headquarters && normalizeWords(company.headquarters).includes(normalizeWords(city!));
       if (!hqNamesCity) {
@@ -454,9 +669,11 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
       ...[...locationResults, ...overviewResults, ...leadershipResults, ...productResults].map((r) => ({ text: `${r.title}. ${r.snippet ?? ""}`, url: r.url })),
     ], companyName, city);
 
-    // No website could be tied to this business: say so plainly instead
-    // of filling the report from whatever shares the name (Fix 1).
-    if (!page) {
+    // Nothing ties to this business — no site, no listing at the anchor
+    // city, no license or listing page naming it and the city: say so
+    // plainly instead of filling the report from whatever shares the name
+    // (Fix 1). Any one of those is proof enough (round 2, Fix 2).
+    if (!page && !company.website && !listing && locationResults.length === 0) {
       company.thin = true;
       delete company.description;
       return { company, leadership: [], products: [], sources: [] };

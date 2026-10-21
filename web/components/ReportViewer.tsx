@@ -654,7 +654,7 @@ function renderSection(section: Section, onRetry?: () => void) {
               <div>
                 <div className={styles.personName}>{name}</div>
                 {role && <div className={styles.personRole}>{role}</div>}
-                {href && <SourceCite source={domainOf(href)} title={name} href={href} />}
+                {href && <SourceCite source={domainOf(href)} href={href} />}
               </div>
             </div>
           );
@@ -726,20 +726,22 @@ function renderSection(section: Section, onRetry?: () => void) {
   }
 
   // Products / Specs — generic list
-  if (title === "Products" || title === "Specs") {
+  if (title === "Products" || title === "Services / focus areas" || title === "Specs") {
     const items = parseListItems(content);
-    if (items.length === 0) return <div className={styles.placeholder}>No data collected.</div>;
+    if (items.length === 0) return <div className={styles.placeholder}>No products or services listed.</div>;
     return (
       <div className={styles.productList}>
         {brandNote(content) && <div className={styles.placeholder}>{brandNote(content)}</div>}
         {items.map((entry, i) => {
           const { text, href } = splitSourceLink(entry);
           const clean = text.replace(/\*\*(.*?)\*\*/g, "$1");
+          // The row already shows the name: the citation shows only where
+          // it came from (round 2, Fix 5).
           return (
             <div key={i} className={styles.productRow}>
               <span className={styles.productDot} />
               <span>{clean}</span>
-              {href && <SourceCite source={domainOf(href)} title={clean} href={href} />}
+              {href && <SourceCite source={domainOf(href)} href={href} />}
             </div>
           );
         })}

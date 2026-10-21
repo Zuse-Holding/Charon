@@ -60,14 +60,26 @@ export class ReportAgent {
 
     // Closed status leads the report (Fix 4); ReportViewer shows the
     // Status section as a banner under the title.
-    if (bundle.company.closure) {
+    const closure = bundle.company.closure;
+    if (closure) {
+      // How sure the report is depends on how many sites say so (round 2, Fix 5).
+      const strength = closure.sources >= 2
+        ? `${closure.sources} sources say this business has closed`
+        : closure.communityOnly
+          ? `Reported closed in a community post; not otherwise confirmed`
+          : `Reported closed by one source; not otherwise confirmed`;
       lines.push(`## Status`);
-      lines.push(`**Closed.** A source says this business has closed: "${bundle.company.closure.evidence}" ([source](${bundle.company.closure.url}))`);
+      lines.push(`**Closed.** ${strength}: "${closure.evidence}" ([source](${closure.url}))`);
       lines.push(``);
     }
 
     lines.push(`## Executive Summary`);
-    if (bundle.company.thin) {
+    if (bundle.company.siteUnreadable && bundle.company.thin) {
+      // Website-first (round 2, Fix 1): never a name-only report instead.
+      lines.push(`Couldn't read this website: ${bundle.company.siteUnreadable}. Metis matches a business to the website you give it, so it didn't fall back to searching the name alone. Check the address, or add the city instead, and run it again.`);
+    } else if (bundle.company.siteUnreadable) {
+      lines.push(`Couldn't read this website: ${bundle.company.siteUnreadable}. Matched through the business listing that links to it instead.${bundle.company.description ? ` ${bundle.company.description}` : ""}`);
+    } else if (bundle.company.thin) {
       // Honest thin report (Fix 1): never trade up to a namesake.
       lines.push(`Little public presence. Metis couldn't tie a website or other public pages to this business, so this report covers only public records that match the name.${bundle.company.anchor?.unlisted ? " Other companies share this name; they're not included." : ""} Add the city or website and run it again for more.`);
     } else {
@@ -86,6 +98,10 @@ export class ReportAgent {
     if (anchor?.location || anchor?.website) lines.push(`- **Matched on:** ${[anchor.location, anchor.website].filter(Boolean).join(" · ")} (from your search)`);
     if (bundle.company.brandLevel) lines.push(`- **Location:** ${anchor?.location} — franchise location of ${bundle.company.name}`);
     lines.push(`- **Website:** ${bundle.company.website ?? "Unknown"}`);
+    if (bundle.company.address) lines.push(`- **Address:** ${bundle.company.address}`);
+    if (bundle.company.phone) lines.push(`- **Phone:** ${bundle.company.phone}`);
+    if (bundle.company.hours) lines.push(`- **Hours:** ${bundle.company.hours}`);
+    if (bundle.company.listing) lines.push(`- **Business listing:** [${bundle.company.listing.title}${bundle.company.listing.address ? `, ${bundle.company.listing.address}` : ""}](${bundle.company.listing.url})`);
     lines.push(`- **Founded:** ${bundle.company.founded ?? "Unknown"}`);
     lines.push(
       `- **Headquarters:** ${bundle.company.headquarters
@@ -108,9 +124,12 @@ export class ReportAgent {
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["leadership"]);
 
-    lines.push(`## Products`);
+    // Investment and holding firms don't sell products (round 2, Fix 5).
+    const firmLike = /\b(invest\w*|holding\w*|capital|equity|ventures?|partners|fund|asset management)\b/i
+      .test(`${bundle.company.name} ${bundle.company.industry ?? ""}`);
+    lines.push(firmLike ? `## Services / focus areas` : `## Products`);
     if (bundle.products.length === 0) {
-      lines.push(`_No product data collected in this pass._`);
+      lines.push(`_No products or services listed._`);
     } else {
       if (bundle.company.brandLevel) lines.push(`_Brand-level: products of ${bundle.company.name} overall._`);
       for (const p of bundle.products) {

@@ -20,7 +20,7 @@ import { DomainPostureAgent } from "../domain-posture-agent/index.js";
 import { RelatedEntitiesAgent } from "../related-entities-agent/index.js";
 import { guardFromEnv } from "../../lib/exclusions/adapters.js";
 import { siteOf } from "../../lib/provenance/findings.js";
-import { cityOf, detectClosure } from "../../lib/closure.js";
+import { cityOf, detectClosure, mergeClosure } from "../../lib/closure.js";
 import { applyCompanyConsistency, applyPersonConsistency, plausibleAnalysis } from "../../lib/consistency.js";
 import { hostOf, type SubjectRecord } from "../../lib/entities/subject.js";
 import { synthesizeRisksOpportunities } from "../synthesis-agent/index.js";
@@ -137,22 +137,30 @@ export class ResearchOrchestrator {
     return { bundle, report, littleSisRelationships, snapshots: stored };
   }
 
-  private async gatherCompany(companyName: string, proAccess: boolean, deep: boolean, cov: CoverageRecorder, relatedHops: number | undefined, anchor: CompanyAnchor): Promise<{
+  private async gatherCompany(queryName: string, proAccess: boolean, deep: boolean, cov: CoverageRecorder, relatedHops: number | undefined, queryAnchor: CompanyAnchor): Promise<{
     bundle: ResearchBundle;
     littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
     // Resolve once, up front (Fix 1): the website step settles which
     // business this is (its domain and city), and every other source
     // searches and is checked against that one record.
-    const siteResult = await cov.run("website", () => this.websiteAgent.run(companyName, anchor),
-      { company: { name: companyName }, leadership: [], products: [], sources: [] },
+    const siteResult = await cov.run("website", () => this.websiteAgent.run(queryName, queryAnchor),
+      { company: { name: queryName }, leadership: [], products: [], sources: [] },
       (r) => r.leadership.length + r.products.length + (r.company.description ? 1 : 0));
+    // A website-only search is named by the site, and the site's own city
+    // anchors every later source (round 2, Fix 1).
+    const companyName = siteResult.company.name || queryName;
+    const anchor: CompanyAnchor = siteResult.company.anchor ?? queryAnchor;
     const subject: SubjectRecord = { name: companyName, anchor, domain: hostOf(siteResult.company.website) };
+    // The site couldn't be read: nothing found by name alone stands in for it.
+    const unreadable = !!siteResult.company.siteUnreadable;
 
     const [newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
-        cov.run("news", () => this.newsAgent.run(companyName, anchor), { news: [], sources: [] }, (r) => r.news.length),
-        cov.run("competitors", () => this.competitorAgent.run(companyName, anchor), { competitors: [], sources: [] }, (r) => r.competitors.length),
+        unreadable ? Promise.resolve({ news: [], sources: [] })
+          : cov.run("news", () => this.newsAgent.run(companyName, anchor), { news: [], sources: [] }, (r) => r.news.length),
+        unreadable ? Promise.resolve({ competitors: [], sources: [] })
+          : cov.run("competitors", () => this.competitorAgent.run(companyName, subject), { competitors: [], sources: [] }, (r) => r.competitors.length),
         cov.run("sec", () => this.corporateAgent.run(companyName, subject), { funding: [], insiderActivity: [], sources: [] },
           (r) => r.funding.length + r.insiderActivity.length + (r.ownership ? 1 : 0)),
         // Free public API, no tier gating — every research run gets this.
@@ -245,9 +253,17 @@ export class ResearchOrchestrator {
     };
 
     // Closure can surface in news as well as on the business's own pages.
+    const city = cityOf(anchor.location);
     bundle.company.closure ??= detectClosure(
       bundle.news.map((n) => ({ text: `${n.headline}. ${n.summary ?? ""}`, url: n.url ?? "" })).filter((n) => n.url),
-      companyName, cityOf(anchor.location));
+      companyName, city);
+    // One source saying it closed isn't confirmation (round 2, Fix 5):
+    // look once for a second before the report states it.
+    if (bundle.company.closure && bundle.company.closure.sources < 2) {
+      const more = await this.searcher.search(`"${companyName}"${city ? ` ${city}` : ""} closed`, 5);
+      bundle.company.closure = mergeClosure(bundle.company.closure,
+        more.map((r) => ({ text: `${r.title}. ${r.snippet ?? ""}`, url: r.url })), companyName, city);
+    }
 
     // Consistency pass before synthesis and output: anything not tied to
     // the resolved record, or out of scale for it, is dropped.
@@ -260,8 +276,8 @@ export class ResearchOrchestrator {
     // A thin report has nothing tied to the business to analyse.
     const synthesis = bundle.company.thin ? null : await synthesizeRisksOpportunities(bundle);
     if (synthesis) {
-      bundle.risks = plausibleAnalysis(synthesis.risks, bundle);
-      bundle.opportunities = plausibleAnalysis(synthesis.opportunities, bundle);
+      bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts);
+      bundle.opportunities = plausibleAnalysis(synthesis.opportunities, bundle, synthesis.facts);
       bundle.synthesisCitations = synthesis.citations;
     }
 

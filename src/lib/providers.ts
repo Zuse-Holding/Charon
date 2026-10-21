@@ -69,11 +69,31 @@ export interface SearchProvider {
    *   mention search, where freshness is the point — see that agent.
    */
   search(query: string, count?: number, tbs?: string): Promise<SearchResult[]>;
+  /** Business listings (name, address, website). Optional: not every
+   *  provider has them, and callers treat a missing method as no listings. */
+  places?(query: string): Promise<PlaceResult[]>;
+}
+
+/** A page fetch with the reason it failed, for messages the user sees. */
+export interface FetchedPage {
+  html: string | null;
+  /** "the site returned HTTP 403", "the site didn't respond in time"... */
+  reason?: string;
 }
 
 export interface FetchProvider {
   fetchText(url: string): Promise<string | null>;
+  fetchPage?(url: string): Promise<FetchedPage>;
 }
+
+// Identifies Metis honestly. No "bot" token: small-business hosts (e.g.
+// sdsdentistry.com) answer any user agent containing it with a 403, which
+// cost the report the one site the user gave it.
+const USER_AGENT = "Mozilla/5.0 (compatible; MetisResearch/1.0; +https://metisanalytic.com)";
+
+// Interstitials hosts serve instead of the page (SiteGround's "One moment,
+// please...", Cloudflare's "Just a moment...").
+const BOT_CHECK = /<title>\s*(one moment, please|just a moment|attention required|security check|access denied)|sgcaptcha|cf-chl-|challenge-platform/i;
 
 // Domains that block scrapers or return useless content — skip fetching these
 const UNFETCHABLE_DOMAINS = new Set([
@@ -100,29 +120,46 @@ export class DirectFetchProvider implements FetchProvider {
   }
 
   async fetchText(url: string): Promise<string | null> {
-    if (isUnfetchable(url)) return null;
+    return (await this.fetchPage(url)).html;
+  }
+
+  async fetchPage(url: string): Promise<FetchedPage> {
+    if (isUnfetchable(url)) return { html: null, reason: "the site doesn't allow automated reading" };
     const cached = pageCache.get(url);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) return { html: cached };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
       const res = await fetch(url, {
         signal: controller.signal,
         headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; MetisResearchBot/1.0; +https://metisanalytic.com)",
+          "User-Agent": USER_AGENT,
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "en-US,en;q=0.5",
         },
       });
-      clearTimeout(timer);
-      if (!res.ok) return null;
+      if (!res.ok) return { html: null, reason: `the site returned HTTP ${res.status}` };
       const contentType = res.headers.get("content-type") ?? "";
-      if (!contentType.includes("text/html") && !contentType.includes("text/plain")) return null;
+      if (!contentType.includes("text/html") && !contentType.includes("text/plain")) {
+        return { html: null, reason: "the address isn't a web page" };
+      }
       const text = await res.text();
+      // A bot check stands in for the page: report it, never read it as the
+      // business's text, and don't cache it (round 2, Fix 1).
+      if (BOT_CHECK.test(text.slice(0, 4000))) return { html: null, reason: "the site showed a bot check instead of its page" };
       if (text && text.length < 500_000) pageCache.set(url, text);
-      return text;
-    } catch {
-      return null;
+      return { html: text };
+    } catch (err) {
+      const aborted = err instanceof Error && err.name === "AbortError";
+      const code = (err as { cause?: { code?: string } })?.cause?.code;
+      return {
+        html: null,
+        reason: aborted ? "the site didn't respond in time"
+          : code === "ENOTFOUND" ? "the address doesn't exist"
+          : "the site couldn't be reached",
+      };
+    } finally {
+      clearTimeout(timer);
     }
   }
 }
@@ -154,7 +191,7 @@ export class SerperSearchProvider implements SearchProvider {
         },
         body: JSON.stringify(tbs ? { q: query, num: count, tbs } : { q: query, num: count }),
       });
-      if (!res.ok) return [];
+      if (!res.ok) { console.warn(`[serper] search HTTP ${res.status}`); return []; }
       const data = (await res.json()) as {
         organic?: { title: string; link: string; snippet?: string; date?: string }[];
       };
@@ -184,7 +221,7 @@ export class SerperSearchProvider implements SearchProvider {
         headers: { "X-API-KEY": this.apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({ q: query }),
       });
-      if (!res.ok) return [];
+      if (!res.ok) { console.warn(`[serper] places HTTP ${res.status}`); return []; }
       const data = (await res.json()) as { places?: { title?: string; address?: string; website?: string }[] };
       const results = (data.places ?? [])
         .filter((p): p is { title: string; address?: string; website?: string } => Boolean(p.title))
@@ -232,6 +269,28 @@ export function htmlToText(html: string): string {
     .replace(/we use cookies[\s\S]{0,200}(accept|agree|ok)/gi, " ")
     .replace(/subscribe to (our )?newsletter[\s\S]{0,200}/gi, " ")
     // Collapse whitespace
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * All visible text, header and footer included. A small business's address
+ * and phone usually sit in the footer, which htmlToText drops: use this
+ * when checking where a business is, not for text the LLM summarizes.
+ */
+export function htmlToFullText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+    .replace(/<br\s*\/?>/gi, ", ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&#0?39;|&apos;|&rsquo;/g, "'")
+    .replace(/&ndash;|&mdash;|&#8211;|&#8212;/g, "-")
+    .replace(/&[a-z]+;|&#\d+;/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
