@@ -1,3 +1,4 @@
+import { anchorSuffix, tiedToSubject, type SubjectRecord } from "../../lib/entities/subject.js";
 import {
   CorporateAgentResult,
   FundingEntry,
@@ -37,7 +38,10 @@ export class CorporateAgent {
     this.form4Agent = new Form4Agent(searcher, fetcher);
   }
 
-  async run(companyName: string): Promise<CorporateAgentResult> {
+  /** @param subject The resolved company (Fix 1/Fix 3): the search is
+   *  narrowed to its city, and funding is read only from sources tied to
+   *  it, so a larger namesake's rounds can't land here. */
+  async run(companyName: string, subject: SubjectRecord = { name: companyName, anchor: {} }): Promise<CorporateAgentResult> {
     // 7/20 fix — this agent used to have no awareness of the entity
     // override registry at all, so a funding round or ownership note
     // sourced from a known-wrong domain (e.g. alan.com when researching
@@ -50,13 +54,15 @@ export class CorporateAgent {
     const override = findOverride(companyName);
 
     const [rawResults, form4Result] = await Promise.all([
-      this.searcher.search(appendDomainExclusions(`${companyName} funding round investors raised parent company subsidiary`, override), 5),
+      this.searcher.search(appendDomainExclusions(`${companyName}${anchorSuffix(subject.anchor)} funding round investors raised parent company subsidiary`, override), 5),
       // Insider activity (Round 2, item 5) — same "who owns/controls this
       // company" question funding/ownership already answers here.
       this.form4Agent.run(companyName),
     ]);
 
-    const results = rawResults.filter((r) => !isRejectedDomain(r.url, override));
+    const results = rawResults
+      .filter((r) => !isRejectedDomain(r.url, override))
+      .filter((r) => tiedToSubject(`${r.title} ${r.snippet ?? ""}`, r.url, subject));
 
     const sources: Source[] = results.map((r) => ({
       url: r.url,

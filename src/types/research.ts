@@ -16,23 +16,49 @@ export interface Source {
   usedFor: string[]; // which sections this source supports, e.g. ["overview", "products"]
 }
 
+/** What the user gave besides the name to pin down which business they
+ *  mean (Fix 1): a city/state, or the company's own website. */
+export interface CompanyAnchor {
+  location?: string;
+  website?: string;
+  /** The user saw the businesses sharing this name and picked none of
+   *  them: report only what ties to the name, never a namesake. */
+  unlisted?: boolean;
+}
+
 export interface CompanyProfile {
   name: string;
   description?: string;
   website?: string;
   founded?: string;
   headquarters?: string;
+  /** headquarters is the location the user typed, not found in any source. */
+  headquartersUnverified?: boolean;
   industry?: string;
+  /** The anchor the report was matched on, shown in the overview. */
+  anchor?: CompanyAnchor;
+  /** Closed, dissolved or inactive, with the source that says so. */
+  closure?: { evidence: string; url: string };
+  /** No website could be tied to this business: a thin report, never a
+   *  better-documented namesake's (Fix 1). */
+  thin?: boolean;
+  /** A location of a larger brand (Fix 4): the site is the brand's, so
+   *  overview, leadership and products describe the brand, not the location. */
+  brandLevel?: boolean;
 }
 
 export interface LeadershipEntry {
   name: string;
   title: string;
   bio?: string;
+  /** The page that names this person for this company (Fix 2). */
+  sourceUrl?: string;
 }
 
 export interface ProductEntry {
   name: string;
+  /** The page that names this product for this company (Fix 2). */
+  sourceUrl?: string;
   category?: string;
   description?: string;
   pricingModel?: string;
@@ -198,6 +224,8 @@ export interface PersonResearchBundle {
   foiaRequests?: FoiaRequestEntry[];
   // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess).
   sanctionsMatches?: SanctionsMatch[];
+  /** The Consolidated Screening List couldn't be checked on this run. */
+  sanctionsUnavailable?: boolean;
   nonprofitFilings?: NonprofitFilingEntry[];
   powerMapConnections?: PowerMapEntry[];
   /** Per-finding provenance (Feature 2). Present only when the
@@ -257,6 +285,8 @@ export interface ResearchBundle {
   insiderActivity?: Form4Entry[];
   // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess).
   sanctionsMatches?: SanctionsMatch[];
+  /** The Consolidated Screening List couldn't be checked on this run. */
+  sanctionsUnavailable?: boolean;
   webArchive?: WebArchiveSummary;
   nonprofitFilings?: NonprofitFilingEntry[];
   powerMapConnections?: PowerMapEntry[];
@@ -485,6 +515,8 @@ export interface NonprofitFilingEntry {
   ein: string;
   name: string;
   ntee?: string;          // NTEE classification code, e.g. "B25" (education)
+  city?: string;
+  state?: string;
   totalRevenue?: string;
   taxPeriod?: string;
   url: string;

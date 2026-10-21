@@ -38,6 +38,7 @@
   transition: border-color 0.15s;
 }
 .input::placeholder { color: var(--muted); }
+.anchorInput { width: 200px; padding-left: 12px; flex-shrink: 1; min-width: 0; }
 .input:focus { border-color: var(--orange); }
 
 .pills {
@@ -110,6 +111,7 @@
 @media (max-width: 900px) {
   .topbar { padding: 10px 14px; gap: 8px; }
   .searchWrap { max-width: unset; }
+  .anchorInput { width: 120px; }
   .right { display: none; }
   .pills { display: none; }
   .runBtn {

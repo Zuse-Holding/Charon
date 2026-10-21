@@ -1,6 +1,6 @@
 import { z } from "zod";
 import Groq from "groq-sdk";
-import { recordLlmUsage } from "./cost-tracking.js";
+import { recordLlmFailure, recordLlmUsage } from "./cost-tracking.js";
 
 /**
  * Unified LLM extraction layer.
@@ -170,7 +170,7 @@ async function extractViaGroq<T>(
           },
           { role: "user", content: userContent },
         ],
-        temperature: 0.1,
+        temperature: 0,
         max_tokens: GROQ_MAX_TOKENS,
         response_format: { type: "json_object" },
         ...groqReasoningParams(model),
@@ -344,7 +344,7 @@ async function extractViaOpenRouter<T>(
             },
             { role: "user", content: userContent },
           ],
-          temperature: 0.1,
+          temperature: 0,
           max_tokens: 1024,
           response_format: { type: "json_object" },
         }),
@@ -515,6 +515,13 @@ export async function extractStructured<T>(
   }
 
   if (result !== null) cacheSet(key, result);
+  // Every provider failed (rate limit, outage, bad JSON). Counted so a
+  // research run can refuse to ship a report with a silently patched
+  // section (Fix 6) instead of quietly falling back to heuristics.
+  else {
+    console.error("[llm] extraction failed on every provider");
+    recordLlmFailure();
+  }
   return result;
 }
 

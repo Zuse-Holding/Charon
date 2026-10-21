@@ -498,6 +498,17 @@ function parseLinkItems(lines: string[]): { text: string; url: string; sub?: str
     });
 }
 
+/** Splits report-agent's trailing " ([source](url))" off a list item (Fix 2). */
+function splitSourceLink(item: string): { text: string; href?: string } {
+  const m = item.match(/^(.*?)\s*\(\[source\]\(([^)]+)\)\)\s*$/);
+  return m ? { text: m[1], href: m[2] } : { text: item };
+}
+
+/** A "_Brand-level: ..._" line above a list (Fix 4), shown as a note. */
+function brandNote(content: string[]): string | undefined {
+  return content.map((l) => l.trim()).find((l) => /^_Brand-level/.test(l))?.replace(/^_|_$/g, "");
+}
+
 function parseKeyValue(lines: string[]): { key: string; value: string }[] {
   return lines
     .filter(l => l.trim().startsWith("- **"))
@@ -620,9 +631,12 @@ function renderSection(section: Section, onRetry?: () => void) {
   if (title === "Leadership" || title === "Career History") {
     const items = parseListItems(content);
     if (items.length === 0) return <div className={styles.placeholder}>No data collected in this pass.</div>;
+    const note = brandNote(content);
     return (
       <div className={styles.personList}>
-        {items.map((item, i) => {
+        {note && <div className={styles.placeholder}>{note}</div>}
+        {items.map((entry, i) => {
+          const { text: item, href } = splitSourceLink(entry);
           // Split only on an em/en dash with space on both sides (the
           // literal " — " report-agent inserts between name and title).
           // A bare hyphen char-class here used to also match hyphens
@@ -640,6 +654,7 @@ function renderSection(section: Section, onRetry?: () => void) {
               <div>
                 <div className={styles.personName}>{name}</div>
                 {role && <div className={styles.personRole}>{role}</div>}
+                {href && <SourceCite source={domainOf(href)} title={name} href={href} />}
               </div>
             </div>
           );
@@ -716,12 +731,15 @@ function renderSection(section: Section, onRetry?: () => void) {
     if (items.length === 0) return <div className={styles.placeholder}>No data collected.</div>;
     return (
       <div className={styles.productList}>
-        {items.map((item, i) => {
-          const clean = item.replace(/\*\*(.*?)\*\*/g, "$1");
+        {brandNote(content) && <div className={styles.placeholder}>{brandNote(content)}</div>}
+        {items.map((entry, i) => {
+          const { text, href } = splitSourceLink(entry);
+          const clean = text.replace(/\*\*(.*?)\*\*/g, "$1");
           return (
             <div key={i} className={styles.productRow}>
               <span className={styles.productDot} />
               <span>{clean}</span>
+              {href && <SourceCite source={domainOf(href)} title={clean} href={href} />}
             </div>
           );
         })}
@@ -810,10 +828,26 @@ function ReportGlance({ sections }: { sections: Section[] }) {
   );
 }
 
+/** Closed or dissolved status (report-agent's "Status" section): a banner
+ *  directly under the title, never buried in Risks. */
+function StatusBanner({ section }: { section: Section }) {
+  const line = section.content.find((l) => l.trim()) ?? "";
+  const href = line.match(/\[source\]\(([^)]+)\)/)?.[1];
+  const text = line.replace(/\s*\(\[source\]\([^)]+\)\)/, "").replace(/\*\*/g, "");
+  return (
+    <div className={styles.statusBanner} role="alert">
+      {text}
+      {href && <> <a href={href} target="_blank" rel="noopener noreferrer">See the source</a></>}
+    </div>
+  );
+}
+
 export default function ReportViewer({ markdown, onRetry, kind }: ReportViewerProps) {
   // Source Coverage is reference material, not findings: always render it
   // last so it doesn't interrupt the report, wherever the agent wrote it.
-  const parsed = parseMarkdown(markdown);
+  const all = parseMarkdown(markdown);
+  const status = all.find((s) => s.title === "Status");
+  const parsed = all.filter((s) => s !== status);
   const sections = [
     ...parsed.filter((s) => s.title !== COVERAGE_TITLE),
     ...parsed.filter((s) => s.title === COVERAGE_TITLE),
@@ -832,6 +866,7 @@ export default function ReportViewer({ markdown, onRetry, kind }: ReportViewerPr
             : `! Metis doesn't record a source for every finding in ${kind} reports yet. Treat anything without a linked source as unverified.`}
         </div>
       )}
+      {status && <StatusBanner section={status} />}
       <ReportGlance sections={sections} />
       {sections.map((section, i) => {
         const { body, sourceLines, unverified } = splitOutSources(section.content);

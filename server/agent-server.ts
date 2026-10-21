@@ -27,7 +27,8 @@ import { recordsFromBundle } from "../src/lib/entities/records.js";
 import { notAvailable, registerExclusionRoutes, searchBlocked } from "./exclusion-routes.js";
 import { upsertStatewideExecutives } from "../src/database/statewide-executives.js";
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
-import { parsePersonQuery } from "../src/lib/nlp.js";
+import { isLocationOnly, parseCompanyQuery, parsePersonQuery } from "../src/lib/nlp.js";
+import { companyCandidates, personCandidates } from "../src/lib/candidates.js";
 import { withCostTracking } from "../src/lib/cost-tracking.js";
 import { persistProvenance } from "../src/lib/provenance/store.js";
 import type { Snapshot } from "../src/lib/provenance/snapshots.js";
@@ -576,6 +577,46 @@ app.post("/email/welcome", async (req, res) => {
   res.json({ ok: true, sent });
 });
 
+/**
+ * Candidate step (Fix 1 item 3, Fix 5): the businesses or people sharing
+ * a name, listed before a report runs so the user picks one. Two search
+ * credits per company lookup, one per person. Throttled like research.
+ */
+app.post("/candidates", async (req, res) => {
+  if (!authCheck(req, res)) return;
+  const { subject: rawSubject, type, userId } = req.body;
+  if (typeof rawSubject !== "string" || !rawSubject.trim() || (type !== "company" && type !== "person") || !userId) {
+    res.status(400).json({ error: "subject, type (company or person), and userId required" });
+    return;
+  }
+  const raw = rawSubject.trim().slice(0, 200);
+  if (await searchBlocked(supabase, raw)) return notAvailable(res);
+
+  const tier = await getUserTier(userId);
+  if (tier === "expired") {
+    res.status(403).json({ error: "Your trial has ended. Contact us to continue using Metis." });
+    return;
+  }
+  const limit = checkHourlyBucket(`candidates:user:${userId}`, Math.max(30, getTierConfig(tier).hourlyResearchLimit * 3));
+  if (!limit.allowed) {
+    return rateLimited(res, `You're searching faster than your plan allows. Try again in ${Math.ceil(limit.resetInMs / 60000)} minutes.`, { userId, cap: "hourly_candidates" });
+  }
+
+  const searcher = new SerperSearchProvider();
+  try {
+    if (type === "company") {
+      const { name, anchor } = parseCompanyQuery(raw);
+      res.json({ ok: true, ...(await companyCandidates(name, anchor, searcher)) });
+    } else {
+      const { name, affiliation } = parsePersonQuery(raw);
+      res.json({ ok: true, ...(await personCandidates(name, affiliation, searcher)) });
+    }
+  } catch (err) {
+    console.error("[candidates] failed:", err instanceof Error ? err.message : err);
+    res.status(502).json({ ok: false, error: "Couldn't look up matches right now." });
+  }
+});
+
 app.post("/research", async (req, res) => {
   if (!authCheck(req, res)) return;
 
@@ -599,6 +640,11 @@ app.post("/research", async (req, res) => {
     subject = parsed.name;
     personAffiliation = parsed.affiliation;
   }
+  // Company searches may carry an anchor after " · " (Fix 1). The run
+  // keeps the full "Name · Anchor" subject, so a rerun or the report slug
+  // stays tied to that business; research and the graph use the name.
+  const company = type === "company" ? parseCompanyQuery(rawSubject) : undefined;
+  const entityName = company?.name ?? subject;
 
   // Self-exclusion (Feature 6): a search naming an excluded email, phone
   // or name + date of birth gets a neutral answer, before anything is
@@ -707,6 +753,17 @@ app.post("/research", async (req, res) => {
     }
   }
 
+  // Person reports need a second anchor (Fix 5): where they work, or a
+  // profile. A name alone, or a name and a city, has blended strangers
+  // into one profile. Internal (admin) runs are exempt for testing.
+  if (type === "person" && tier !== "internal" && (!personAffiliation || isLocationOnly(personAffiliation))) {
+    res.status(400).json({
+      error: "Add where this person works, or a link to their profile. A name and a city isn't enough to be sure it's the right person.",
+      code: "needs_anchor",
+    });
+    return;
+  }
+
   // Background-persistent search — insert the row up front, before any
   // research runs, so its existence (status: 'pending') survives even if
   // this request's client disconnects. The research itself keeps running
@@ -768,7 +825,9 @@ app.post("/research", async (req, res) => {
     // deep in the agent call graph) gets attributed to totalCostUsd via
     // AsyncLocalStorage; see src/lib/cost-tracking.ts for why that's used
     // instead of threading an accumulator through every agent signature.
-    const { totalCostUsd } = await withCostTracking(async () => {
+    // refresh: the user's "Run again" asks for fresh sources; a new search
+    // reuses cached ones so the same company gives the same facts (Fix 3).
+    const { totalCostUsd, searchCalls, llmFailures } = await withCostTracking(async () => {
       if (egg && egg.type === type) {
         report = egg.markdown;
         bundle = { query: subject, generatedAt: new Date().toISOString() };
@@ -789,7 +848,7 @@ app.post("/research", async (req, res) => {
 
       if (type === "company") {
         const relatedHops = Number.isFinite(Number(req.body.relatedHops)) ? Number(req.body.relatedHops) : undefined;
-        const result = await orchestrator.researchCompany(subject, proAccess, deep, { relatedHops, onProgress });
+        const result = await orchestrator.researchCompany(company!.name, proAccess, deep, { relatedHops, onProgress, anchor: company!.anchor });
         bundle = result.bundle; report = result.report;
         littleSisRelationships = result.littleSisRelationships;
         snapshots = result.snapshots;
@@ -817,7 +876,14 @@ app.post("/research", async (req, res) => {
         bundle = result.bundle; report = result.report;
         outPath = join(REPORTS_DIR, "products", `${slugify(subject)}.md`);
       }
-    });
+    }, { refresh: req.body.refresh === true });
+    console.log(`[research] "${subject}": ${searchCalls} search credit(s), cost $${(totalCostUsd ?? 0).toFixed(4)}`);
+
+    // Never ship a report with a section the model couldn't write (Fix 6):
+    // the providers already retried with backoff, so ask the user to retry.
+    if (llmFailures > 0) {
+      throw new Error("The report model is busy right now, so part of this report couldn't be written. Try again in a minute.");
+    }
 
     if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
 
@@ -879,10 +945,10 @@ app.post("/research", async (req, res) => {
     if (type === "company" || type === "person" || type === "product" || type === "political" || type === "creator") {
       const entityAgent = new EntityExtractionAgent();
       setTimeout(() => {
-        entityAgent.extract(report, { name: subject, type })
+        entityAgent.extract(report, { name: entityName, type })
           .then((extraction) => saveEntityExtraction(userId, runId, extraction, {
             records: recordsFromBundle(bundle as Parameters<typeof recordsFromBundle>[0]),
-            subject: { name: subject, type },
+            subject: { name: entityName, type },
           }))
           .catch((err) => console.error("[entity-extraction] failed:", err));
       }, 3000);

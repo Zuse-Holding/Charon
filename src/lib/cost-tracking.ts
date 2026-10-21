@@ -23,7 +23,16 @@ export interface LlmCallUsage {
 
 interface CostContext {
   calls: LlmCallUsage[];
+  /** Real (uncached) Serper requests made in this run (Fix 6). */
+  searchCalls: number;
+  /** extractStructured() calls that failed on every provider (Fix 6). */
+  llmFailures: number;
+  /** Skip the source cache: the user asked for fresh sources (Fix 3). */
+  refresh: boolean;
 }
+
+/** Serper's price per search credit ($50 / 50,000 on the standard plan). */
+export const SEARCH_COST_USD = Number(process.env.SERPER_COST_PER_CALL ?? 0.001);
 
 const storage = new AsyncLocalStorage<CostContext>();
 
@@ -35,15 +44,34 @@ const storage = new AsyncLocalStorage<CostContext>();
  * a real $0 total (Ollama/free-model-only run), which returns 0.
  */
 export async function withCostTracking<T>(
-  fn: () => Promise<T>
-): Promise<{ result: T; totalCostUsd: number | null; calls: LlmCallUsage[] }> {
-  const ctx: CostContext = { calls: [] };
+  fn: () => Promise<T>,
+  options: { refresh?: boolean } = {}
+): Promise<{ result: T; totalCostUsd: number | null; calls: LlmCallUsage[]; searchCalls: number; llmFailures: number }> {
+  const ctx: CostContext = { calls: [], searchCalls: 0, llmFailures: 0, refresh: options.refresh ?? false };
   const result = await storage.run(ctx, fn);
-  const totalCostUsd = ctx.calls.length === 0 ? null : ctx.calls.reduce(
+  const modelCost = ctx.calls.reduce(
     (sum, c) => sum + costForCall(c.model, c.promptTokens, c.completionTokens),
     0
   );
-  return { result, totalCostUsd, calls: ctx.calls };
+  const totalCostUsd = ctx.calls.length === 0 && ctx.searchCalls === 0 ? null : modelCost + ctx.searchCalls * SEARCH_COST_USD;
+  return { result, totalCostUsd, calls: ctx.calls, searchCalls: ctx.searchCalls, llmFailures: ctx.llmFailures };
+}
+
+/** One real Serper request (cache hits don't count). */
+export function recordSearchCall(): void {
+  const ctx = storage.getStore();
+  if (ctx) ctx.searchCalls++;
+}
+
+/** An LLM extraction that failed on every provider. */
+export function recordLlmFailure(): void {
+  const ctx = storage.getStore();
+  if (ctx) ctx.llmFailures++;
+}
+
+/** True when this run should bypass the source cache. */
+export function isRefreshRun(): boolean {
+  return storage.getStore()?.refresh ?? false;
 }
 
 /**
@@ -53,6 +81,9 @@ export async function withCostTracking<T>(
  * tracked there, which is fine; nothing reads a cost for those paths.
  */
 export function recordLlmUsage(usage: LlmCallUsage): void {
+  // Which provider and model served each call (Fix 6): a silent fallback
+  // between providers is itself a cause of run-to-run differences.
+  console.log(`[llm] served by ${usage.provider}/${usage.model} (${usage.promptTokens}+${usage.completionTokens} tokens)`);
   const ctx = storage.getStore();
   if (ctx) ctx.calls.push(usage);
 }

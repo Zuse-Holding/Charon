@@ -163,7 +163,9 @@ export default function Sidebar() {
       <div className={styles.footer}>
         <span className={styles.dot} />
         <span className={styles.footerText}>
-          {isInternal ? "CHARON · SELENE" : "GROQ · Selene"}
+          {/* Charon is the admin account's agent; customers never see it
+              or which model provider serves them (Fix 6). */}
+          {isInternal ? "CHARON · SELENE" : "Selene"}
         </span>
         {/* Real href, not a JS-only onClick — works via native browser
             navigation even if client hydration fails (e.g. the SSO/proxy

@@ -1,8 +1,7 @@
 import {
   CompetitorAgentResult,
   CompetitorEntry,
-  Source,
-} from "../../types/research.js";
+  Source, CompanyAnchor } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractOrganizations } from "../../lib/nlp.js";
 import { CompetitorExtractionSchema, extractStructured } from "../../lib/llm.js";
@@ -36,7 +35,9 @@ export class CompetitorAgent {
     private searcher: SearchProvider
   ) {}
 
-  async run(companyName: string): Promise<CompetitorAgentResult> {
+  /** @param anchor City/state the user gave (Fix 1): a local business's
+   *  competitors are the ones near it, not a namesake's. */
+  async run(companyName: string, anchor: CompanyAnchor = {}): Promise<CompetitorAgentResult> {
     // 7/20 fix — a competitor-comparison article sourced from a known-
     // wrong domain (e.g. alan.com when researching "Alan Health") could
     // both mislabel a competitor list AND get fetched as the "full
@@ -48,7 +49,7 @@ export class CompetitorAgent {
       // "main competitors", not "alternatives": the latter mostly returns
       // affiliate listicles of small vendors (a live Stripe run listed Stax,
       // Helcim and Payment Depot, missing PayPal, Adyen and Square).
-      appendDomainExclusions(`${companyName} main competitors`, override),
+      appendDomainExclusions(`${companyName}${anchor.location ? ` ${anchor.location}` : ""} main competitors`, override),
       5
     );
 

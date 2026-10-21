@@ -74,3 +74,42 @@ export function newsDate(searchDate: string | undefined, url: string, now = new 
   } catch { /* fall through */ }
   return undefined;
 }
+
+// A bare date ("February 6, 2026", "Feb 6 2026", "2026-02-06", "02/06/2026").
+const DATE_ONLY = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})$/i;
+
+/** A real headline: not a bare date and at least three words. A search
+ *  result's title is already the page's title tag, so there's nothing
+ *  better to fall back to; an item without one is dropped. */
+export function isUsableHeadline(title: string | undefined): boolean {
+  const t = (title ?? "").trim();
+  return t.length > 0 && !DATE_ONLY.test(t) && t.split(/\s+/).length >= 3;
+}
+
+/** Lowercase words with apostrophes and "&" removed, so "Foster's" and
+ *  "Fosters", "D&D" and "DD" compare equal. */
+export function normalizeWords(text: string): string {
+  return ` ${text.toLowerCase().replace(/['’&]/g, "").replace(/[^a-z0-9]+/g, " ").trim()} `;
+}
+
+const LEGAL_SUFFIX = /\s(?:inc|llc|ltd|corp|corporation|co|company|lp|llp|pc|plc)\s*$/;
+
+/** The text names this company: its name, legal suffix aside, appears as
+ *  a whole phrase. */
+export function mentionsCompany(text: string, companyName: string): boolean {
+  const name = normalizeWords(companyName).replace(LEGAL_SUFFIX, " ").trim();
+  return name.length > 0 && normalizeWords(text).includes(` ${name} `);
+}
+
+/** The text names this person: the surname, plus a first name starting
+ *  with the same four letters (spelling variants like Saumya/Saumyya). */
+export function mentionsPerson(text: string, personName: string): boolean {
+  // Possessives name the person too: "Nick Olmos's profile".
+  const bare = (t: string) => normalizeWords(t.replace(/['’]s\b/gi, ""));
+  const parts = bare(personName).trim().split(" ").filter(Boolean);
+  if (parts.length === 0) return false;
+  const words = bare(text).trim().split(" ");
+  const last = parts[parts.length - 1];
+  const firstPrefix = parts[0].slice(0, 4);
+  return words.includes(last) && (parts.length === 1 || words.some((w) => w.startsWith(firstPrefix)));
+}

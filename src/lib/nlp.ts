@@ -66,7 +66,8 @@ export interface ParsedPersonQuery {
 
 // Explicit separators a user might type between name and affiliation —
 // checked first since they're unambiguous wherever they appear.
-const AFFILIATION_SEPARATORS = [" at ", " from ", " with ", " in ", " @ ", " - ", " — "];
+// " · " is what the person candidate picker sends ("Doug Shapses · UCLA Health").
+const AFFILIATION_SEPARATORS = [" · ", " at ", " from ", " with ", " in ", " @ ", " - ", " — "];
 
 /**
  * Splits a person-search query like "Daniel Olmos csun" or
@@ -403,4 +404,86 @@ function splitTrailingLocation(words: string[]): ParsedPersonQuery | null {
   }
   if (start < 2) return null;
   return { name: words.slice(0, start).join(" "), affiliation: words.slice(start).join(" ").replace(/,/g, "") };
+}
+
+// Connecting words that are never a product on their own ("for", "and").
+const PRODUCT_FILLER = new Set([
+  "a", "an", "and", "the", "of", "for", "to", "in", "on", "at", "by", "with", "our", "your", "all", "or", "&",
+]);
+
+const words = (s: string) => s.toLowerCase().replace(/['’]/g, "").split(/[^a-z0-9&]+/).filter(Boolean);
+
+/**
+ * Products cleanup pass (Fix 2): drops fragments ("for"), repeated words
+ * ("engineering engineering"), items that only repeat the company name,
+ * duplicates, and, when `sourceText` is given, anything whose words don't
+ * all appear in the text it was extracted from.
+ */
+export function cleanProducts<T extends { name: string }>(products: T[], companyName: string, sourceText?: string): T[] {
+  const companyWords = new Set(words(companyName));
+  const generic = new Set([...PRODUCT_FILLER, ...[...PRODUCT_STOPWORDS].map((w) => w.toLowerCase())]);
+  const source = sourceText ? new Set(words(sourceText)) : undefined;
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const p of products) {
+    const name = p.name.replace(/\*\*/g, "").replace(/\s+/g, " ").replace(/^[\s\-–—•,.;:]+|[\s\-–—•,.;:]+$/g, "");
+    const w = words(name);
+    if (name.length < 3 || w.length === 0) continue;
+    if (w.some((x, i) => i > 0 && x === w[i - 1])) continue;
+    if (w.every((x) => generic.has(x) || companyWords.has(x))) continue;
+    if (source && !w.every((x) => generic.has(x) || source.has(x))) continue;
+    const key = w.join(" ");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...p, name });
+  }
+  return out;
+}
+
+/** Anchor text the candidate picker sends for "None of these" (Fix 1). */
+export const UNLISTED_ANCHOR = "not listed online";
+
+export interface ParsedCompanyQuery {
+  /** The business name alone. */
+  name: string;
+  /** The city/state or website typed after " · " (Fix 1). */
+  anchor: { location?: string; website?: string; unlisted?: boolean };
+}
+
+/**
+ * Splits a company search like "Smile Design Studio · Northridge" or
+ * "Juice Equity · juiceequity.com" into the name and its anchor. The web
+ * search bar joins its two fields this way, so the stored run subject
+ * keeps the anchor and a rerun searches the same business.
+ */
+export function parseCompanyQuery(raw: string): ParsedCompanyQuery {
+  const [name, ...rest] = raw.split("·").map((p) => p.trim());
+  const value = rest.join(" ").replace(/\s+/g, " ").trim().slice(0, 100);
+  if (!value) return { name: raw.trim(), anchor: {} };
+  // The candidate picker's "None of these": a thin report, no namesakes.
+  if (value.toLowerCase() === UNLISTED_ANCHOR) return { name, anchor: { unlisted: true } };
+  const looksLikeSite = /^https?:\/\//i.test(value) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(value);
+  if (!looksLikeSite) return { name, anchor: { location: value } };
+  try {
+    const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+    return { name, anchor: { website: url.origin } };
+  } catch {
+    return { name, anchor: { location: value } };
+  }
+}
+
+/** Reads as a person's name ("Doug Shapses", "Doug Shapses UCLA"): used to
+ *  offer a person search when a company search finds no business. */
+export function looksLikePersonName(text: string): boolean {
+  const words = text.trim().split(/\s+/);
+  if (words.length < 2 || words.length > 5) return false;
+  if (words.some((w) => ORG_SUFFIX_WORDS.has(w.toLowerCase()))) return false;
+  return (nlp(text).people().out("array") as string[]).length > 0;
+}
+
+/** An affiliation that is only a place ("Austin TX", "Santa Paula, CA"):
+ *  not enough to tell two same-named people apart (Fix 5). */
+export function isLocationOnly(affiliation: string): boolean {
+  const words = affiliation.replace(/,/g, "").trim().split(/\s+/).filter(Boolean);
+  return words.length > 0 && trailingStateLength(words) > 0 && words.length <= 4;
 }

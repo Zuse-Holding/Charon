@@ -6,7 +6,7 @@ import { join } from "node:path";
 import "dotenv/config";
 import { ResearchOrchestrator } from "./agents/orchestrator/index.js";
 import { findEasterEgg } from "./easter-eggs/index.js";
-import { parsePersonQuery } from "./lib/nlp.js";
+import { parseCompanyQuery, parsePersonQuery } from "./lib/nlp.js";
 import {
   recordRun,
   listRecent,
@@ -75,7 +75,8 @@ program
     console.log(`Researching company "${company}"...`);
     warnIfNoSearchKey(); logLLMProvider();
     const orchestrator = new ResearchOrchestrator();
-    const { bundle, report } = await orchestrator.researchCompany(company);
+    const parsed = parseCompanyQuery(company);
+    const { bundle, report } = await orchestrator.researchCompany(parsed.name, false, false, { anchor: parsed.anchor });
     writeFileSync(outPath, report, "utf-8");
     recordRun({ id: randomUUID(), type: "company", subject: company, generatedAt: bundle.generatedAt, reportPath: outPath, bundle });
     console.log(`Report written to ${outPath}`);
