@@ -75,7 +75,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
     }
 
     if (type === "creator" && !can("creatorAccess")) {
-      setStatus("✗ Creator research is a Charon-tier feature");
+      setStatus("✗ Creator research isn't available on your plan");
       setTimeout(() => setStatus(""), 4000);
       return;
     }

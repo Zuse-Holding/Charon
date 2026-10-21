@@ -22,7 +22,7 @@ export async function GET() {
       cache: "no-store",
     });
     if (res.status === 403) {
-      return NextResponse.json({ error: "Admin metrics require Charon tier" }, { status: 403 });
+      return NextResponse.json({ error: "Admin metrics requires an admin account" }, { status: 403 });
     }
     if (!res.ok) throw new Error("Agent unit-economics fetch failed");
     const costs = await res.json();

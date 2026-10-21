@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const data = await res.json();
     if (res.status === 403) {
-      return NextResponse.json({ error: "MuckRock FOIA Search requires Charon tier" }, { status: 403 });
+      return NextResponse.json({ error: "MuckRock FOIA Search isn't available on your plan" }, { status: 403 });
     }
     if (!res.ok) throw new Error("Agent muckrock-search fetch failed");
 
