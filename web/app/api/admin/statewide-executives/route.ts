@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (res.status === 403) {
-      return NextResponse.json({ error: "Statewide-executives refresh requires Charon tier" }, { status: 403 });
+      return NextResponse.json({ error: "Statewide-executives refresh requires an admin account" }, { status: 403 });
     }
     const data = await res.json();
     if (!res.ok) throw new Error("Agent statewide-executives refresh failed");

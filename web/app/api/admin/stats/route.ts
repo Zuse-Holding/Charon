@@ -19,7 +19,7 @@ export async function GET() {
     });
 
     if (res.status === 403) {
-      return NextResponse.json({ error: "Admin stats require Charon tier" }, { status: 403 });
+      return NextResponse.json({ error: "Admin stats requires an admin account" }, { status: 403 });
     }
     if (!res.ok) throw new Error("Agent admin-stats fetch failed");
 

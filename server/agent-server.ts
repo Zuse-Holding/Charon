@@ -692,7 +692,7 @@ app.post("/research", async (req, res) => {
     // Charon-only for now (see creatorAccess doc comment on TierConfig) —
     // no upgradeHint pointing at a paid tier, since paying for Pro/Team
     // wouldn't actually unlock this yet.
-    return tierDenied(res, "Creator research is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_research" });
+    return tierDenied(res, "Creator research isn't available on your plan.", undefined, { userId, cap: "charon_creator_research" });
   }
 
   if (config.windowResearchLimit !== -1) {
@@ -1020,7 +1020,7 @@ app.post("/person-research/deep", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (tier !== "internal") {
-    return tierDenied(res, "Person Research is a Charon-tier feature.", undefined, { userId, cap: "charon_person_research" });
+    return tierDenied(res, "Person Research isn't available on your plan.", undefined, { userId, cap: "charon_person_research" });
   }
 
   try {
@@ -1073,7 +1073,7 @@ app.post("/muckrock/search", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (tier !== "internal") {
-    return tierDenied(res, "MuckRock FOIA Search is a Charon-tier feature.", undefined, { userId, cap: "charon_muckrock_search" });
+    return tierDenied(res, "MuckRock FOIA Search isn't available on your plan.", undefined, { userId, cap: "charon_muckrock_search" });
   }
 
   try {
@@ -1112,7 +1112,7 @@ app.post("/creator-snapshot", async (req, res) => {
   const tier = await getUserTier(userId);
   const config = getTierConfig(tier);
   if (!config.creatorAccess) {
-    return tierDenied(res, "Creator tracking is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_tracking" });
+    return tierDenied(res, "Creator tracking isn't available on your plan.", undefined, { userId, cap: "charon_creator_tracking" });
   }
 
   try {
@@ -1162,7 +1162,7 @@ app.get("/creator-discovery/candidates", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (!getTierConfig(tier).creatorAccess) {
-    return tierDenied(res, "Creator discovery is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_discovery" });
+    return tierDenied(res, "Creator discovery isn't available on your plan.", undefined, { userId, cap: "charon_creator_discovery" });
   }
 
   try {
@@ -1187,7 +1187,7 @@ app.post("/creator-discovery/run", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (!getTierConfig(tier).creatorAccess) {
-    return tierDenied(res, "Creator discovery is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_discovery" });
+    return tierDenied(res, "Creator discovery isn't available on your plan.", undefined, { userId, cap: "charon_creator_discovery" });
   }
 
   // Fire-and-forget: 9 sequential Serper queries with pacing delays takes
@@ -1215,7 +1215,7 @@ app.post("/creator-discovery/review", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (!getTierConfig(tier).creatorAccess) {
-    return tierDenied(res, "Creator discovery is a Charon-tier feature.", undefined, { userId, cap: "charon_creator_discovery" });
+    return tierDenied(res, "Creator discovery isn't available on your plan.", undefined, { userId, cap: "charon_creator_discovery" });
   }
 
   try {
@@ -1563,7 +1563,7 @@ app.get("/admin/stats/:userId", async (req, res) => {
 
   const tier = await getUserTier(req.params.userId);
   if (tier !== "internal") {
-    res.status(403).json({ error: "Admin stats require Charon tier" });
+    res.status(403).json({ error: "Admin stats requires an admin account" });
     return;
   }
 
@@ -1630,7 +1630,7 @@ app.get("/admin/unit-economics/:userId", async (req, res) => {
 
   const tier = await getUserTier(req.params.userId);
   if (tier !== "internal") {
-    res.status(403).json({ error: "Admin metrics require Charon tier" });
+    res.status(403).json({ error: "Admin metrics requires an admin account" });
     return;
   }
 
@@ -1709,7 +1709,7 @@ app.post("/admin/acquisition-spend", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (tier !== "internal") {
-    res.status(403).json({ error: "Logging spend requires Charon tier" });
+    res.status(403).json({ error: "Logging spend requires an admin account" });
     return;
   }
 
@@ -1751,7 +1751,7 @@ app.post("/admin/statewide-executives/refresh", async (req, res) => {
 
   const tier = await getUserTier(userId);
   if (tier !== "internal") {
-    res.status(403).json({ error: "Statewide-executives refresh requires Charon tier" });
+    res.status(403).json({ error: "Statewide-executives refresh requires an admin account" });
     return;
   }
 
