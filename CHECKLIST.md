@@ -10,7 +10,10 @@ env var *names* (values not read). Ordered by what hurts most if missed.
 
 - [ ] **Run one real live-mode purchase end to end.** Stripe has had no
   activity since the live key was created, so checkout has never run with
-  real money. Vercel already has `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
+  real money (re-checked 2026-10-22: zero live checkout sessions and zero
+  subscriptions). The database moved to a new Supabase project
+  (Metis Intelligence) on 2026-10-19, so first confirm Vercel's Supabase
+  vars point at it. Vercel already has `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
   and both `STRIPE_PRICE_*`. Buy Basic on a secondary account, confirm the
   account's tier flips to Basic and the admin tab shows $19 MRR, then
   cancel and refund in Stripe.
@@ -21,6 +24,8 @@ env var *names* (values not read). Ordered by what hurts most if missed.
   Supabase Auth log entry for the `PUT /user` request (~6:42–6:44 PM PT
   that day) or a retry in a fresh private window with the link opened in
   that same window.
+- [ ] **Turn on leaked-password protection** in Supabase (Authentication →
+  password settings), flagged by Supabase's security advisor 2026-10-22.
 - [ ] **Custom SMTP for Supabase auth emails** (Authentication → Emails).
   Sign-up confirmation and password-reset emails otherwise go through
   Supabase's built-in sender, which allows only a few emails an hour and
@@ -31,9 +36,17 @@ env var *names* (values not read). Ordered by what hurts most if missed.
 - [ ] **Confirm database backups** (see "DB backups" below). Couldn't be
   checked from the agent box: the Supabase CLI isn't logged in there
   (`supabase login`, then `supabase backups list --project-ref <ref>`).
-- [ ] **Confirm Railway is on the latest `main`** after each merge, and that
-  `AGENT_SECRET` isn't the `.env.example` default. Railway CLI isn't logged
-  in on the agent box, so neither could be checked from there.
+- [x] **Railway redeployed and `AGENT_SECRET` set** (2026-10-22). Nick
+  redeployed around 13:30 UTC, after #56 merged at 12:37 UTC, and confirmed
+  `AGENT_SECRET` is set on Railway. The `.env.example` default is empty and
+  `server/agent-server.ts` refuses to start without it, so a running server
+  means it isn't the default. Still unchecked: that the deploy's commit is
+  `e14713f` (i.e. Railway tracks `main`, not a pinned SHA), and that the
+  value matches Vercel's — a mismatch makes every Vercel → agent call fail
+  auth. Keep confirming Railway is on `main` after each merge.
+- [ ] **Spend alerts (#56) need `ADMIN_EMAIL` on Railway**, plus the Resend
+  vars below. Without them the $0.10-per-report and $5-per-day alerts
+  never send.
 - [ ] **Revoke and replace the Sentry and GitHub tokens** that were recorded
   in plain text in the local `.claude/settings.local.json` (never committed).
   The three allow rules containing them were deleted 2026-10-15, but the
