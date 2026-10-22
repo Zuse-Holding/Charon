@@ -72,6 +72,8 @@ export interface SearchProvider {
   /** Business listings (name, address, website). Optional: not every
    *  provider has them, and callers treat a missing method as no listings. */
   places?(query: string): Promise<PlaceResult[]>;
+  /** News articles, newest first (Serper /news). Optional, like places. */
+  news?(query: string, count?: number): Promise<SearchResult[]>;
 }
 
 /** A page fetch with the reason it failed, for messages the user sees. */
@@ -232,6 +234,31 @@ export class SerperSearchProvider implements SearchProvider {
       if (results.length > 0) searchCache.set(key, results);
       return results;
     } catch {
+      return [];
+    }
+  }
+
+  /** Google News results (Serper /news): dated articles, which the general
+   *  index often buries under the company's own pages (launch fix 36). */
+  async news(query: string, count = 10): Promise<SearchResult[]> {
+    if (!this.apiKey) return [];
+    const key = `news|${query}|${count}`;
+    const cached = searchCache.get(key);
+    if (cached) return cached;
+    recordSearchCall();
+    try {
+      const res = await fetch("https://google.serper.dev/news", {
+        method: "POST",
+        headers: { "X-API-KEY": this.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ q: query, num: count }),
+      });
+      if (!res.ok) { console.warn(`[serper] news HTTP ${res.status}`); return []; }
+      const data = (await res.json()) as { news?: { title: string; link: string; snippet?: string; date?: string }[] };
+      const results = (data.news ?? []).map((r) => ({ title: r.title, url: r.link, snippet: r.snippet, date: r.date }));
+      if (results.length > 0) searchCache.set(key, results);
+      return results;
+    } catch (err) {
+      console.warn(`[serper] news failed:`, err instanceof Error ? err.message : err);
       return [];
     }
   }

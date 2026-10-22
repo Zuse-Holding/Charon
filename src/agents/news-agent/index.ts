@@ -4,6 +4,20 @@ import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../en
 import { isNewsIndexPage, isNewsNoise, isUsableHeadline, mentionsCompany, newsDate, outletFromUrl } from "../../lib/news-noise.js";
 
 /**
+ * The short name the press uses (launch fix 36): "Graybar" for Graybar
+ * Electric Company, "Crumbl" for Crumbl Cookies, when the website's domain
+ * starts with it. Only a distinctive first word (five letters or more).
+ */
+export function brandName(companyName: string, domain?: string): string | undefined {
+  if (!domain) return undefined;
+  const label = domain.replace(/^www\./, "").split(".")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+  const words = companyName.trim().split(/\s+/);
+  if (words.length < 2) return undefined;
+  const first = words[0].replace(/[^A-Za-z0-9]/g, "");
+  return first.length >= 5 && label.startsWith(first.toLowerCase()) ? first : undefined;
+}
+
+/**
  * News Agent
  * Collects recent news, announcements, and press releases.
  * Fetches full article text for the top 2-3 results so the LLM
@@ -17,8 +31,9 @@ export class NewsAgent {
   ) {}
 
   /** @param anchor City/state the user gave (Fix 1): narrows the search
-   *  to that business instead of a better-documented namesake. */
-  async run(companyName: string, anchor: CompanyAnchor = {}): Promise<NewsAgentResult> {
+   *  to that business instead of a better-documented namesake.
+   *  @param domain The business's website, for the short name the press uses. */
+  async run(companyName: string, anchor: CompanyAnchor = {}, domain?: string): Promise<NewsAgentResult> {
     const currentYear = new Date().getFullYear();
     // 7/20 fix — same entity-override reject list website-agent uses, now
     // applied here too, both at the query (-site: exclusion) and as a
@@ -26,17 +41,32 @@ export class NewsAgent {
     // catch a wrong-but-legitimate-looking site like alan.com; this
     // needs the per-entity registry specifically.
     const override = findOverride(companyName);
-    const results = await this.searcher.search(
-      appendDomainExclusions(`"${companyName}"${anchor.location ? ` ${anchor.location}` : ""} news ${currentYear}`, override),
-      7
-    );
-
-    const filtered = results
-      .filter(r => !isNewsNoise(r.url) && !isNewsIndexPage(r.url))
-      .filter(r => !isRejectedDomain(r.url, override))
-      // An item must have a real headline and name this company; a hit
-      // that only matched loosely is usually about someone else.
-      .filter(r => isUsableHeadline(r.title) && mentionsCompany(`${r.title} ${r.snippet ?? ""}`, companyName));
+    // Launch fix 36: three of five runs found no news. Headlines say
+    // "Graybar", not "Graybar Electric Company", and the general index
+    // buries articles under the company's own pages, so the news index is
+    // searched too, by the short name, and a located search that finds
+    // nothing is tried once without the city.
+    const alias = brandName(companyName, domain);
+    const names = [companyName, ...(alias ? [alias] : [])];
+    const lookup = async (location?: string) => {
+      const where = location ? ` ${location}` : "";
+      const [web, press] = await Promise.all([
+        this.searcher.search(appendDomainExclusions(`"${companyName}"${where} news ${currentYear}`, override), 7),
+        this.searcher.news ? this.searcher.news(appendDomainExclusions(`"${alias ?? companyName}"${where}`, override), 10) : Promise.resolve([]),
+      ]);
+      const seen = new Set<string>();
+      const results = [...press, ...web].filter((r) => !seen.has(r.url) && !!seen.add(r.url));
+      const filtered = results
+        .filter(r => !isNewsNoise(r.url) && !isNewsIndexPage(r.url))
+        .filter(r => !isRejectedDomain(r.url, override))
+        // An item must have a real headline and name this company; a hit
+        // that only matched loosely is usually about someone else.
+        .filter(r => isUsableHeadline(r.title) && names.some((n) => mentionsCompany(`${r.title} ${r.snippet ?? ""}`, n)));
+      console.log(`[news] "${companyName}"${where}: ${web.length} web + ${press.length} news result(s), ${filtered.length} about the company`);
+      return filtered;
+    };
+    let filtered = await lookup(anchor.location);
+    if (filtered.length === 0 && anchor.location) filtered = await lookup();
     const top = filtered.slice(0, 5);
 
     // Fetch full text for top 2 articles in parallel — gives the LLM

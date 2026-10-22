@@ -59,9 +59,11 @@ export function dedupeLeadership(entries: LeadershipEntry[], subjectDomain?: str
   return out;
 }
 
-// One person holds each of these at a time.
-const EXCLUSIVE: { label: string; re: RegExp }[] = [
-  { label: "CEO", re: /^(ceo|chief executive( officer)?)$/i },
+// One person holds each of these at a time. Co-CEOs share the CEO seat
+// (Homeboy: Steve Delgado and Shirley Torres), so a co-CEO never conflicts
+// with another, only with a sole "CEO" from a different source.
+const EXCLUSIVE: { label: string; re: RegExp; shared?: RegExp }[] = [
+  { label: "CEO", re: /^(ceo|chief executive( officer)?)$/i, shared: /^co-?(ceo|chief executive( officer)?)$/i },
   { label: "President", re: /^president$/i },
   { label: "Chair", re: /^(chair(man|woman|person)?( of the board)?|executive chair(man)?)$/i },
   { label: "CFO", re: /^(cfo|chief financial officer)$/i },
@@ -85,20 +87,54 @@ function newer(a: LeadershipEntry, b: LeadershipEntry, subjectDomain?: string): 
  * source keeps it; the other keeps their remaining titles and is marked
  * possibly outdated for that one (Oct 2026: Darway president, Marrs CEO
  * and chair, where an older page had Marrs as "President and CEO").
+ *
+ * Someone whose every title went to someone else is a former officer,
+ * not current leadership, and drops off the list (launch fix 35: Limbach's
+ * Top Risk was "two CEOs" built on Charlie Bacon, a former CEO).
  */
 export function resolveTitleConflicts(entries: LeadershipEntry[], subjectDomain?: string): LeadershipEntry[] {
-  for (const { label, re } of EXCLUSIVE) {
-    const holders = entries.filter((e) => roles(e.title).some((r) => re.test(r)));
+  const former = new Set<LeadershipEntry>();
+  for (const { label, re, shared } of EXCLUSIVE) {
+    const holds = (e: LeadershipEntry) => !former.has(e) && roles(e.title).some((r) => re.test(r) || !!shared?.test(r));
+    const holders = entries.filter(holds);
     if (holders.length < 2) continue;
     const winner = holders.reduce((best, e) => (newer(e, best, subjectDomain) ? e : best));
+    const winnerShares = !!shared && roles(winner.title).some((r) => shared.test(r));
     for (const e of holders) {
       if (e === winner) continue;
-      const rest = roles(e.title).filter((r) => !re.test(r));
+      // The winner is one of several co-CEOs: the others keep the seat.
+      if (winnerShares && roles(e.title).some((r) => shared!.test(r))) continue;
+      const rest = roles(e.title).filter((r) => !re.test(r) && !shared?.test(r));
       if (rest.length) e.title = rest.join(" and ");
-      e.outdatedTitles = [...(e.outdatedTitles ?? []), label];
+      else former.add(e);
+      if (!e.outdatedTitles?.includes(label)) e.outdatedTitles = [...(e.outdatedTitles ?? []), label];
     }
   }
-  return entries;
+  return entries.filter((e) => !former.has(e));
+}
+
+const SOLE_FOUNDER = /^(the )?founder$/i;
+
+/**
+ * A second "Founder" (launch fix 37): Homeboy listed Martin Cabrera Jr. as
+ * "CEO and Founder" beside Fr. Gregory Boyle. Co-founders are normal; two
+ * sole founders aren't. The better-sourced claim keeps it, and the other
+ * loses the title, marked disputed. Equally sourced claims both stand.
+ */
+export function resolveFounderClaims(entries: LeadershipEntry[], subjectDomain?: string): LeadershipEntry[] {
+  const founders = entries.filter((e) => roles(e.title).some((r) => SOLE_FOUNDER.test(r)));
+  if (founders.length < 2) return entries;
+  const score = (e: LeadershipEntry) => (e.sourceUrl ? sourceScore(e.sourceUrl, subjectDomain) : 0);
+  const best = Math.max(...founders.map(score));
+  const dropped = new Set<LeadershipEntry>();
+  for (const e of founders) {
+    if (score(e) >= best) continue;
+    const rest = roles(e.title).filter((r) => !SOLE_FOUNDER.test(r));
+    if (rest.length) e.title = rest.join(" and ");
+    else dropped.add(e);
+    e.disputedTitles = [...(e.disputedTitles ?? []), "Founder"];
+  }
+  return entries.filter((e) => !dropped.has(e));
 }
 
 /** Named only by a scraped people directory (RocketReach, Comparably...). */
@@ -110,10 +146,11 @@ export function markDirectoryOnly(entries: LeadershipEntry[], subjectDomain?: st
 }
 
 export function cleanLeadership(entries: LeadershipEntry[], subjectDomain?: string): LeadershipEntry[] {
-  return markDirectoryOnly(resolveTitleConflicts(dedupeLeadership(entries, subjectDomain), subjectDomain), subjectDomain);
+  const deduped = dedupeLeadership(entries, subjectDomain);
+  return markDirectoryOnly(resolveFounderClaims(resolveTitleConflicts(deduped, subjectDomain), subjectDomain), subjectDomain);
 }
 
-const TITLE = "(?:co-?founder(?:\\s+(?:and|&)\\s+(?:ceo|president|cto|chief [a-z]+ officer))?|founder|chief [a-z]+ officer|ceo|cto|coo|cfo|president|chair(?:man|woman)?|managing (?:director|partner)|vice president(?: of [a-z ]{3,30})?|head of [a-z ]{3,30}|general counsel)";
+const TITLE = "(?:co-?ceo|co-?chief executive officer|co-?founder(?:\\s+(?:and|&)\\s+(?:ceo|president|cto|chief [a-z]+ officer))?|founder|chief [a-z]+ officer|ceo|cto|coo|cfo|president|chair(?:man|woman)?|managing (?:director|partner)|vice president(?: of [a-z ]{3,30})?|head of [a-z ]{3,30}|general counsel)";
 
 /**
  * A title the pages give next to the name ("Jake Loosararian, CEO", "CEO

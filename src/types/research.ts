@@ -70,6 +70,9 @@ export interface CompanyProfile {
   /** The site refused automated requests and was read through a render
    *  service or the Internet Archive's latest copy (launch fix 24). */
   siteVia?: "rendered" | "archived";
+  /** What kind of organization this is (launch fix 34): decides what the
+   *  Funding section shows. */
+  entityType?: EntityType;
   /** The domain its contact emails use, when not the website's (launch fix 31). */
   emailDomain?: string;
   /** Street address, phone and hours read from the business's own site or
@@ -85,6 +88,10 @@ export interface CompanyProfile {
   listing?: { title: string; address?: string; url: string };
 }
 
+/** public: files a 10-K; nonprofit: files a 990; franchise: a franchisor;
+ *  venture: has priced rounds on record; private: none of these. */
+export type EntityType = "public" | "nonprofit" | "franchise" | "venture" | "private";
+
 export interface LeadershipEntry {
   name: string;
   title: string;
@@ -97,6 +104,9 @@ export interface LeadershipEntry {
   lowConfidence?: boolean;
   /** Titles a newer source gives someone else (launch fix 7). */
   outdatedTitles?: string[];
+  /** Titles a weaker source gives them while the company's own pages
+   *  give them to someone else (launch fix 37). */
+  disputedTitles?: string[];
 }
 
 export interface ProductEntry {
@@ -362,6 +372,8 @@ export interface ResearchBundle {
   contractCeilings?: ContractCeiling[];
   /** Parsed SEC filings: financials, 10-K and proxy (launch fix 19). */
   secFilings?: SecFilings;
+  /** Form 990 figures, for nonprofits (launch fix 33). */
+  nonprofitFinancials?: NonprofitFinancials;
 }
 
 // --- Political research types (Round 2, item 1) ---
@@ -582,8 +594,31 @@ export interface NonprofitFilingEntry {
   url: string;
 }
 
+/** One Form 990 year from ProPublica's Nonprofit Explorer (launch fix 33). */
+export interface NonprofitYear {
+  year: string;
+  formType?: string;
+  revenue?: number;
+  expenses?: number;
+  assets?: number;
+  /** Contributions, gifts and grants received. */
+  contributions?: number;
+  /** Compensation of current officers, directors and key employees, in total. */
+  officerPay?: number;
+  pdfUrl?: string;
+}
+
+export interface NonprofitFinancials {
+  ein: string;
+  name: string;
+  url: string;
+  years: NonprofitYear[];
+}
+
 export interface NonprofitAgentResult {
   organizations: NonprofitFilingEntry[];
+  /** The 990 figures of the organization this report is about, when one matched. */
+  financials?: NonprofitFinancials;
   sources: Source[];
 }
 

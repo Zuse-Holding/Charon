@@ -39,10 +39,24 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
   if (c.headquarters) facts.push({ text: `Located in: ${c.headquarters}`, url: site });
   if (c.founded) facts.push({ text: `Founded: ${c.founded}`, url: site });
   if (c.closure) facts.push({ text: `Reported closed: ${c.closure.evidence}`, url: c.closure.url });
-  for (const l of bundle.leadership) facts.push({ text: `Leadership: ${l.name}, ${l.title}`, url: l.sourceUrl });
+  // Only current, well-sourced titles (launch fix 35): a title a newer
+  // source gives someone else, or a name only a people directory lists,
+  // never becomes a risk ("two CEOs" at Limbach was one former CEO).
+  for (const l of bundle.leadership) {
+    if (l.lowConfidence) continue;
+    facts.push({ text: `Leadership: ${l.name}, ${l.title}`, url: l.sourceUrl });
+  }
   for (const p of bundle.products) facts.push({ text: `Offers: ${p.name}${p.description ? ` (${p.description})` : ""}`, url: p.sourceUrl });
   for (const x of bundle.competitors) facts.push({ text: `Competitor: ${x.name}`, url: x.url });
-  if (bundle.funding.length === 0) facts.push({ text: "Funding: no public funding records found" });
+  const type = c.entityType;
+  if (bundle.funding.length === 0 && type !== "nonprofit" && type !== "public") facts.push({ text: "Funding: no public funding records found" });
+  if (type === "nonprofit") facts.push({ text: "Organization: a nonprofit; it has no investors or funding rounds" });
+  const np = bundle.nonprofitFinancials;
+  for (const y of np?.years ?? []) {
+    const parts = [y.revenue !== undefined && `revenue ${money(y.revenue)}`, y.contributions !== undefined && `contributions and grants ${money(y.contributions)}`,
+      y.expenses !== undefined && `expenses ${money(y.expenses)}`, y.assets !== undefined && `assets ${money(y.assets)}`].filter(Boolean);
+    if (parts.length) facts.push({ text: `Form 990 (${y.year}): ${parts.join(", ")}`, url: np!.url });
+  }
   const fundingSource = bundle.sources.find((s) => s.usedFor.includes("funding"))?.url;
   for (const f of bundle.funding) {
     facts.push({ text: `Funding: ${[f.round, f.amount, f.date, f.investors?.join(", ")].filter(Boolean).join(", ")}`, url: fundingSource });
@@ -75,6 +89,18 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
       const parts = [y.revenue !== undefined && `revenue ${money(y.revenue)}`, y.netIncome !== undefined && `net income ${money(y.netIncome)}`,
         y.grossMargin !== undefined && `gross margin ${(y.grossMargin * 100).toFixed(1)}%`].filter(Boolean);
       if (parts.length) facts.push({ text: `Financials FY${y.year} (SEC): ${parts.join(", ")}`, url: fin });
+    }
+    const q = sec.latestQuarter;
+    if (q && q.revenue !== undefined) {
+      const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+      const parts = [`revenue ${money(q.revenue)}${q.priorRevenue !== undefined ? ` vs ${money(q.priorRevenue)} a year earlier` : ""}`,
+        q.grossMargin !== undefined && `gross margin ${pct(q.grossMargin)}${q.priorGrossMargin !== undefined ? ` vs ${pct(q.priorGrossMargin)} a year earlier` : ""}`].filter(Boolean);
+      facts.push({ text: `Financials ${q.label} (SEC): ${parts.join(", ")}`, url: fin });
+    }
+    if (sec.earnings) {
+      const e = sec.earnings;
+      if (e.highlights.length) facts.push({ text: `Earnings release (${e.period ?? e.date}): ${e.highlights.join("; ")}`, url: e.url });
+      if (e.guidance) facts.push({ text: `Guidance (${e.date}): ${e.guidance}`, url: e.url });
     }
     if (sec.legalProceedings) facts.push({ text: `Legal proceedings (10-K): ${sec.legalProceedings}`, url: sec.tenKUrl });
     for (const r of sec.riskFactors.slice(0, 5)) facts.push({ text: `Risk factor (10-K): ${r}`, url: sec.tenKUrl });
@@ -188,6 +214,8 @@ RULES — these are non-negotiable:
 - Order risks by how much they matter now: an open case against the company, a recent filing or financial decline first; a case the company brought, or an old closed one, last or not at all.
 - Every risk must name something specific to this business from the facts: a location, a person, a contract, a filing, a figure, a date, a named competitor. Never a risk any company has ("faces competition from larger companies", "economic downturns", "regulatory changes").
 - A funding round more than 18 months old is history, never a current opportunity.
+- Leadership facts are current. Never build a risk on titles, turnover or a "dispute" the facts don't state.
+- For a nonprofit, risks and opportunities are about its programs, revenue mix, grants, campaigns, cases and leadership, never investors.
 - If the facts can't support a credible assessment, return empty arrays.`,
     context,
     RisksOpportunitiesSchema
@@ -195,7 +223,19 @@ RULES — these are non-negotiable:
 
   if (!result) return null;
 
-  const risks = resolveCitations((result.risks ?? []).filter((r) => !isGenericRisk(r.text)), facts, bundle.sources, "risks");
+  let risks = resolveCitations((result.risks ?? []).filter((r) => !isGenericRisk(r.text)), facts, bundle.sources, "risks");
+  // No risk survived from a rich fact set (launch fix 35: Homeboy's summary
+  // worked, its Risks said "insufficient data"): ask once more for risks
+  // alone, each tied to fact numbers.
+  if (risks.length === 0 && facts.filter((f) => f.url).length >= 6) {
+    const again = await extractAnalysis(
+      `You list the main risks for "${bundle.company.name}" from a numbered list of FACTS, using nothing else.
+Answer with ONE JSON object: {"risks": [{"text": "<one sentence naming a specific fact: a case, figure, date, filing, location or person>", "sources": [<fact numbers>]}]}
+Most current and serious first: open cases against it, declines in its figures, recent closures or layoffs, concentration on one funder, customer or contract. Never a risk any organization has. 1-4 items, or none if the facts show none.`,
+      context, RisksOpportunitiesSchema);
+    risks = resolveCitations((again?.risks ?? []).filter((r) => !isGenericRisk(r.text)), facts, bundle.sources, "risks");
+    console.log(`[synthesis] "${bundle.company.name}": risks-only retry gave ${again?.risks?.length ?? 0}, ${risks.length} kept with citations`);
+  }
   console.log(`[synthesis] "${bundle.company.name}": model gave ${result.risks?.length ?? 0} risk(s), ${result.opportunities?.length ?? 0} opportunit(ies); ${risks.length} risk(s) kept with citations`);
   // The summary ships only when it cites a sourced fact and isn't the
   // site's own description again; otherwise the report keeps the extracted one.

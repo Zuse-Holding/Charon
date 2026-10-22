@@ -32,11 +32,14 @@ const LATE_ROUND = /\bseries\s+[d-z]\b/i;
 // namesake's (Alan Health's $8.9B, Promise ABA's funding).
 const SMALL_COMPANY_CEILING = 100e6;
 
-export function isSmallCompany(bundle: Pick<ResearchBundle, "company"> & Partial<Pick<ResearchBundle, "funding" | "insiderActivity" | "ownership" | "secFilings">>): boolean {
+export function isSmallCompany(bundle: Pick<ResearchBundle, "company"> & Partial<Pick<ResearchBundle, "funding" | "insiderActivity" | "ownership" | "secFilings" | "nonprofitFinancials">>): boolean {
   const c = bundle.company;
   // An SEC filer with annual reports is not a small local business, whatever
   // the user typed to find it (Graybar, by its website).
   if (bundle.secFilings?.financials.length) return false;
+  // A nonprofit with 990 figures on file is measured by them (launch fix
+  // 35: Homeboy's $100M campaign read as out of scale).
+  if (bundle.nonprofitFinancials?.years.length) return false;
   if (c.thin || c.anchor?.location || c.anchor?.unlisted || c.anchor?.website) return true;
   // No funding, filings or ownership on record: the footprint of a small
   // private company, whatever the name suggests (round 2, Fix 3).
@@ -108,12 +111,21 @@ function factFigures(bundle: ResearchBundle): number[] {
     // SEC financials, as the report states them ("$12.88B").
     ...(bundle.secFilings?.financials ?? []).flatMap((y) => [y.revenue, y.netIncome].filter((v): v is number => v !== undefined).map((v) => `$${v}`)),
     bundle.secFilings?.legalProceedings ?? "",
+    ...[bundle.secFilings?.latestQuarter?.revenue, bundle.secFilings?.latestQuarter?.priorRevenue].filter((v): v is number => v !== undefined).map((v) => `$${v}`),
+    ...(bundle.secFilings?.earnings ? [...bundle.secFilings.earnings.highlights, bundle.secFilings.earnings.guidance ?? ""] : []),
+    ...(bundle.nonprofitFinancials?.years ?? []).flatMap((y) => [y.revenue, y.expenses, y.assets, y.contributions])
+      .filter((v): v is number => v !== undefined).map((v) => `$${v}`),
+    ...(bundle.contractCeilings ?? []).flatMap((c) => [`$${c.ceiling}`, `$${c.obligated}`]),
+    ...(bundle.fdd ? [bundle.fdd.franchisorRevenue, bundle.fdd.franchisorNetIncome, bundle.fdd.averageUnitSales, bundle.fdd.initialInvestment] : []).map((v) => v ?? ""),
   ].join(" ");
   return parseMoney(text);
 }
 
 // "fund" too (launch fix 10): MJW's Opportunities cited a $100M fund
 // target while its Funding section said nothing was found.
+// What a nonprofit can't have (launch fix 34): it raises money, but never
+// in rounds or from investors.
+const INVESTOR_TERMS = /\b(seed|series [a-z]|valuation|valued at|investors?|venture[- ]backed|vc[- ]backed|ipo)\b/i;
 const FUNDING_TERMS = /\b(raised?|raising|seed|series [a-z]|funding|funded|funds?|fundraise|valuation|valued at|investors?|venture[- ]backed|vc[- ]backed|ipo)\b/i;
 
 // Capitalized words that aren't names: sentence words, units, months.
@@ -173,7 +185,10 @@ export function plausibleAnalysis(items: string[], bundle: ResearchBundle, locke
   return items.filter((item) => {
     const figures = parseMoney(item);
     if (small && (LATE_ROUND.test(item) || figures.some((v) => v >= SMALL_COMPANY_CEILING))) return false;
-    if (bundle.funding.length === 0 && FUNDING_TERMS.test(item)) return false;
+    // Funding words need funding on record, except where the money is on
+    // record elsewhere: a public company's filings, a nonprofit's 990.
+    const type = bundle.company.entityType;
+    if (type === "nonprofit" ? INVESTOR_TERMS.test(item) : type !== "public" && bundle.funding.length === 0 && FUNDING_TERMS.test(item)) return false;
     if (factText && namesIn(item).some((n) => !factText.includes(normalizeWords(n)))) return false;
     if (lockedFacts && !grounded(item, factWords, companyWords)) return false;
     return figures.every((v) => facts.some((f) => Math.abs(f - v) <= v * 0.01));

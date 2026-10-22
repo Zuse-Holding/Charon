@@ -631,7 +631,7 @@ function toSpecArray(v: unknown): { label: string; value: string }[] {
   });
 }
 
-function toCompetitorArray(v: unknown): { name: string; note?: string }[] {
+function toCompetitorArray(v: unknown): { name: string; note?: string; relationship?: string }[] {
   if (!v) return [];
   const items = Array.isArray(v) ? v : [v];
   return items.flatMap((item) => {
@@ -640,7 +640,8 @@ function toCompetitorArray(v: unknown): { name: string; note?: string }[] {
       const obj = item as Record<string, unknown>;
       const name = String(obj.name ?? obj.product ?? obj.company ?? "").trim();
       if (!name) return [];
-      return [{ name, note: obj.note ? String(obj.note) : undefined }];
+      const rel = String(obj.relationship ?? obj.relation ?? obj.type ?? "").trim().toLowerCase();
+      return [{ name, note: obj.note ? String(obj.note) : undefined, relationship: rel || undefined }];
     }
     return [];
   });
@@ -693,6 +694,13 @@ export const TenKExtractionSchema = AnyObject.transform((obj) => ({
   riskFactors: toStringList(obj.riskFactors),
   legalProceedings: toStringOrUndefined(obj.legalProceedings),
   executiveOfficers: toLeadershipArray(obj.executiveOfficers),
+}));
+
+// Latest earnings release, 8-K exhibit 99.1 (sec-filings-agent, launch fix 33).
+export const EarningsExtractionSchema = AnyObject.transform((obj) => ({
+  period: toStringOrUndefined(obj.period),
+  highlights: toStringList(obj.highlights),
+  guidance: toStringOrUndefined(obj.guidance),
 }));
 
 // FDD figures from search results (public-filings-agent, launch fix 29).

@@ -50,6 +50,33 @@ export function isCompanyName(name: string, companyName: string): boolean {
   return n.toLowerCase() !== companyName.toLowerCase();
 }
 
+// Words any firm in a field might use in its name.
+const GENERIC_NAME_WORDS = new Set(["inc", "llc", "corp", "co", "company", "group", "the", "and", "of", "services", "service", "solutions",
+  "solution", "partners", "associates", "enterprises", "international", "usa", "america", "national", "holdings"]);
+const stem = (w: string) => w.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/(ies)$/, "y").replace(/(es|s)$/, "");
+
+/**
+ * A name made only of words that describe the business's own field
+ * (launch fix 38): "Building System Solutions LLC" and "Building Systems &
+ * Services" for Limbach, a "building systems solutions" firm. They matched
+ * the search terms, not the role. A real peer's name has a word of its own
+ * ("Comfort Systems USA", "EMCOR").
+ */
+export function isFieldPhrase(name: string, profile: PeerProfile): boolean {
+  const field = new Set([profile.role, profile.industry, profile.description].filter(Boolean).join(" ").split(/[^A-Za-z0-9]+/).map(stem).filter(Boolean));
+  const words = name.split(/[^A-Za-z0-9]+/).filter((w) => w && !GENERIC_NAME_WORDS.has(w.toLowerCase())).map(stem);
+  return words.length > 0 && words.every((w) => field.has(w));
+}
+
+// Funders, not peers (launch fix 38: Homeboy listed Kaiser Foundation).
+const FUNDER_NAME = /\b(foundation|endowment|philanthrop\w*)\b/i;
+
+/** The model's label for how a named organization relates to the business. */
+export function isPeer(c: { name: string; relationship?: string }, companyName: string): boolean {
+  if (c.relationship && !/^(peer|competitor|direct competitor|rival)$/.test(c.relationship)) return false;
+  return !FUNDER_NAME.test(c.name) || FUNDER_NAME.test(companyName);
+}
+
 /** What the competitor search knows about the business (launch fix 3). */
 export interface PeerProfile {
   role?: string;
@@ -127,7 +154,7 @@ export class CompetitorAgent {
     const texts = results.map((r, i) => ({ url: r.url, title: r.title, text: `${r.title}. ${r.snippet ?? ""} ${pageTexts[i] ?? ""}` }));
     const combinedText = texts.map((t, i) => `${i < 2 && pageTexts[i] ? "FULL PAGE" : "RESULT"} (${t.url}):\n${t.text}`).join("\n\n");
 
-    let candidates: { name: string; note?: string }[] = [];
+    let candidates: { name: string; note?: string; relationship?: string }[] = [];
     if (combinedText.length > 0) {
       const what = [profile.role, profile.industry].filter(Boolean).join(", ");
       const llmResult = await extractStructured(
@@ -139,7 +166,9 @@ STRICT RULES:
 - NEVER include "${companyName}" itself, social media platforms, news publishers, directories, or software vendors unless "${companyName}" is one.
 - If you are not confident a company is a direct competitor, exclude it.
 - Order by significance: the largest, best-known rivals named in the text first.
-- Return 3-8 genuine direct competitors only, or none.`,
+- Sort every organization the text names into how it relates to "${companyName}": "peer" (does the same work, a direct competitor), "funder" (gives it money: foundations, donors, investors, lenders), "partner", "customer" or "supplier". Only peers are competitors.
+- A name that is just a description of the field ("Building Systems Services") is not a company unless the text shows it is one.
+- Return ONE JSON object: {"competitors": [{"name": "...", "relationship": "peer"}]} with 3-8 genuine peers only, or an empty list.`,
         combinedText,
         CompetitorExtractionSchema
       );
@@ -166,7 +195,7 @@ STRICT RULES:
     const cited = new Set<string>();
     for (const c of candidates) {
       if (c.name.toLowerCase() === own || pageSupports(c.name, companyName) || NON_COMPETITOR_ENTITIES.has(c.name.toLowerCase())
-        || !isCompanyName(c.name, companyName)) continue;
+        || !isCompanyName(c.name, companyName) || !isPeer(c, companyName) || isFieldPhrase(c.name, profile)) continue;
       const at = texts.find((t) => pageSupports(t.text, c.name));
       if (!at || competitors.some((x) => x.name.toLowerCase() === c.name.toLowerCase())) continue;
       competitors.push({ name: c.name, url: at.url });

@@ -18,7 +18,7 @@ export type CheckStatus = "ok" | "flag" | "info" | "unknown";
 export type Severity = "high" | "medium" | "low";
 
 export interface PostureCheck {
-  id: "expiry" | "registrant" | "transfer_lock" | "dns" | "spf" | "dmarc" | "caa" | "tls" | "systems";
+  id: "expiry" | "registrant" | "transfer_lock" | "dns" | "spf" | "dmarc" | "caa" | "tls" | "systems" | "affiliates";
   label: string;
   status: CheckStatus;
   severity?: Severity;
@@ -104,6 +104,43 @@ export function systemsInUse(mx: string[] | undefined, txt: string[] | undefined
     if (records.some((r) => re.test(r)) && !found.includes(name)) found.push(name);
   }
   return found;
+}
+
+// Mail hosts that serve many companies: a domain under one of these says
+// nothing about who else the company is.
+const SHARED_MAIL = /(^|\.)(google|googlemail|outlook|office365|microsoft|pphosted|ppe-hosted|mimecast|barracudanetworks|messagelabs|zoho|secureserver|emailsrvr|yahoodns|icloud|me|protonmail|fastmail|mailgun|sendgrid|amazonaws|amazonses|hubspotemail|ionos|registrar-servers|mailspamprotection|messagingengine|privateemail|forwardemail|improvmx|mxroute|zendesk|salesforce|oraclecloud|paubox|appriver|sophos|trendmicro|forcepoint|cisco|iphmx|arsmtp|hostedemail|mailhop|everycloudtech|spamtitan|titan|rackspace|godaddy|one|bluehost|hostgator|dreamhost|ovh|gandi|namecheap)\.[a-z.]+$/i;
+
+const registrable = (host: string) => {
+  const parts = host.toLowerCase().replace(/\.$/, "").split(".");
+  const twoLevel = parts.length > 2 && /^(co|com|org|net|gov|ac|edu)$/.test(parts[parts.length - 2]) && parts[parts.length - 1].length === 2;
+  return parts.slice(twoLevel ? -3 : -2).join(".");
+};
+
+/**
+ * Other companies' domains in this domain's mail records (launch fix 39):
+ * Limbach's MX names harperbuildingsystems.com, likely an acquired or
+ * affiliated company. Two shapes: an MX host under another company's own
+ * domain, and Microsoft 365's "<domain>-com.mail.protection.outlook.com",
+ * which names the tenant's first domain.
+ */
+export function affiliatedDomains(domain: string, mx: string[] | undefined): string[] {
+  const own = registrable(domain);
+  const out: string[] = [];
+  for (const raw of mx ?? []) {
+    const host = raw.trim().split(/\s+/).pop()!.toLowerCase().replace(/\.$/, "");
+    let other: string | undefined;
+    const m365 = host.match(/^([a-z0-9-]+)\.mail\.protection\.outlook\.com$/);
+    if (m365) {
+      // Dots became dashes: the last dash before the TLD is the dot.
+      const decoded = m365[1].replace(/-([a-z]{2,6})$/, ".$1");
+      if (m365[1] !== own.replace(/\./g, "-") && decoded.includes(".")) other = decoded;
+    } else if (host.includes(".") && !SHARED_MAIL.test(host)) {
+      const reg = registrable(host);
+      if (reg !== own) other = reg;
+    }
+    if (other && !out.includes(other)) out.push(other);
+  }
+  return out;
 }
 
 /** SPF and DMARC for one domain; `suffix` names it when it isn't the website's. */
@@ -254,6 +291,12 @@ export function evaluatePosture(f: DomainFacts, now = new Date()): DomainPosture
   if (systems.length) {
     checks.push({ id: "systems", label: "Systems in use", status: "info", detail: `${systems.join(", ")} (from mail and SPF records).`,
       sourceName: "Public DNS (MX, TXT)", sourceUrl: dohUrl(f.domain, "MX") });
+  }
+  const others = affiliatedDomains(f.domain, f.mx);
+  if (others.length) {
+    checks.push({ id: "affiliates", label: "Mail for other domains", status: "info",
+      detail: `Its mail records name ${others.join(", ")}: possibly an acquired, parent or affiliated company. Worth asking about.`,
+      sourceName: "Public DNS (MX)", sourceUrl: dohUrl(f.domain, "MX") });
   }
   return { domain: f.domain, checkedAt: now.toISOString(), registeredAt: f.rdap?.registeredAt, checks };
 }

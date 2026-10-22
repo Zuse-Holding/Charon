@@ -20,7 +20,8 @@ import { DomainPostureAgent } from "../domain-posture-agent/index.js";
 import { RelatedEntitiesAgent } from "../related-entities-agent/index.js";
 import { PublicFilingsAgent, fundNames, isHealthcare, nameVariants, rankCases } from "../public-filings-agent/index.js";
 import { SecFilingsAgent, type SecFilings } from "../sec-filings-agent/index.js";
-import { personKey } from "../../lib/leadership.js";
+import { cleanLeadership, personKey } from "../../lib/leadership.js";
+import { entityTypeOf } from "../../lib/entity-type.js";
 import { contractCeilings } from "../../lib/contract-ceilings.js";
 import { guardFromEnv } from "../../lib/exclusions/adapters.js";
 import { siteOf } from "../../lib/provenance/findings.js";
@@ -177,7 +178,7 @@ export class ResearchOrchestrator {
     const [newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
         unreadable ? Promise.resolve({ news: [], sources: [] })
-          : cov.run("news", () => this.newsAgent.run(companyName, tieAnchor), { news: [], sources: [] }, (r) => r.news.length),
+          : cov.run("news", () => this.newsAgent.run(companyName, tieAnchor, subject.domain), { news: [], sources: [] }, (r) => r.news.length),
         unreadable ? Promise.resolve({ competitors: [], sources: [] })
           : cov.run("competitors", () => this.competitorAgent.run(companyName, subject, {
             role: siteResult.company.role,
@@ -260,8 +261,8 @@ export class ResearchOrchestrator {
             (r) => r.summary.snapshotCount ?? 0, siteHost)
           : Promise.resolve({ summary: {} as WebArchiveSummary, sources: [] }),
         proAccess
-          ? cov.run("nonprofits", () => this.nonprofitAgent.run(companyName), { organizations: [], sources: [] }, (r) => r.organizations.length)
-          : Promise.resolve({ organizations: [], sources: [] }),
+          ? cov.run("nonprofits", () => this.nonprofitAgent.run(companyName, stateCode), { organizations: [], sources: [] } as Awaited<ReturnType<ProPublicaNonprofitAgent["run"]>>, (r) => r.organizations.length)
+          : Promise.resolve({ organizations: [], financials: undefined, sources: [] }),
         proAccess
           ? cov.run("littlesis", () => this.littleSisAgent.run(companyName, "company", deep),
             { matches: [], relationships: [], sources: [] }, (r) => r.matches.length)
@@ -320,8 +321,10 @@ export class ResearchOrchestrator {
       secFilings: sec,
       fdd: fddResult.fdd,
       npiRecords: npiResult.records.length ? npiResult.records : undefined,
+      nonprofitFinancials: nonprofitResult.financials,
     };
     if (sec) applySecFilings(bundle, sec);
+    applyEntityType(bundle, franchisor);
     const ceilings = contractCeilings(bundle.federalSpending ?? [], bundle.news);
     if (ceilings.length) bundle.contractCeilings = ceilings;
     // A state record's formation date when the site gives none (fix 15).
@@ -337,6 +340,9 @@ export class ResearchOrchestrator {
         bundle.sources.push({ url: r.url, title: `NPPES NPI registry — ${r.name}`, retrievedAt: new Date().toISOString(), usedFor: ["leadership"] });
       }
     }
+    // Officers from the 10-K and NPI joined the site's list: one entry per
+    // person again, and former officers off it (launch fix 35).
+    bundle.leadership = cleanLeadership(bundle.leadership, subject.domain);
 
     // Closure can surface in news as well as on the business's own pages.
     const city = cityOf(anchor.location);
@@ -666,6 +672,29 @@ export function isNationalScale(c: { locations?: string[]; description?: string;
  * the business address as HQ when nothing else gave one, and the executive
  * officers as leadership, cited to the 10-K.
  */
+/**
+ * Entity type before Funding is filled (launch fix 34). A nonprofit's
+ * rounds are someone else's (Homeboy's "Series B: $76M"), so none are
+ * kept; its 990 figures and a public company's filed financials are what
+ * the Funding section cites.
+ */
+export function applyEntityType(bundle: ResearchBundle, franchisor: boolean): void {
+  const type = entityTypeOf({ company: bundle.company, sec: bundle.secFilings, nonprofit: bundle.nonprofitFinancials, franchisor, funding: bundle.funding });
+  bundle.company.entityType = type;
+  const tag = (match: (url: string) => boolean) => {
+    for (const s of bundle.sources) if (match(s.url) && !s.usedFor.includes("funding")) s.usedFor.push("funding");
+  };
+  if (type === "nonprofit") {
+    if (bundle.funding.length) console.log(`[entity-type] "${bundle.company.name}": nonprofit, dropped ${bundle.funding.length} funding round(s)`);
+    bundle.funding = [];
+    bundle.sources = bundle.sources.filter((s) => !(s.usedFor.length === 1 && s.usedFor[0] === "funding"));
+    const np = bundle.nonprofitFinancials;
+    if (np) tag((u) => u === np.url);
+  } else if (type === "public") {
+    tag((u) => u.includes("/api/xbrl/companyfacts/"));
+  }
+}
+
 export function applySecFilings(bundle: ResearchBundle, sec: SecFilings): void {
   const c = bundle.company;
   if (!c.founded && (sec.founded || sec.incorporatedYear)) {

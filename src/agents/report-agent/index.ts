@@ -138,6 +138,7 @@ export class ReportAgent {
         // are labeled, not hidden (launch fixes 7 and 9).
         const notes = [
           l.outdatedTitles?.length ? `also listed as ${l.outdatedTitles.join(", ")} by an older source; a newer one names someone else` : "",
+          l.disputedTitles?.length ? `also called ${l.disputedTitles.join(", ")} by one source; better sources name someone else` : "",
           l.lowConfidence ? "low confidence: only a people directory lists this" : "",
         ].filter(Boolean);
         lines.push(`- **${l.name}** — ${l.title}${l.bio ? `: ${l.bio}` : ""}${notes.length ? ` _(${notes.join("; ")})_` : ""}${l.sourceUrl ? ` ([source](${l.sourceUrl}))` : ""}`);
@@ -207,24 +208,7 @@ export class ReportAgent {
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["opportunities"]);
 
-    lines.push(`## Funding`);
-    if (bundle.ownership) {
-      lines.push(`**Ownership:** ${bundle.ownership}`);
-      lines.push(``);
-    }
-    if (bundle.funding.length === 0) {
-      lines.push(`_No public funding records found._`);
-    } else {
-      for (const f of bundle.funding) {
-        lines.push(
-          `- ${f.round ?? "Round"}: ${f.amount ?? "Undisclosed"}${
-            f.date ? ` (${f.date})` : ""
-          }${f.investors?.length ? ` — ${f.investors.join(", ")}` : ""}`
-        );
-      }
-    }
-    lines.push(``);
-    this.pushSectionSources(lines, bundle.sources, ["funding"]);
+    this.pushFundingSection(lines, bundle);
 
     this.pushSecSection(lines, bundle);
     this.pushFddSection(lines, bundle);
@@ -361,6 +345,53 @@ export class ReportAgent {
 
   /** Parsed SEC filings (launch fix 19): financials by fiscal year, then
    *  what the latest 10-K and proxy state. Nothing for a non-filer. */
+  /**
+   * Funding by entity type (launch fix 34): a nonprofit shows its 990
+   * contributions and federal grants, never rounds; a public company its
+   * filed financials; everyone else the rounds on record.
+   */
+  private pushFundingSection(lines: string[], bundle: ResearchBundle) {
+    const type = bundle.company.entityType;
+    lines.push(`## Funding`);
+    if (bundle.ownership) {
+      lines.push(`**Ownership:** ${bundle.ownership}`);
+      lines.push(``);
+    }
+    if (type === "nonprofit") {
+      const np = bundle.nonprofitFinancials;
+      lines.push(`_Nonprofit: funded by contributions, grants and program revenue, not investors._`);
+      for (const y of np?.years ?? []) {
+        const parts = [
+          y.contributions !== undefined ? `contributions and grants ${money(y.contributions)}` : "",
+          y.revenue !== undefined ? `total revenue ${money(y.revenue)}` : "",
+          y.expenses !== undefined ? `expenses ${money(y.expenses)}` : "",
+          y.assets !== undefined ? `assets ${money(y.assets)}` : "",
+        ].filter(Boolean);
+        if (parts.length) lines.push(`- **${y.year} Form ${y.formType ?? "990"}:** ${parts.join(" · ")}${y.pdfUrl ? ` ([filing](${y.pdfUrl}))` : ""}`);
+      }
+      const grants = (bundle.federalSpending ?? []).filter((f) => /grant|assistance|cooperative/i.test(f.awardType ?? ""));
+      if (grants.length) {
+        const agencies = [...new Set(grants.map((g) => g.awardingAgency).filter(Boolean))];
+        lines.push(`- **Federal grants:** ${grants.length} on record${agencies.length ? ` (${agencies.slice(0, 4).join(", ")})` : ""}; see Federal Spending.`);
+      }
+      if (!np?.years.length && !grants.length) lines.push(`_No 990 figures or federal grants found._`);
+    } else if (type === "public") {
+      const y = bundle.secFilings?.financials[0];
+      lines.push(`_Public company: financing and capital structure are in its SEC filings._`);
+      if (y) {
+        const parts = [y.revenue !== undefined ? `revenue ${money(y.revenue)}` : "", y.netIncome !== undefined ? `net income ${money(y.netIncome)}` : ""].filter(Boolean);
+        if (parts.length) lines.push(`- **FY${y.year}:** ${parts.join(" · ")} (see SEC Filings)`);
+      }
+      for (const f of bundle.funding) lines.push(fundingLine(f));
+    } else if (bundle.funding.length === 0) {
+      lines.push(`_No public funding records found._`);
+    } else {
+      for (const f of bundle.funding) lines.push(fundingLine(f));
+    }
+    lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["funding"]);
+  }
+
   private pushSecSection(lines: string[], bundle: ResearchBundle) {
     const sec = bundle.secFilings;
     if (!sec) return;
@@ -372,6 +403,20 @@ export class ReportAgent {
         y.grossMargin !== undefined ? `gross margin ${(y.grossMargin * 100).toFixed(1)}%` : "",
       ].filter(Boolean);
       if (parts.length) body.push(`- **FY${y.year}:** ${parts.join(" · ")}`);
+    }
+    const q = sec.latestQuarter;
+    if (q) {
+      const pct = (v?: number) => (v !== undefined ? `${(v * 100).toFixed(1)}%` : undefined);
+      const parts = [
+        q.revenue !== undefined ? `revenue ${money(q.revenue)}${q.priorRevenue !== undefined ? ` (vs ${money(q.priorRevenue)} a year earlier)` : ""}` : "",
+        q.grossMargin !== undefined ? `gross margin ${pct(q.grossMargin)}${q.priorGrossMargin !== undefined ? ` (vs ${pct(q.priorGrossMargin)})` : ""}` : "",
+      ].filter(Boolean);
+      if (parts.length) body.push(`- **${q.label}:** ${parts.join(" · ")}`);
+    }
+    const e = sec.earnings;
+    if (e) {
+      body.push(`- **Latest results${e.period ? ` (${e.period})` : ""}, released ${e.date}:** ${e.highlights.join("; ") || "see release"} ([release](${e.url}))`);
+      if (e.guidance) body.push(`- **Guidance:** ${e.guidance}`);
     }
     if (sec.description) body.push(`- **Business (10-K):** ${sec.description}`);
     if (sec.employees) body.push(`- **Employees:** ${sec.employees}`);
@@ -928,11 +973,16 @@ export class ReportAgent {
  * says nothing about the subject and stays.
  */
 /** $12,880,000,000 -> "$12.88B". */
+function fundingLine(f: { round?: string; amount?: string; date?: string; investors?: string[] }): string {
+  return `- ${f.round ?? "Round"}: ${f.amount ?? "Undisclosed"}${f.date ? ` (${f.date})` : ""}${f.investors?.length ? ` — ${f.investors.join(", ")}` : ""}`;
+}
+
 export function money(n: number): string {
   const abs = Math.abs(n);
   const sign = n < 0 ? "-" : "";
   if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
+  // Two decimals, trailing zeros off: $46.95M, $646.8M, $125M.
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2).replace(/\.?0+$/, "")}M`;
   return `${sign}$${abs.toLocaleString("en-US")}`;
 }
 
