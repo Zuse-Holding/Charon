@@ -160,7 +160,15 @@ export class ResearchOrchestrator {
         unreadable ? Promise.resolve({ news: [], sources: [] })
           : cov.run("news", () => this.newsAgent.run(companyName, anchor), { news: [], sources: [] }, (r) => r.news.length),
         unreadable ? Promise.resolve({ competitors: [], sources: [] })
-          : cov.run("competitors", () => this.competitorAgent.run(companyName, subject), { competitors: [], sources: [] }, (r) => r.competitors.length),
+          : cov.run("competitors", () => this.competitorAgent.run(companyName, subject, {
+            role: siteResult.company.role,
+            industry: siteResult.company.industry,
+            description: siteResult.company.description,
+            headquarters: siteResult.company.headquarters ?? anchor.location,
+            // Matched on a city or its own site: a local or regional
+            // business, whose peers are the ones near it.
+            local: !!(anchor.location || anchor.website),
+          }), { competitors: [], sources: [] }, (r) => r.competitors.length),
         cov.run("sec", () => this.corporateAgent.run(companyName, subject), { funding: [], insiderActivity: [], sources: [] },
           (r) => r.funding.length + r.insiderActivity.length + (r.ownership ? 1 : 0)),
         // Free public API, no tier gating — every research run gets this.

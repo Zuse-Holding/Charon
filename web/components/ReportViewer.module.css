@@ -72,6 +72,7 @@
 }
 .personName { font-size: 13px; font-weight: 500; }
 .personRole { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.personNote { font-size: 11px; color: var(--yellow); margin-top: 2px; }
 
 /* Competitors */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }

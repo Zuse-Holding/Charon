@@ -187,3 +187,76 @@ export function subpageLinks(html: string, baseUrl: string, max = 3): string[] {
   }
   return out;
 }
+
+/**
+ * Inner pages worth reading before any web search (launch fix 1), by what
+ * they usually hold. Order is priority: when the budget runs out, later
+ * kinds are the ones left unread.
+ */
+export const CRAWL_KINDS: { kind: string; path: RegExp }[] = [
+  { kind: "about", path: /\/(about|about-us|who-we-are|our-story|history|company|our-company|overview|mission)(\/|\.\w+)?$/i },
+  { kind: "team", path: /\/(team|our-team|leadership|management|executives?|people|staff|providers|our-people|board|founders?)(\/|\.\w+)?$/i },
+  { kind: "locations", path: /\/(locations?|offices?|branches|our-locations|find-us|where-we-are|service-areas?|areas-we-serve)(\/|\.\w+)?$/i },
+  { kind: "services", path: /\/(services?|our-services|what-we-do|solutions|programs?|capabilities|products|offerings|markets|industries|treatment|therapy)(\/|\.\w+)?$/i },
+  { kind: "press", path: /\/(press|news|newsroom|media|press-releases|in-the-news|announcements)(\/|\.\w+)?$/i },
+  { kind: "acquisitions", path: /\/(acquisitions?|portfolio|investments?|properties|criteria|investment-criteria|acquisition-criteria|funds?|track-record)(\/|\.\w+)?$/i },
+  { kind: "contact", path: /\/(contact|contact-us|get-in-touch)(\/|\.\w+)?$/i },
+];
+
+/** Every <loc> in a sitemap or sitemap index. */
+export function sitemapUrls(xml: string): string[] {
+  return [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1].replace(/&amp;/g, "&"));
+}
+
+/** Same-site links in the page's navigation and body, in page order. */
+function pageLinks(html: string, base: URL): string[] {
+  const out: string[] = [];
+  for (const m of html.matchAll(/href=["']([^"'#]+)["']/gi)) {
+    try {
+      const url = new URL(m[1], base);
+      if (/^https?:$/.test(url.protocol)) out.push(url.href);
+    } catch { /* not a link */ }
+  }
+  return out;
+}
+
+/**
+ * The inner pages to read: from the sitemap when there is one, else the
+ * homepage's links. At most `perKind` of each kind and `max` in all,
+ * shortest path first within a kind (/about over /about/careers-blog).
+ */
+export function crawlTargets(homeHtml: string, baseUrl: string, sitemapXml?: string | null, max = 10, perKind = 2): { url: string; kind: string }[] {
+  let base: URL;
+  try { base = new URL(baseUrl); } catch { return []; }
+  const host = base.hostname.replace(/^www\./, "");
+  const candidates = [...(sitemapXml ? sitemapUrls(sitemapXml) : []), ...pageLinks(homeHtml, base)];
+  const seen = new Set<string>();
+  const byKind = new Map<string, URL[]>();
+  for (const href of candidates) {
+    let url: URL;
+    try { url = new URL(href); } catch { continue; }
+    if (url.hostname.replace(/^www\./, "") !== host) continue;
+    if (/\.(css|js|png|jpe?g|gif|svg|ico|pdf|webp|xml|zip|mp4)$/i.test(url.pathname)) continue;
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    if (path === "/" || seen.has(path)) continue;
+    seen.add(path);
+    // Match on the page's own segment, or the section it sits under
+    // (/about/leadership is a team page).
+    const segments = path.split("/").filter(Boolean);
+    const kindOf = (seg: string | undefined) => seg ? CRAWL_KINDS.find((k) => k.path.test(`/${seg}`))?.kind : undefined;
+    const kind = kindOf(segments[segments.length - 1]) ?? (segments.length <= 2 ? kindOf(segments[0]) : undefined);
+    if (!kind) continue;
+    const list = byKind.get(kind) ?? [];
+    list.push(url);
+    byKind.set(kind, list);
+  }
+  const out: { url: string; kind: string }[] = [];
+  for (const { kind } of CRAWL_KINDS) {
+    const list = (byKind.get(kind) ?? []).sort((a, b) => a.pathname.split("/").length - b.pathname.split("/").length);
+    for (const url of list.slice(0, perKind)) {
+      if (out.length >= max) return out;
+      out.push({ url: url.href, kind });
+    }
+  }
+  return out;
+}

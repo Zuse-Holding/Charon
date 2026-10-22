@@ -646,7 +646,10 @@ function renderSection(section: Section, onRetry?: () => void) {
           const match = item.match(/^(.+?)\s+[—–]\s+(.+)/);
           const clean = (s: string) => s.replace(/\*\*/g, "").trim();
           const name  = match ? clean(match[1]) : clean(item);
-          const role  = match ? clean(match[2]) : "";
+          const rawRole = match ? clean(match[2]) : "";
+          // "_(low confidence: ...)_" after the title: shown on its own line.
+          const noteMatch = rawRole.match(/\s*_\((.+)\)_\s*$/);
+          const role = noteMatch ? rawRole.slice(0, noteMatch.index).trim() : rawRole;
           const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
           return (
             <div key={i} className={styles.personCard}>
@@ -654,6 +657,7 @@ function renderSection(section: Section, onRetry?: () => void) {
               <div>
                 <div className={styles.personName}>{name}</div>
                 {role && <div className={styles.personRole}>{role}</div>}
+                {noteMatch && <div className={styles.personNote}>{noteMatch[1]}</div>}
                 {href && <SourceCite source={domainOf(href)} href={href} />}
               </div>
             </div>

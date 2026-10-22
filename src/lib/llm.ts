@@ -634,6 +634,10 @@ export const CompanyExtractionSchema = AnyObject.transform((obj) => ({
   founded: toStringOrUndefined(obj.founded),
   headquarters: toStringOrUndefined(obj.headquarters),
   industry: toStringOrUndefined(obj.industry),
+  role: toStringOrUndefined(obj.role),
+  locations: Array.isArray(obj.locations)
+    ? obj.locations.map((l) => (typeof l === "string" ? l.trim() : "")).filter((l) => l.length > 1 && l.length < 80)
+    : undefined,
   leadership: toLeadershipArray(obj.leadership),
   products: toProductArray(obj.products),
 }));

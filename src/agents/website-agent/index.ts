@@ -18,7 +18,15 @@ import {
   fetchPageText,
   htmlToFullText,
 } from "../../lib/providers.js";
-import { readSiteRecord, subpageLinks, type SiteRecord } from "../../lib/entities/site-record.js";
+import { crawlTargets, readSiteRecord, sitemapUrls, type SiteRecord } from "../../lib/entities/site-record.js";
+
+/** A business's own site as read: every page, and what it states. */
+interface SiteRead {
+  text: string;
+  record: SiteRecord;
+  url: string;
+  pages: { url: string; kind: string; text: string }[];
+}
 import {
   extractPeopleWithTitles,
   extractProductCandidates,
@@ -29,6 +37,8 @@ import {
 import { mentionsCompany, normalizeWords } from "../../lib/news-noise.js";
 import { cityOf, detectClosure } from "../../lib/closure.js";
 import { hostOf, tiedToSubject } from "../../lib/entities/subject.js";
+import { isCitable } from "../../lib/source-quality.js";
+import { cleanLeadership } from "../../lib/leadership.js";
 
 const FILLER_WORDS = new Set(["a", "an", "and", "the", "of", "for", "to", "in", "on", "at", "by", "with", "our", "&"]);
 const wordSet = (t: string) => new Set(normalizeWords(t).trim().split(" "));
@@ -39,6 +49,17 @@ function sourceFor(name: string, texts: { words: Set<string>; url: string }[]): 
   const words = normalizeWords(name).trim().split(" ").filter((w) => w && !FILLER_WORDS.has(w));
   if (words.length === 0) return undefined;
   return texts.find((t) => words.every((w) => t.words.has(w)))?.url;
+}
+
+// A page or listing title, not something the business sells: "Careers At
+// MJW", "MJW Crunchbase Company Profile", "Services JPMS Brokerage".
+const LINK_TITLE = /\b(careers?|jobs?|hiring|crunchbase|linkedin|zoominfo|profile|login|log in|sign in|contact us|about us|our team|blog|news|press|faq|privacy|terms|sitemap|home ?page|reviews?)\b/i;
+const OTHER_FIRM = /\b(brokerage|securities|j\.?\s?p\.?\s?morgan|jpms|morgan stanley|wells fargo|merrill)\b/i;
+
+export function isLinkTitle(name: string, companyName: string): boolean {
+  if (LINK_TITLE.test(name)) return true;
+  // Another firm's product line, unless the company is that firm.
+  return OTHER_FIRM.test(name) && !OTHER_FIRM.test(companyName);
 }
 
 // The extracted description calls the business a chain or franchise.
@@ -197,17 +218,31 @@ export class WebsiteAgent {
   }
 
   /**
-   * Reads the website the user gave (round 2, Fix 1): the homepage plus a
-   * few of its own about, provider, services and contact pages. Returns
-   * the combined text and the record (name, address, phone, hours, people)
-   * the site states, or why it couldn't be read.
+   * Reads a business's own site (round 2, Fix 1; launch fix 1): the
+   * homepage plus its inner pages, from the sitemap or else the homepage's
+   * links: about, team, locations, services, press, acquisitions and
+   * contact, before any web search. Returns the combined text, each page
+   * read, and the record (name, address, phone, hours, people) the site
+   * states, or why it couldn't be read.
    */
-  private async readSite(website: string): Promise<{ text: string; record: SiteRecord; url: string } | { error: string }> {
+  private async readSite(website: string): Promise<SiteRead | { error: string }> {
     const home = await this.fetchPage(website);
     if (!home.html) return { error: home.reason ?? "the site couldn't be reached" };
     const homeText = htmlToFullText(home.html);
     if (homeText.length < 80) return { error: "the site has no readable text (it may need a browser to load)" };
-    const subpages = await Promise.all(subpageLinks(home.html, website).map(async (url) => ({ url, html: await this.fetcher.fetchText(url) })));
+    let origin = website;
+    try { origin = new URL(website).origin; } catch { /* keep as given */ }
+    const sitemap = await this.fetcher.fetchText(`${origin}/sitemap.xml`);
+    // A sitemap index points at the real ones; the page sitemap holds the
+    // inner pages (WordPress: page-sitemap.xml).
+    let pagesXml = sitemap && /<sitemapindex/i.test(sitemap) ? null : sitemap;
+    if (sitemap && !pagesXml) {
+      const children = sitemapUrls(sitemap);
+      const pick = children.find((u) => /page/i.test(u)) ?? children[0];
+      pagesXml = pick ? await this.fetcher.fetchText(pick) : null;
+    }
+    const targets = crawlTargets(home.html, website, pagesXml);
+    const subpages = await Promise.all(targets.map(async (t) => ({ ...t, html: await this.fetcher.fetchText(t.url) })));
     const record = readSiteRecord(home.html);
     for (const p of subpages) {
       if (!p.html) continue;
@@ -221,8 +256,14 @@ export class WebsiteAgent {
         if (!record.people.some((x) => x.name.toLowerCase() === person.name.toLowerCase())) record.people.push(person);
       }
     }
-    const text = [homeText, ...subpages.filter((p) => p.html).map((p) => `PAGE (${p.url}):\n${htmlToFullText(p.html!)}`)].join("\n\n");
-    return { text, record, url: website };
+    const pages = [
+      { url: website, kind: "home", text: homeText },
+      ...subpages.filter((p) => p.html).map((p) => ({ url: p.url, kind: p.kind, text: htmlToFullText(p.html!) })),
+    ];
+    // Each page gets a share, so a long homepage can't crowd out the About
+    // page that has the founding year.
+    const text = pages.map((p) => `PAGE (${p.kind}, ${p.url}):\n${p.text.slice(0, p.kind === "home" ? 2500 : 2000)}`).join("\n\n");
+    return { text, record, url: website, pages };
   }
 
   /**
@@ -282,7 +323,7 @@ export class WebsiteAgent {
     // Website-first (round 2, Fix 1): the site the user gave settles which
     // business this is. If it can't be read, the report says so and why;
     // it never falls back to matching the name alone.
-    let site: { text: string; record: SiteRecord; url: string } | undefined;
+    let site: SiteRead | undefined;
     let companyName = queryName;
     let anchor = anchorIn;
     let siteUnreadable: string | undefined;
@@ -410,7 +451,10 @@ export class WebsiteAgent {
       const host = hostOf(url);
       return !!host && !!tieRecord.domain && (host === tieRecord.domain || host.endsWith(`.${tieRecord.domain}`));
     };
+    // Forums and other vendors' marketing pages never feed extraction
+    // (launch P0, source quality).
     const usable = (r: SearchResult) => !isRejectedDomain(r.url, override)
+      && isCitable(r.url, tieRecord.domain)
       && (domainOnly ? onDomain(r.url) : !anchored || tiedToSubject(`${r.title}. ${r.snippet ?? ""}`, r.url, tieRecord));
     const leadershipResults = leadershipResultsRaw.filter(usable);
     const productResults = productResultsRaw.filter(usable);
@@ -460,15 +504,29 @@ export class WebsiteAgent {
     // the team" and product pages are usually much richer than a snippet
     // (which often just truncates a list of names), same pattern as
     // people-agent/news-agent.
-    const [leadershipPages, productPages] = await Promise.all([
+    // Found by name, the official site is crawled too (launch fix 1): its
+    // inner pages carry the founding year, locations and service lines.
+    let crawlOrigin: string | undefined;
+    if (!site && company.website && page && !page.fromSnippets && isOfficialDomain(company.website)) {
+      try { crawlOrigin = new URL(company.website).origin; } catch { /* not crawled */ }
+    }
+    const [leadershipPages, productPages, crawled] = await Promise.all([
       Promise.all(leadershipResults.slice(0, 2).map((r) => fetchPageText(r.url, this.fetcher, 2000))),
       Promise.all(productResults.slice(0, 2).map((r) => fetchPageText(r.url, this.fetcher, 2000))),
+      crawlOrigin ? this.readSite(crawlOrigin) : Promise.resolve(undefined),
     ]);
+    const own: SiteRead | undefined = site ?? (crawled && !("error" in crawled) ? crawled : undefined);
+    if (own) {
+      const usedFor: Record<string, string> = { team: "leadership", services: "products", acquisitions: "products" };
+      for (const p of own.pages.slice(1)) {
+        sources.push({ url: p.url, title: `${companyName} — ${p.kind} page`, retrievedAt: new Date().toISOString(), usedFor: [usedFor[p.kind] ?? "overview"] });
+      }
+    }
 
     // Combine everything gathered into one block for a single LLM call.
     // The business's own site leads, in full (its nav lists the services).
     const combinedText = [
-      site ? `OFFICIAL SITE TEXT (${site.url}):\n${site.text.slice(0, 6000)}`
+      own ? `OFFICIAL SITE TEXT (${own.url}):\n${own.text.slice(0, 16000)}`
         : page ? `OFFICIAL SITE TEXT:\n${extractBestChunk(cleanPageText(page.text), 2000)}` : "",
       locationResults.length
         ? `LISTINGS AND LICENSE RECORDS:\n${locationResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}`
@@ -502,11 +560,14 @@ export class WebsiteAgent {
 
 CRITICAL RULES — violations undermine credibility:
 - description: 1-2 sentences maximum. State what the company DOES and who it serves. No filler phrases like "well-positioned", "leading provider", "innovative solutions", "leverages cutting-edge". Use plain, specific language. If you can't describe what they do specifically, return a blank description rather than a generic one.
+- The company's own site pages come first and outrank search results. Read every PAGE block: about/history pages give the founding year, contact and locations pages give the headquarters and locations, services pages give what it sells.
 - founded: year only, as a string (e.g. "2012"). If unknown, omit.
-- headquarters: city and state/country only. If unknown, omit.
+- headquarters: city and state/country only, from the company's own contact, about or locations page when it has one. If unknown, omit.
+- locations: every office, clinic, branch or facility the company's own pages list, each as "City, ST". Omit if none are listed.
 - industry: specific sector (e.g. "Revenue-Based Financing" not just "Fintech"). Be precise.
+- role: what kind of business this is, in 2-5 plain words that name its peers' role too, e.g. "commercial mechanical contractor", "student housing investment sponsor", "pediatric ABA therapy provider", "online payments processor". Omit if unclear.
 - leadership: extract ALL named executives with their exact titles. Include CEO, founders, presidents, CFOs, CTOs. Only include people explicitly named in the source text — do NOT invent or guess names. Return each person as their own separate {name, title} object — a "meet the team" page often lists several people in one paragraph; do NOT merge two people into a single entry or split one person's name across two entries. name and title must be plain text only: no markdown (no "**", no bullet "-" or "—" characters), no trailing punctuation, and no credentials or extra names appended after the title.
-- products: only include named products or services explicitly mentioned. Do NOT include generic descriptions like "cloud platform" or "SaaS solution" unless a specific product name is given.
+- products: the products or service lines the company itself sells, as its own pages name them (e.g. "Early intervention ABA", "Adult services", "HVAC service and maintenance"). Never a page or link title ("Careers at X", "X Crunchbase profile"), never another company's product, and never a technique, method or credential it uses. Do NOT include generic descriptions like "cloud platform" or "SaaS solution" unless a specific product name is given.
 
 Return only facts that are explicitly stated in the source text. Omit fields where the data is absent or ambiguous rather than filling them with guesses.`,
         combinedText,
@@ -519,6 +580,8 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
         if (llmResult.founded) company.founded = llmResult.founded;
         if (llmResult.headquarters) company.headquarters = llmResult.headquarters;
         if (llmResult.industry) company.industry = llmResult.industry;
+        if (llmResult.role) company.role = llmResult.role;
+        if (llmResult.locations?.length) company.locations = llmResult.locations;
         if (llmResult.leadership) {
           leadership = llmResult.leadership
             .map((l) => ({
@@ -615,6 +678,7 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
       company.brandLevel = true;
     }
     const tiedTexts = [
+      ...(own ? own.pages.map((p) => ({ text: p.text, url: p.url })) : []),
       ...(page && !page.fromSnippets ? [{ text: page.text, url: page.url }] : []),
       ...leadershipPages.map((t, i) => ({ text: t ?? "", url: leadershipResults[i]?.url ?? "" })),
       ...productPages.map((t, i) => ({ text: t ?? "", url: productResults[i]?.url ?? "" })),
@@ -626,6 +690,9 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
       .filter((l) => isPersonName(l.name, companyName) && !/\b(of|and|&|for|at|the)$|[,:]$/i.test(l.title.trim()))
       .map((l) => ({ ...l, sourceUrl: sourceFor(l.name, tiedTexts) }))
       .filter((l) => l.sourceUrl);
+    // When each source said so, so a newer page wins a title (launch fix 7).
+    const dated = new Map([...leadershipResults, ...overviewResults].filter((r) => r.date).map((r) => [r.url, r.date!]));
+    leadership = leadership.map((l) => ({ ...l, asOf: l.sourceUrl ? dated.get(l.sourceUrl) : undefined }));
     // A place is never an offering ("Arleta CA" off a listing title).
     // Offerings come from the business's own pages when it has a site
     // (round 2, Fix 5): a headline elsewhere ("MJW Leans Into Student
@@ -634,20 +701,21 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
     const ownPage = (url: string | undefined) => !company.website || (!!url && onDomain(url));
     products = products
       .filter((p) => !city || !normalizeWords(p.name).includes(normalizeWords(city)))
+      .filter((p) => !isLinkTitle(p.name, companyName))
       .map((p) => ({ ...p, sourceUrl: sourceFor(p.name, tiedTexts.filter((t) => ownPage(t.url))) }))
       .filter((p) => p.sourceUrl);
 
     // The site's own record (round 2, Fix 1): its address, phone, hours and
     // the people it names with a credential are facts, not extractions.
-    if (site) {
-      const r = site.record;
+    if (own) {
+      const r = own.record;
       if (r.address) company.address = r.address;
       if (r.phone) company.phone = r.phone;
       if (r.hours) company.hours = r.hours;
       if (r.city) company.headquarters = [r.city, r.state].filter(Boolean).join(", ");
       for (const p of r.people) {
         if (!leadership.some((l) => l.name.toLowerCase() === p.name.toLowerCase())) {
-          leadership.push({ name: p.name, title: p.title, sourceUrl: site.url });
+          leadership.push({ name: p.name, title: p.title, sourceUrl: own.url });
         }
       }
     }
@@ -678,6 +746,8 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
       delete company.description;
       return { company, leadership: [], products: [], sources: [] };
     }
+
+    leadership = cleanLeadership(leadership, subject.domain);
 
     // Section citations list only pages about this company: its own site,
     // or a page whose title names it (a same-named or unrelated page out).

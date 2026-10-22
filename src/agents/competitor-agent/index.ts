@@ -2,7 +2,8 @@ import {
   CompetitorAgentResult,
   CompetitorEntry,
   Source } from "../../types/research.js";
-import { tiedToSubject, type SubjectRecord } from "../../lib/entities/subject.js";
+import { hostOf, type SubjectRecord } from "../../lib/entities/subject.js";
+import { pageSupports, rankCitable } from "../../lib/source-quality.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractOrganizations } from "../../lib/nlp.js";
 import { CompetitorExtractionSchema, extractStructured } from "../../lib/llm.js";
@@ -23,12 +24,65 @@ const NON_COMPETITOR_ENTITIES = new Set([
   "app store", "play store", "github", "slack", "zoom", "notion",
 ]);
 
+const STATES: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
+  DE: "Delaware", DC: "Washington DC", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois",
+  IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana",
+  NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico", NY: "New York",
+  NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah",
+  VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+};
+
+/** What the competitor search knows about the business (launch fix 3). */
+export interface PeerProfile {
+  role?: string;
+  industry?: string;
+  description?: string;
+  /** "Pasadena, CA" */
+  headquarters?: string;
+  /** A local or regional business: peers are searched near it. */
+  local?: boolean;
+}
+
+/** "Pasadena, CA" -> { city: "Pasadena", state: "California" }. */
+export function regionOf(location: string | undefined): { city?: string; state?: string } {
+  const parts = (location ?? "").split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return {};
+  const last = parts[parts.length - 1].replace(/\s+\d{5}.*$/, "");
+  const state = STATES[last.toUpperCase()] ?? (Object.values(STATES).includes(last) ? last : undefined);
+  return { city: parts.length > 1 || !state ? parts[0] : undefined, state };
+}
+
+/** Peer searches by role and region; never the company's own name. */
+export function peerQueries(companyName: string, profile: PeerProfile): string[] {
+  const role = (profile.role ?? profile.industry ?? "").trim();
+  if (!role) return [];
+  // The company's own name never goes in (Promise ABA searched as
+  // "Promise ABA LLC" found only itself).
+  const nameWords = new Set(companyName.toLowerCase().split(/\s+/).filter((w) => w.length > 2));
+  const clean = role.split(/\s+/).filter((w) => !nameWords.has(w.toLowerCase())).join(" ");
+  if (!clean) return [];
+  const plural = /s$/i.test(clean) ? clean : /(y)$/i.test(clean) && !/[aeiou]y$/i.test(clean) ? `${clean.slice(0, -1)}ies` : `${clean}s`;
+  if (!profile.local) return [`largest ${plural}`, `top ${plural} companies list`];
+  const { city, state } = regionOf(profile.headquarters);
+  const out: string[] = [];
+  if (city) out.push(`${plural} ${city}${state ? ` ${state}` : ""}`);
+  if (state) out.push(`largest ${plural} in ${state}`);
+  if (out.length === 0) out.push(`largest ${plural}`);
+  return out;
+}
+
 /**
- * Competitor Agent
- * Fetches full page text from the top competitor comparison article
- * for much richer context than snippets alone. Only returns direct
- * market competitors — not media platforms, social networks, or
- * generic enterprise software.
+ * Competitor Agent (launch fix 3): finds the business's peers by what it
+ * is and where, not by its name. A contractor's peers are other
+ * contractors (ACCO's are EMCOR and Comfort Systems, not Trane, which
+ * makes the equipment); a student-housing sponsor's are other sponsors.
+ *
+ * Source quality (launch P0): forums and other vendors' "alternatives"
+ * pages are never read, and a competitor is kept only when a page it
+ * cites names it (claim-to-source check).
  */
 export class CompetitorAgent {
   constructor(
@@ -36,103 +90,78 @@ export class CompetitorAgent {
     private searcher: SearchProvider
   ) {}
 
-  /** @param subject The resolved business (Fix 1): a local business's
-   *  competitors are the ones near it, and only pages tied to this
-   *  business (its domain, or its name and city) are read, so a namesake's
-   *  rivals never become its chips (round 2, Fix 3). */
-  async run(companyName: string, subject: SubjectRecord = { name: companyName, anchor: {} }): Promise<CompetitorAgentResult> {
-    const anchor = subject.anchor;
-    // 7/20 fix — a competitor-comparison article sourced from a known-
-    // wrong domain (e.g. alan.com when researching "Alan Health") could
-    // both mislabel a competitor list AND get fetched as the "full
-    // article" context below, same underlying gap as corporate-agent/
-    // news-agent. Excluded at the query itself, plus a post-fetch drop
-    // as a backstop.
+  /** @param subject The resolved business (Fix 1).
+   *  @param profile Its role, industry and region, from the website step. */
+  async run(companyName: string, subject: SubjectRecord = { name: companyName, anchor: {} }, profile: PeerProfile = {}): Promise<CompetitorAgentResult> {
     const override = findOverride(companyName);
-    const rawResults = await this.searcher.search(
-      // "main competitors", not "alternatives": the latter mostly returns
-      // affiliate listicles of small vendors (a live Stripe run listed Stax,
-      // Helcim and Payment Depot, missing PayPal, Adyen and Square).
-      appendDomainExclusions(`${companyName}${anchor.location ? ` ${anchor.location}` : ""} main competitors`, override),
-      5
-    );
+    const queries = peerQueries(companyName, profile);
+    if (queries.length === 0) return { competitors: [], sources: [] };
+    const batches = await Promise.all(queries.map((q) => this.searcher.search(appendDomainExclusions(q, override), 6)));
+    const seen = new Set<string>();
+    const results = rankCitable(batches.flat().filter((r) => {
+      if (seen.has(r.url) || isRejectedDomain(r.url, override)) return false;
+      seen.add(r.url);
+      // The business's own pages don't list its rivals.
+      const host = hostOf(r.url);
+      return !(subject.domain && host && (host === subject.domain || host.endsWith(`.${subject.domain}`)));
+    }), subject.domain);
 
-    const results = rawResults.filter((r) => !isRejectedDomain(r.url, override)
-      && tiedToSubject(`${r.title}. ${r.snippet ?? ""}`, r.url, subject));
+    // Full text of the two best pages: ranking lists name far more firms
+    // than a snippet does.
+    const pageTexts = await Promise.all(results.slice(0, 2).map((r) => fetchPageText(r.url, this.fetcher, 4000)));
+    const texts = results.map((r, i) => ({ url: r.url, title: r.title, text: `${r.title}. ${r.snippet ?? ""} ${pageTexts[i] ?? ""}` }));
+    const combinedText = texts.map((t, i) => `${i < 2 && pageTexts[i] ? "FULL PAGE" : "RESULT"} (${t.url}):\n${t.text}`).join("\n\n");
 
-    const sources: Source[] = results.map((r) => ({
+    let candidates: { name: string; note?: string }[] = [];
+    if (combinedText.length > 0) {
+      const what = [profile.role, profile.industry].filter(Boolean).join(", ");
+      const llmResult = await extractStructured(
+        `You are a business research assistant listing direct competitors of "${companyName}"${what ? `, a ${what}` : ""}${profile.local && profile.headquarters ? ` based in ${profile.headquarters}` : ""}.${profile.description ? ` What it does: ${profile.description}` : ""}
+
+STRICT RULES:
+- Only companies that do the same kind of work for the same kind of customer${profile.local ? " in the same region" : ""}. A contractor's competitors are other contractors, not the manufacturers whose equipment it installs; an investment sponsor's are other sponsors, not brokers, lenders or property managers.
+- Only companies named in the text below. Never add one from memory.
+- NEVER include "${companyName}" itself, social media platforms, news publishers, directories, or software vendors unless "${companyName}" is one.
+- If you are not confident a company is a direct competitor, exclude it.
+- Order by significance: the largest, best-known rivals named in the text first.
+- Return 3-8 genuine direct competitors only, or none.`,
+        combinedText,
+        CompetitorExtractionSchema
+      );
+      candidates = llmResult?.competitors ?? [];
+    }
+
+    if (candidates.length === 0) {
+      const counts = new Map<string, number>();
+      for (const t of texts) {
+        for (const name of extractOrganizations(`${t.title}. ${t.text}`, companyName)) {
+          if (NON_COMPETITOR_ENTITIES.has(name.toLowerCase())) continue;
+          counts.set(name, (counts.get(name) ?? 0) + 1);
+        }
+      }
+      candidates = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name]) => ({ name }));
+    }
+
+    // Claim-to-source: each competitor links to a page that names it;
+    // one no page names is dropped.
+    const own = companyName.toLowerCase();
+    const competitors: CompetitorEntry[] = [];
+    const cited = new Set<string>();
+    for (const c of candidates) {
+      if (c.name.toLowerCase() === own || pageSupports(c.name, companyName) || NON_COMPETITOR_ENTITIES.has(c.name.toLowerCase())) continue;
+      const at = texts.find((t) => pageSupports(t.text, c.name));
+      if (!at || competitors.some((x) => x.name.toLowerCase() === c.name.toLowerCase())) continue;
+      competitors.push({ name: c.name, url: at.url });
+      cited.add(at.url);
+      if (competitors.length >= 8) break;
+    }
+
+    const sources: Source[] = results.filter((r) => cited.has(r.url)).map((r) => ({
       url: r.url,
       title: r.title,
       retrievedAt: new Date().toISOString(),
       usedFor: ["competitors"],
     }));
-
-    // Fetch full text from the top result — competitor comparison articles
-    // are usually rich with named competitors that snippets miss
-    const topPageText = results.length > 0
-      ? await fetchPageText(results[0].url, this.fetcher, 3000)
-      : null;
-
-    const snippetText = results
-      .map((r) => `${r.title}: ${r.snippet ?? ""}`)
-      .join("\n");
-
-    const combinedText = topPageText
-      ? `FULL ARTICLE:\n${topPageText}\n\nSEARCH SNIPPETS:\n${snippetText}`
-      : snippetText;
-
-    let competitors: CompetitorEntry[] = [];
-
-    if (combinedText.length > 0) {
-      const llmResult = await extractStructured(
-        `You are a business research assistant identifying direct competitor companies to "${companyName}" from search results.
-
-STRICT RULES:
-- Only include companies that directly compete for the same customers in the same market segment as "${companyName}"
-- NEVER include: social media platforms (Facebook, YouTube, Instagram, TikTok, Twitter/X, LinkedIn), news/media publishers (Bloomberg, Forbes, TechCrunch), general search engines (Google), general cloud/infrastructure providers (AWS, Azure, GCP) unless "${companyName}" IS one of those categories
-- NEVER include "${companyName}" itself
-- NEVER include companies that are merely mentioned in an article without being a direct competitor
-- If you are not confident a company is a direct competitor, exclude it
-- Order by significance: the largest, best-known rivals named in the text first, niche or small vendors last
-- Return 3-8 genuine direct competitors only`,
-        combinedText,
-        CompetitorExtractionSchema
-      );
-
-      if (llmResult?.competitors) {
-        competitors = llmResult.competitors
-          .filter((c) => c.name.toLowerCase() !== companyName.toLowerCase())
-          .slice(0, 8)
-          .map((c) => ({ name: c.name }));
-      }
-    }
-
-    if (competitors.length === 0) {
-      const nameCounts = new Map<string, { count: number; sourceUrl: string }>();
-      for (const r of results) {
-        const text = `${r.title}. ${r.snippet ?? ""}`;
-        const names = extractOrganizations(text, companyName);
-        for (const name of names) {
-          if (NON_COMPETITOR_ENTITIES.has(name.toLowerCase())) continue;
-          const existing = nameCounts.get(name);
-          if (existing) {
-            existing.count += 1;
-          } else {
-            nameCounts.set(name, { count: 1, sourceUrl: r.url });
-          }
-        }
-      }
-
-      competitors = Array.from(nameCounts.entries())
-        .sort((a, b) => b[1].count - a[1].count)
-        .slice(0, 8)
-        .map(([name, info]) => ({
-          name,
-          url: info.sourceUrl,
-          note: info.count > 1 ? `mentioned in ${info.count} sources` : undefined,
-        }));
-    }
-
     return { competitors, sources };
   }
 }

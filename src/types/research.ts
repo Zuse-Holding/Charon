@@ -38,6 +38,11 @@ export interface CompanyProfile {
   /** headquarters is the location the user typed, not found in any source. */
   headquartersUnverified?: boolean;
   industry?: string;
+  /** What kind of business, naming its peers' role too ("commercial
+   *  mechanical contractor"). Drives the competitor search (launch fix 3). */
+  role?: string;
+  /** Every office, clinic or facility its own pages list ("Valencia, CA"). */
+  locations?: string[];
   /** The anchor the report was matched on, shown in the overview. */
   anchor?: CompanyAnchor;
   /** Closed, dissolved or inactive, with the source that says so. */
@@ -67,6 +72,12 @@ export interface LeadershipEntry {
   bio?: string;
   /** The page that names this person for this company (Fix 2). */
   sourceUrl?: string;
+  /** When that source said so (its publish date), if known. */
+  asOf?: string;
+  /** Only a scraped people directory names them (launch fix 9). */
+  lowConfidence?: boolean;
+  /** Titles a newer source gives someone else (launch fix 7). */
+  outdatedTitles?: string[];
 }
 
 export interface ProductEntry {

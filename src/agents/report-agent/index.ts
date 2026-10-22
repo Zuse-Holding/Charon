@@ -113,6 +113,7 @@ export class ReportAgent {
         : "Unknown"}`
     );
     lines.push(`- **Industry:** ${bundle.company.industry ?? "Unknown"}`);
+    if (bundle.company.locations?.length) lines.push(`- **Locations:** ${bundle.company.locations.join(" · ")}`);
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["overview"]);
 
@@ -122,7 +123,13 @@ export class ReportAgent {
     } else {
       if (bundle.company.brandLevel) lines.push(`_Brand-level: leadership of ${bundle.company.name}, not the location._`);
       for (const l of bundle.leadership) {
-        lines.push(`- **${l.name}** — ${l.title}${l.bio ? `: ${l.bio}` : ""}${l.sourceUrl ? ` ([source](${l.sourceUrl}))` : ""}`);
+        // Directory-only names and titles a newer source gives someone else
+        // are labeled, not hidden (launch fixes 7 and 9).
+        const notes = [
+          l.outdatedTitles?.length ? `also listed as ${l.outdatedTitles.join(", ")} by an older source; a newer one names someone else` : "",
+          l.lowConfidence ? "low confidence: only a people directory lists this" : "",
+        ].filter(Boolean);
+        lines.push(`- **${l.name}** — ${l.title}${l.bio ? `: ${l.bio}` : ""}${notes.length ? ` _(${notes.join("; ")})_` : ""}${l.sourceUrl ? ` ([source](${l.sourceUrl}))` : ""}`);
       }
     }
     lines.push(``);
