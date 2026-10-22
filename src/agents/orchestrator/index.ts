@@ -18,7 +18,9 @@ import { ProPublicaNonprofitAgent } from "../propublica-nonprofit-agent/index.js
 import { LittleSisAgent, LittleSisRelationshipEntry } from "../littlesis-agent/index.js";
 import { DomainPostureAgent } from "../domain-posture-agent/index.js";
 import { RelatedEntitiesAgent } from "../related-entities-agent/index.js";
-import { PublicFilingsAgent, fundNames, isHealthcare } from "../public-filings-agent/index.js";
+import { PublicFilingsAgent, fundNames, isHealthcare, rankCases } from "../public-filings-agent/index.js";
+import { SecFilingsAgent, type SecFilings } from "../sec-filings-agent/index.js";
+import { personKey } from "../../lib/leadership.js";
 import { guardFromEnv } from "../../lib/exclusions/adapters.js";
 import { siteOf } from "../../lib/provenance/findings.js";
 import { cityOf, detectClosure, mergeClosure } from "../../lib/closure.js";
@@ -145,6 +147,11 @@ export class ResearchOrchestrator {
     // Resolve once, up front (Fix 1): the website step settles which
     // business this is (its domain and city), and every other source
     // searches and is checked against that one record.
+    // SEC filings (launch fix 19) need only the name, so they run alongside
+    // the website step; a website-only search waits for the site's name.
+    const secEmpty = { filings: undefined, sources: [] } as Awaited<ReturnType<SecFilingsAgent["run"]>>;
+    const runSec = (name: string) => cov.run("edgar", () => new SecFilingsAgent().run(name), secEmpty, (r) => (r.filings ? 1 : 0));
+    const secEarly = queryAnchor.nameFromSite ? undefined : runSec(queryName);
     const siteResult = await cov.run("website", () => this.websiteAgent.run(queryName, queryAnchor),
       { company: { name: queryName }, leadership: [], products: [], sources: [] },
       (r) => r.leadership.length + r.products.length + (r.company.description ? 1 : 0));
@@ -152,23 +159,31 @@ export class ResearchOrchestrator {
     // anchors every later source (round 2, Fix 1).
     const companyName = siteResult.company.name || queryName;
     const anchor: CompanyAnchor = siteResult.company.anchor ?? queryAnchor;
-    const subject: SubjectRecord = { name: companyName, anchor, domain: hostOf(siteResult.company.website) };
+    const secResult = await (secEarly ?? runSec(companyName));
+    const sec = secResult.filings;
+    // A national company (an SEC filer, or one with many locations) isn't
+    // tied to its HQ city (launch fixes 22, 23): news needn't name Clayton
+    // to be about Graybar, and its peers are national, not local. A city
+    // the user typed always holds.
+    const national = !queryAnchor.location && (!!sec || isNationalScale(siteResult.company));
+    const tieAnchor: CompanyAnchor = national ? { ...anchor, location: undefined } : anchor;
+    const subject: SubjectRecord = { name: companyName, anchor: tieAnchor, domain: hostOf(siteResult.company.website) };
     // The site couldn't be read: nothing found by name alone stands in for it.
     const unreadable = !!siteResult.company.siteUnreadable;
 
     const [newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
         unreadable ? Promise.resolve({ news: [], sources: [] })
-          : cov.run("news", () => this.newsAgent.run(companyName, anchor), { news: [], sources: [] }, (r) => r.news.length),
+          : cov.run("news", () => this.newsAgent.run(companyName, tieAnchor), { news: [], sources: [] }, (r) => r.news.length),
         unreadable ? Promise.resolve({ competitors: [], sources: [] })
           : cov.run("competitors", () => this.competitorAgent.run(companyName, subject, {
             role: siteResult.company.role,
             industry: siteResult.company.industry,
             description: siteResult.company.description,
             headquarters: siteResult.company.headquarters ?? anchor.location,
-            // Matched on a city or its own site: a local or regional
-            // business, whose peers are the ones near it.
-            local: !!(anchor.location || anchor.website),
+            // Matched on a city or its own site, and not national in scale:
+            // a local or regional business, whose peers are the ones near it.
+            local: !national && !!(anchor.location || anchor.website),
           }), { competitors: [], sources: [] }, (r) => r.competitors.length),
         cov.run("sec", () => this.corporateAgent.run(companyName, subject), { funding: [], insiderActivity: [], sources: [] },
           (r) => r.funding.length + r.insiderActivity.length + (r.ownership ? 1 : 0)),
@@ -209,6 +224,9 @@ export class ResearchOrchestrator {
     const filings = new PublicFilingsAgent(this.searcher);
     const hq = siteResult.company.headquarters ?? anchor.location;
     const stateCode = hq?.match(/,\s*([A-Z]{2})\b/)?.[1];
+    // State records live in the state of incorporation, which the 10-K
+    // gives (Graybar: New York, not its Missouri HQ).
+    const recordState = sec?.stateOfIncorporation ?? stateCode;
     const healthcare = isHealthcare([siteResult.company.industry, siteResult.company.role, siteResult.company.description].filter(Boolean).join(" "));
     if (!proAccess) for (const id of ["courtlistener", "nlrb", "formd"]) cov.skip(id, "Included with Pro.");
     if (!healthcare) cov.skip("npi", "Not a healthcare business.");
@@ -220,7 +238,7 @@ export class ResearchOrchestrator {
       proAccess ? cov.run("nlrb", () => filings.nlrbCases(companyName), { cases: [], sources: [] }, (r) => r.cases.length) : Promise.resolve({ cases: [], sources: [] }),
       healthcare ? cov.run("npi", () => filings.npiRecords(companyName, stateCode), { records: [], sources: [] }, (r) => r.records.length) : Promise.resolve({ records: [], sources: [] }),
       siteResult.company.founded ? Promise.resolve({ record: undefined, sources: [] })
-        : cov.run("state-records", () => filings.stateFormation(companyName, stateCode), { record: undefined, sources: [] }, (r) => (r.record ? 1 : 0)),
+        : cov.run("state-records", () => filings.stateFormation(companyName, recordState), { record: undefined, sources: [] }, (r) => (r.record ? 1 : 0)),
       proAccess ? cov.run("formd", () => filings.formDFilings([companyName, ...fundNames(fundTexts, companyName)]), { funding: [], sources: [] }, (r) => r.funding.length)
         : Promise.resolve({ funding: [], sources: [] }),
     ]);
@@ -250,6 +268,7 @@ export class ResearchOrchestrator {
     const [courtResult, nlrbResult, npiResult, formationResult, formDResult] = await registry;
 
     const sources: Source[] = [
+      ...secResult.sources,
       ...courtResult.sources,
       ...nlrbResult.sources,
       ...npiResult.sources,
@@ -288,9 +307,12 @@ export class ResearchOrchestrator {
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
       domainPosture: postureResult.posture,
       relatedEntities: relatedResult.graph,
-      courtCases: [...courtResult.cases, ...nlrbResult.cases].length ? [...courtResult.cases, ...nlrbResult.cases] : undefined,
+      // Most material first (launch fix 21).
+      courtCases: [...courtResult.cases, ...nlrbResult.cases].length ? rankCases([...courtResult.cases, ...nlrbResult.cases]) : undefined,
+      secFilings: sec,
       npiRecords: npiResult.records.length ? npiResult.records : undefined,
     };
+    if (sec) applySecFilings(bundle, sec);
     // A state record's formation date when the site gives none (fix 15).
     if (!bundle.company.founded && formationResult.record) {
       bundle.company.founded = formationResult.record.date.slice(0, 4);
@@ -617,6 +639,40 @@ function attachProvenance<B extends { provenance?: BuiltProvenance["record"] }>(
   } catch (err) {
     console.error("[provenance] build failed; report continues without it:", err instanceof Error ? err.message : err);
     return undefined;
+  }
+}
+
+// Many locations, or says it works nationally: not a local business.
+const NATIONAL = /\b\d{2,}\+?\s+(locations|branches|offices|distribution centers|facilities|stores|warehouses)\b|\bnationwide\b|\bacross the (u\.?s\.?|united states|country)\b|\b(global|worldwide|international|multinational|fortune 500)\b/i;
+
+export function isNationalScale(c: { locations?: string[]; description?: string; summary?: string }): boolean {
+  return (c.locations?.length ?? 0) >= 5 || NATIONAL.test(`${c.description ?? ""} ${c.summary ?? ""}`);
+}
+
+/**
+ * What the 10-K settles (launch fixes 19, 23): founding and incorporation,
+ * the business address as HQ when nothing else gave one, and the executive
+ * officers as leadership, cited to the 10-K.
+ */
+export function applySecFilings(bundle: ResearchBundle, sec: SecFilings): void {
+  const c = bundle.company;
+  if (!c.founded && (sec.founded || sec.incorporatedYear)) {
+    c.founded = sec.founded ?? sec.incorporatedYear;
+    c.foundedSource = sec.tenKUrl;
+  }
+  if (sec.incorporatedYear || sec.stateOfIncorporation) {
+    c.incorporated = [sec.incorporatedYear, sec.stateOfIncorporation].filter(Boolean).join(", ");
+  }
+  if (!c.headquarters && sec.businessAddress) c.headquarters = sec.businessAddress;
+  for (const o of sec.executiveOfficers) {
+    const key = personKey(o.name);
+    const known = bundle.leadership.find((l) => personKey(l.name) === key);
+    if (known) {
+      // The 10-K's title is the current one, as filed.
+      if (sec.tenKUrl) { known.title = o.title; known.sourceUrl = sec.tenKUrl; known.asOf = sec.tenKDate; }
+    } else if (sec.tenKUrl) {
+      bundle.leadership.push({ name: o.name, title: o.title, sourceUrl: sec.tenKUrl, asOf: sec.tenKDate });
+    }
   }
 }
 

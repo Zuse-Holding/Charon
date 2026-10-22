@@ -109,7 +109,7 @@ export class ReportAgent {
     lines.push(`## Company Overview`);
     const anchor = bundle.company.anchor;
     if (anchor?.location || anchor?.website) lines.push(`- **Matched on:** ${[anchor.location, anchor.website].filter(Boolean).join(" · ")} (from your search)`);
-    if (bundle.company.brandLevel) lines.push(`- **Location:** ${anchor?.location} — franchise location of ${bundle.company.name}`);
+    if (bundle.company.brandLevel) lines.push(`- **Location:** ${anchor?.location} — ${bundle.company.franchise ? "franchise location" : "a location"} of ${bundle.company.name}`);
     lines.push(`- **Website:** ${bundle.company.website ?? "Unknown"}`);
     if (bundle.company.address) lines.push(`- **Address:** ${bundle.company.address}`);
     if (bundle.company.phone) lines.push(`- **Phone:** ${bundle.company.phone}`);
@@ -121,6 +121,7 @@ export class ReportAgent {
         ? `${bundle.company.headquarters}${bundle.company.headquartersUnverified ? " (location from your search, not verified)" : ""}`
         : "Unknown"}`
     );
+    if (bundle.company.incorporated) lines.push(`- **Incorporated:** ${bundle.company.incorporated}`);
     lines.push(`- **Industry:** ${bundle.company.industry ?? "Unknown"}`);
     if (bundle.company.locations?.length) lines.push(`- **Locations:** ${bundle.company.locations.join(" · ")}`);
     lines.push(``);
@@ -223,6 +224,8 @@ export class ReportAgent {
     }
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["funding"]);
+
+    this.pushSecSection(lines, bundle);
 
     if (bundle.federalSpending && bundle.federalSpending.length > 0) {
       lines.push(`## Federal Spending`);
@@ -344,13 +347,47 @@ export class ReportAgent {
 
   }
 
+  /** Parsed SEC filings (launch fix 19): financials by fiscal year, then
+   *  what the latest 10-K and proxy state. Nothing for a non-filer. */
+  private pushSecSection(lines: string[], bundle: ResearchBundle) {
+    const sec = bundle.secFilings;
+    if (!sec) return;
+    const body: string[] = [];
+    for (const y of sec.financials) {
+      const parts = [
+        y.revenue !== undefined ? `revenue ${money(y.revenue)}` : "",
+        y.netIncome !== undefined ? `net income ${money(y.netIncome)}` : "",
+        y.grossMargin !== undefined ? `gross margin ${(y.grossMargin * 100).toFixed(1)}%` : "",
+      ].filter(Boolean);
+      if (parts.length) body.push(`- **FY${y.year}:** ${parts.join(" · ")}`);
+    }
+    if (sec.description) body.push(`- **Business (10-K):** ${sec.description}`);
+    if (sec.employees) body.push(`- **Employees:** ${sec.employees}`);
+    if (sec.executiveOfficers.length) body.push(`- **Executive officers:** ${sec.executiveOfficers.map((o) => `${o.name} (${o.title})`).join("; ")}`);
+    if (sec.board?.independence) body.push(`- **Board:** ${sec.board.independence}`);
+    if (sec.legalProceedings) body.push(`- **Legal proceedings (10-K):** ${sec.legalProceedings}`);
+    if (sec.riskFactors.length) {
+      body.push(`- **Risk factors (10-K):**`);
+      for (const r of sec.riskFactors) body.push(`  - ${r}`);
+    }
+    if (body.length === 0) return;
+    lines.push(`## SEC Filings`);
+    lines.push(`_${sec.name}${sec.tenKDate ? `, from the 10-K filed ${sec.tenKDate}` : ""}${sec.financials.length ? " and its XBRL financial data" : ""}._`);
+    lines.push(...body);
+    lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["sec-filings"]);
+  }
+
   /** Court dockets, NLRB cases and NPI registrations (launch fixes 12-14),
    *  each linked to its record. Nothing when none were found. */
   private pushCourtRecordsSection(lines: string[], bundle: ResearchBundle) {
     if (!bundle.courtCases?.length && !bundle.npiRecords?.length) return;
     lines.push(`## Court and Agency Records`);
     for (const c of bundle.courtCases ?? []) {
-      const meta = [c.court, c.docketNumber, c.filed ? `filed ${c.filed}` : ""].filter(Boolean).join(" · ");
+      const side = c.role === "defendant" ? "against the company" : c.role === "plaintiff" ? "brought by the company"
+        : c.role === "debtor" ? "company is the debtor" : c.role === "charged" ? "charge against the company" : "";
+      const meta = [c.court, c.docketNumber, c.filed ? `filed ${c.filed}` : "", side, c.caseType, c.status, c.routine ? "routine bankruptcy matter" : ""]
+        .filter(Boolean).join(" · ");
       lines.push(`- [${c.caption}](${c.url})${meta ? ` — ${meta}` : ""}`);
     }
     for (const r of bundle.npiRecords ?? []) {
@@ -862,6 +899,15 @@ export class ReportAgent {
  * of only notices ("_No competitors identified..._", "Founded: Unknown")
  * says nothing about the subject and stays.
  */
+/** $12,880,000,000 -> "$12.88B". */
+export function money(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
+  return `${sign}$${abs.toLocaleString("en-US")}`;
+}
+
 export function dropUnsourcedSection(lines: string[]): void {
   let start = lines.length - 1;
   while (start >= 0 && !lines[start].startsWith("## ")) start--;

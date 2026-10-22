@@ -23,6 +23,10 @@ const COURTLISTENER_BASE = "https://www.courtlistener.com/api/rest/v4";
 
 interface CourtListenerSearchResult {
   caseName?: string;
+  court_id?: string;
+  suitNature?: string;
+  cause?: string;
+  dateTerminated?: string | null;
   docket_absolute_url?: string;
   court?: string;
   dateFiled?: string;
@@ -63,6 +67,9 @@ export class CourtListenerAgent {
           court: r.court,
           dateFiled: r.dateFiled,
           docketNumber: r.docketNumber,
+          courtId: r.court_id,
+          nature: r.suitNature || r.cause || undefined,
+          dateTerminated: r.dateTerminated ?? undefined,
         }));
 
       const sources: Source[] = records.length > 0

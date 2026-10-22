@@ -662,6 +662,34 @@ export const FundingExtractionSchema = AnyObject.transform((obj) => {
 });
 export type FundingExtraction = z.infer<typeof FundingExtractionSchema>;
 
+const toStringList = (v: unknown): string[] =>
+  (Array.isArray(v) ? v : v ? [v] : [])
+    .map((x) => (typeof x === "string" ? x : typeof x === "object" && x !== null ? String((x as Record<string, unknown>).title ?? (x as Record<string, unknown>).text ?? "") : ""))
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+// Latest 10-K excerpts (sec-filings-agent, launch fix 19).
+export const TenKExtractionSchema = AnyObject.transform((obj) => ({
+  description: toStringOrUndefined(obj.description),
+  founded: toStringOrUndefined(obj.founded),
+  incorporatedYear: toStringOrUndefined(obj.incorporatedYear),
+  employees: toStringOrUndefined(obj.employees),
+  riskFactors: toStringList(obj.riskFactors),
+  legalProceedings: toStringOrUndefined(obj.legalProceedings),
+  executiveOfficers: toLeadershipArray(obj.executiveOfficers),
+}));
+
+// Proxy statement board passages (sec-filings-agent).
+export const ProxyExtractionSchema = AnyObject.transform((obj) => ({
+  directors: (Array.isArray(obj.directors) ? obj.directors : []).flatMap((d: unknown) => {
+    if (typeof d !== "object" || d === null) return [];
+    const o = d as Record<string, unknown>;
+    const name = String(o.name ?? "").trim();
+    return name ? [{ name, independent: typeof o.independent === "boolean" ? o.independent : undefined }] : [];
+  }),
+  independence: toStringOrUndefined(obj.independence),
+}));
+
 // A bare list of competitors is the competitors (same failure as above).
 export const CompetitorExtractionSchema = z.union([AnyObject, z.array(z.unknown()).transform((competitors) => ({ competitors }))]).transform((obj) => ({
   competitors: toCompetitorArray(obj.competitors),

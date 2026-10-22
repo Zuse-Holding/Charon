@@ -32,8 +32,11 @@ const LATE_ROUND = /\bseries\s+[d-z]\b/i;
 // namesake's (Alan Health's $8.9B, Promise ABA's funding).
 const SMALL_COMPANY_CEILING = 100e6;
 
-export function isSmallCompany(bundle: Pick<ResearchBundle, "company"> & Partial<Pick<ResearchBundle, "funding" | "insiderActivity" | "ownership">>): boolean {
+export function isSmallCompany(bundle: Pick<ResearchBundle, "company"> & Partial<Pick<ResearchBundle, "funding" | "insiderActivity" | "ownership" | "secFilings">>): boolean {
   const c = bundle.company;
+  // An SEC filer with annual reports is not a small local business, whatever
+  // the user typed to find it (Graybar, by its website).
+  if (bundle.secFilings?.financials.length) return false;
   if (c.thin || c.anchor?.location || c.anchor?.unlisted || c.anchor?.website) return true;
   // No funding, filings or ownership on record: the footprint of a small
   // private company, whatever the name suggests (round 2, Fix 3).
@@ -102,6 +105,9 @@ function factFigures(bundle: ResearchBundle): number[] {
     ...bundle.funding.map((f) => f.amount ?? ""),
     ...(bundle.federalSpending ?? []).map((f) => f.amount ?? ""),
     ...bundle.news.map((n) => `${n.headline} ${n.summary ?? ""}`),
+    // SEC financials, as the report states them ("$12.88B").
+    ...(bundle.secFilings?.financials ?? []).flatMap((y) => [y.revenue, y.netIncome].filter((v): v is number => v !== undefined).map((v) => `$${v}`)),
+    bundle.secFilings?.legalProceedings ?? "",
   ].join(" ");
   return parseMoney(text);
 }

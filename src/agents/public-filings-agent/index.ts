@@ -22,6 +22,55 @@ export interface CaseRecord {
   docketNumber?: string;
   filed?: string;
   url: string;
+  /** The company's side (launch fix 21). "charged" is an NLRB charge against it. */
+  role?: "plaintiff" | "defendant" | "debtor" | "charged" | "unknown";
+  /** Nature of suit or cause, as the docket gives it. */
+  caseType?: string;
+  status?: "open" | "closed";
+  /** A bankruptcy case in which the company isn't the debtor: usually a
+   *  routine collection or preference matter, not a risk. */
+  routine?: boolean;
+}
+
+/** "Blyden v. Graybar Electric Company" -> defendant; "In re Graybar" -> debtor. */
+export function caseRole(caption: string, companyName: string): CaseRecord["role"] {
+  const inRe = caption.match(/^in re:?\s+(.+)$/i);
+  if (inRe) return mentionsCompany(inRe[1], companyName) ? "debtor" : "unknown";
+  const parts = caption.split(/\s+v(?:s)?\.?\s+/i);
+  if (parts.length < 2) return "unknown";
+  if (mentionsCompany(parts.slice(1).join(" v. "), companyName)) return "defendant";
+  if (mentionsCompany(parts[0], companyName)) return "plaintiff";
+  return "unknown";
+}
+
+const BANKRUPTCY_COURT = /^[a-z]{2,4}b$/;
+
+/** Role, status and whether it's routine, from a CourtListener docket. */
+export function caseContext(r: { caseName: string; courtId?: string; court?: string; nature?: string; dateTerminated?: string }, companyName: string): Pick<CaseRecord, "role" | "caseType" | "status" | "routine"> {
+  const role = caseRole(r.caseName, companyName);
+  const bankruptcy = BANKRUPTCY_COURT.test(r.courtId ?? "") || /bankruptcy/i.test(r.court ?? "");
+  return {
+    role,
+    caseType: r.nature || (bankruptcy ? "Bankruptcy" : undefined),
+    status: r.dateTerminated ? "closed" : "open",
+    routine: bankruptcy && role !== "debtor" ? true : undefined,
+  };
+}
+
+/**
+ * Most material first: cases against the company, open, newest; routine
+ * bankruptcy matters last. A 2016 suit Graybar brought must never outrank
+ * the Oct 2026 Blyden suit against it.
+ */
+export function rankCases(cases: CaseRecord[]): CaseRecord[] {
+  const weight = (c: CaseRecord) => (c.routine ? -10 : 0)
+    + (c.role === "defendant" || c.role === "charged" || c.role === "debtor" ? 4 : c.role === "plaintiff" ? -2 : 0)
+    + (c.status === "open" ? 2 : 0);
+  const time = (c: CaseRecord) => {
+    const t = c.filed ? Date.parse(c.filed) : NaN;
+    return isNaN(t) ? 0 : t;
+  };
+  return [...cases].sort((a, b) => weight(b) - weight(a) || time(b) - time(a));
 }
 
 export interface NpiRecord {
@@ -135,7 +184,13 @@ export function nlrbCase(r: { title: string; url: string; snippet?: string }, co
   const m = r.url.match(/nlrb\.gov\/case\/(\d{2}-[A-Z]{2}-\d+)/i);
   if (!m || !mentionsCompany(`${r.title} ${r.snippet ?? ""}`, companyName)) return undefined;
   const filed = `${r.title} ${r.snippet ?? ""}`.match(/Date Filed:?\s*([0-9/]+|[A-Z][a-z]+ \d{1,2}, \d{4})/)?.[1];
-  return { caption: r.title.replace(/\s*\|\s*National Labor Relations Board.*$/i, "").trim(), court: "NLRB", docketNumber: m[1].toUpperCase(), filed, url: r.url };
+  // "CA" cases are charges against an employer; "CB" against a union.
+  const kind = m[1].toUpperCase().split("-")[1];
+  const status = /\b(closed|settled|withdrawn|dismissed)\b/i.test(r.snippet ?? "") ? "closed" : /\bopen\b/i.test(r.snippet ?? "") ? "open" : undefined;
+  return {
+    caption: r.title.replace(/\s*\|\s*National Labor Relations Board.*$/i, "").trim(), court: "NLRB", docketNumber: m[1].toUpperCase(), filed, url: r.url,
+    role: kind === "CA" ? "charged" : "unknown", caseType: kind === "CA" ? "Unfair labor practice charge against the employer" : "NLRB case", status,
+  };
 }
 
 const FORMED = /\b(?:incorporation|formation|registration|filing|incorporated|formed|registered|file)\s*date:?\s*([A-Z][a-z]+ \d{1,2},? \d{4}|\d{1,2} [A-Z][a-z]+ \d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})/i;
@@ -178,7 +233,7 @@ export class PublicFilingsAgent {
     const { records } = await new CourtListenerAgent().run(`"${companyName}"`);
     const cases = records
       .filter((r) => mentionsCompany(r.caseName, companyName))
-      .map((r) => ({ caption: r.caseName, court: r.court, docketNumber: r.docketNumber, filed: r.dateFiled, url: r.url }));
+      .map((r) => ({ caption: r.caseName, court: r.court, docketNumber: r.docketNumber, filed: r.dateFiled, url: r.url, ...caseContext(r, companyName) }));
     return { cases, sources: cases.map((c) => source(c.url, `CourtListener — ${c.caption}`, "court-records")) };
   }
 

@@ -221,7 +221,7 @@ describe("company report, second pass", () => {
   it("labels a franchise location and links every leader and product to a source", () => {
     const md = new ReportAgent().generate({
       ...base,
-      company: { name: "Foster's Freeze", brandLevel: true, anchor: { location: "Ventura" }, description: "Soft-serve chain." },
+      company: { name: "Foster's Freeze", brandLevel: true, franchise: true, anchor: { location: "Ventura" }, description: "Soft-serve chain." },
       leadership: [{ name: "Jane Doe", title: "CEO", sourceUrl: "https://fostersfreeze.com/about" }],
       products: [{ name: "Twist Cone", sourceUrl: "https://fostersfreeze.com/menu" }],
       sources: [

@@ -1,5 +1,6 @@
 import { ResearchBundle, Source } from "../../types/research.js";
 import { extractStructured, RisksOpportunitiesSchema } from "../../lib/llm.js";
+import { money } from "../report-agent/index.js";
 
 /**
  * Risks & Opportunities synthesis.
@@ -49,8 +50,25 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
   for (const n of bundle.news.slice(0, 5)) {
     facts.push({ text: `News${n.date ? ` (${n.date})` : ""}: ${n.headline}${n.summary ? `. ${n.summary}` : ""}`, url: n.url });
   }
-  for (const c of (bundle.courtCases ?? []).slice(0, 5)) {
-    facts.push({ text: `Case: ${c.caption}${c.court ? ` (${c.court}${c.docketNumber ? ` ${c.docketNumber}` : ""})` : ""}${c.filed ? `, filed ${c.filed}` : ""}`, url: c.url });
+  // Cases arrive ranked (cases against the company, open, newest first);
+  // routine bankruptcy matters aren't risks (launch fix 21).
+  for (const c of (bundle.courtCases ?? []).filter((x) => !x.routine).slice(0, 5)) {
+    const side = c.role === "defendant" ? "company is the defendant" : c.role === "plaintiff" ? "company is the plaintiff"
+      : c.role === "charged" ? "charge against the company" : c.role === "debtor" ? "company is the debtor" : "";
+    const ctx = [c.court && `${c.court}${c.docketNumber ? ` ${c.docketNumber}` : ""}`, c.filed && `filed ${c.filed}`, side, c.caseType, c.status].filter(Boolean).join(", ");
+    facts.push({ text: `Case: ${c.caption}${ctx ? ` (${ctx})` : ""}`, url: c.url });
+  }
+  const sec = bundle.secFilings;
+  if (sec) {
+    const fin = bundle.sources.find((s) => s.url.includes("companyfacts"))?.url ?? sec.tenKUrl;
+    for (const y of sec.financials) {
+      const parts = [y.revenue !== undefined && `revenue ${money(y.revenue)}`, y.netIncome !== undefined && `net income ${money(y.netIncome)}`,
+        y.grossMargin !== undefined && `gross margin ${(y.grossMargin * 100).toFixed(1)}%`].filter(Boolean);
+      if (parts.length) facts.push({ text: `Financials FY${y.year} (SEC): ${parts.join(", ")}`, url: fin });
+    }
+    if (sec.legalProceedings) facts.push({ text: `Legal proceedings (10-K): ${sec.legalProceedings}`, url: sec.tenKUrl });
+    for (const r of sec.riskFactors.slice(0, 5)) facts.push({ text: `Risk factor (10-K): ${r}`, url: sec.tenKUrl });
+    if (sec.board?.independence) facts.push({ text: `Board (proxy): ${sec.board.independence}`, url: sec.proxyUrl });
   }
   for (const l of c.locations ?? []) facts.push({ text: `Location: ${l}`, url: site });
   const spendingSource = bundle.sources.find((s) => s.usedFor.includes("federal-spending"))?.url;
@@ -136,6 +154,7 @@ RULES — these are non-negotiable:
 - NEVER use generic filler phrases: "well-positioned", "significant opportunity", "faces challenges", "rapidly evolving landscape", "capitalize on trends", "leverage synergies", "disruptive innovation".
 - If the facts are thin, return 1-3 specific items, or none. Fewer specific items beat generic ones.
 - Each item: one direct sentence, no hedging, no "may" or "could" or "potentially" unless the uncertainty is itself the point.
+- Order risks by how much they matter now: an open case against the company, a recent filing or financial decline first; a case the company brought, or an old closed one, last or not at all.
 - Every risk must name something specific to this business from the facts: a location, a person, a contract, a filing, a figure, a date, a named competitor. Never a risk any company has ("faces competition from larger companies", "economic downturns", "regulatory changes").
 - If the facts can't support a credible assessment, return empty arrays.`,
     context,

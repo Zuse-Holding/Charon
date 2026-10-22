@@ -4,6 +4,7 @@ import type { DomainPosture } from "../agents/domain-posture-agent/index.js";
 import type { RelatedGraph } from "../lib/expansion/engine.js";
 import type { ClosureEvidence } from "../lib/closure.js";
 import type { CaseRecord, NpiRecord } from "../agents/public-filings-agent/index.js";
+import type { SecFilings } from "../agents/sec-filings-agent/index.js";
 
 // Core data models shared across agents.
 // These map directly to the spec's per-agent output shapes, plus a Source
@@ -40,6 +41,8 @@ export interface CompanyProfile {
   founded?: string;
   /** A state business record the founding year came from (launch fix 15). */
   foundedSource?: string;
+  /** "1925, NY": year and state of incorporation, from the 10-K. */
+  incorporated?: string;
   headquarters?: string;
   /** headquarters is the location the user typed, not found in any source. */
   headquartersUnverified?: boolean;
@@ -59,6 +62,8 @@ export interface CompanyProfile {
   /** A location of a larger brand (Fix 4): the site is the brand's, so
    *  overview, leadership and products describe the brand, not the location. */
   brandLevel?: boolean;
+  /** A source calls this location a franchise (launch fix 20). */
+  franchise?: boolean;
   /** Street address, phone and hours read from the business's own site or
    *  listing (round 2, Fix 1). */
   address?: string;
@@ -233,6 +238,12 @@ export interface CourtListenerRecord {
   court?: string;
   dateFiled?: string;
   docketNumber?: string;
+  /** CourtListener's court id ("nysb" is a bankruptcy court). */
+  courtId?: string;
+  /** Nature of suit or cause of action. */
+  nature?: string;
+  /** Set once the case closed. */
+  dateTerminated?: string;
 }
 
 export interface PersonAgentResult {
@@ -337,6 +348,8 @@ export interface ResearchBundle {
   courtCases?: CaseRecord[];
   /** NPPES registrations, for healthcare businesses (launch fix 14). */
   npiRecords?: NpiRecord[];
+  /** Parsed SEC filings: financials, 10-K and proxy (launch fix 19). */
+  secFilings?: SecFilings;
 }
 
 // --- Political research types (Round 2, item 1) ---

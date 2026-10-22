@@ -91,6 +91,9 @@ describe("competitor search (fix 3)", () => {
     assert.deepEqual(q, ["commercial mechanical contractors Pasadena California", "largest commercial mechanical contractors in California"]);
     assert.ok(peerQueries("Promise ABA", { role: "ABA therapy provider", headquarters: "Burbank, CA", local: true }).every((x) => !/promise/i.test(x)));
     assert.deepEqual(peerQueries("X", {}), []);
+    // A national distributor (Graybar): peers searched nationally, by role (fix 22).
+    assert.deepEqual(peerQueries("Graybar Electric Company", { role: "electrical distributor", headquarters: "Clayton, MO", local: false }),
+      ["largest electrical distributors", "top electrical distributors companies list"]);
     assert.deepEqual(regionOf("Santa Monica, CA 90401"), { city: "Santa Monica", state: "California" });
   });
 });

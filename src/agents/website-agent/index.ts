@@ -69,6 +69,8 @@ export function isLinkTitle(name: string, companyName: string): boolean {
 const SITE_TEXT_BUDGET = 10_000;
 const PROMPT_TEXT_BUDGET = 18_000;
 
+const FRANCHISE = /\bfranchis(e|ed|ee|ing)\b/i;
+
 // The extracted description calls the business a chain or franchise.
 const CHAIN_DESCRIPTION = /\b(chain|franchis\w*|\d+\+? locations)\b/i;
 
@@ -372,6 +374,10 @@ export class WebsiteAgent {
 
     const override = findOverride(companyName);
     const city = cityOf(anchor.location);
+    // Only a city the user typed makes this "a location of a larger brand"
+    // (launch fix 20): the city read off the company's own site is its HQ,
+    // never a franchise or branch (Graybar's Clayton HQ was labeled one).
+    const userCity = anchorIn.location ? city : undefined;
     const loc = anchor.location ? ` ${anchor.location}` : "";
     const userLocation = !anchor.website && anchor.location;
     // A listing with this name at the anchor city proves its website, even
@@ -484,7 +490,7 @@ export class WebsiteAgent {
         && [...overviewResults, ...leadershipResults, ...productResults, ...locationResults].some((r) => hostOf(r.url) === guessedHost)) {
         company.website = directUrl.replace("://www.", "://");
       }
-      if (city && !page.fromSnippets && !site && BRAND_SITE.test(page.text)) company.brandLevel = true;
+      if (userCity && !page.fromSnippets && !site && BRAND_SITE.test(page.text)) company.brandLevel = true;
       sources.push({
         url: page.url,
         title: companyName,
@@ -683,10 +689,15 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
     const subject = { name: companyName, anchor, domain: hostOf(company.website) };
     // A location search that turns up the brand's own franchise or
     // locations pages is a location of a larger brand (Fix 4).
-    if (city && !company.brandLevel && (CHAIN_DESCRIPTION.test(company.description ?? "")
+    if (userCity && !company.brandLevel && (CHAIN_DESCRIPTION.test(company.description ?? "")
       || [...overviewResults, ...leadershipResults, ...productResults]
         .some((r) => (hostOf(r.url) === subject.domain || mentionsCompany(r.title, companyName)) && BRAND_SITE.test(`${r.title} ${r.snippet ?? ""}`)))) {
       company.brandLevel = true;
+    }
+    // "Franchise" only when a source says so; otherwise it's one location
+    // of the company (launch fix 20).
+    if (company.brandLevel && FRANCHISE.test([company.description, ...[...overviewResults, ...locationResults].map((r) => `${r.title} ${r.snippet ?? ""}`)].join(" "))) {
+      company.franchise = true;
     }
     const tiedTexts = [
       ...(own ? own.pages.map((p) => ({ text: p.text, url: p.url })) : []),
