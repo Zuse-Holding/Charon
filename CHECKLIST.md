@@ -67,7 +67,7 @@ env var *names* (values not read). Ordered by what hurts most if missed.
 
 ## Nov 10 launch fixes — what's left after the Oct 22 code changes
 
-- [ ] **Run the cost-split migration** (the `model_cost_usd` / `search_calls`
+- [x] **Run the cost-split migration** (done 2026-10-22, columns confirmed) (the `model_cost_usd` / `search_calls`
   block under "Launch P1" in `supabase/schema.sql`) on Metis Intelligence.
   The server writes runs without those columns until it's run, so nothing
   breaks in the meantime; `npm run cost-report` needs them for the split.
