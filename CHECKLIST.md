@@ -65,7 +65,27 @@ env var *names* (values not read). Ordered by what hurts most if missed.
   fixed in the same PR as this note, along with source pages being labeled
   with the wrong URL after a failed fetch.
 
-## Task 4.3 — already satisfied, confirmed not just assumed
+## Nov 10 launch fixes — what's left after the Oct 22 code changes
+
+- [ ] **Run the cost-split migration** (the `model_cost_usd` / `search_calls`
+  block under "Launch P1" in `supabase/schema.sql`) on Metis Intelligence.
+  The server writes runs without those columns until it's run, so nothing
+  breaks in the meantime; `npm run cost-report` needs them for the split.
+- [ ] **Run `npm run cost-report` daily for 7 days** once real traffic starts
+  (the P1 "done when").
+- [ ] **Regenerate the Stripe sample** after deploying: `npm run research --
+  Stripe`, copy `reports/stripe.md` to `web/content/sample-reports/`, and
+  update the landing excerpt's competitor sources to match (the current one
+  still cites reddit.com, paddle.com, memberful.com and similar).
+- [ ] **Re-run the regression set** (Promise ABA, ACCO, MJW) on the deployed
+  agent server and log before/after run times. The new sources (NPPES, NLRB,
+  CourtListener, Form D, state records, UEI matching) were built against
+  their documented APIs and fixture-tested; this sandbox couldn't reach them.
+- [ ] **20-report citation audit** (P0 "done when": 95% of claims supported).
+- [ ] **Set `COURTLISTENER_API_TOKEN`** on Railway: company reports now search
+  CourtListener automatically, and the unauthenticated rate limit is low.
+
+
 
 - [x] **Secret found in git history, listed exactly.** One: a Vercel OIDC
   token, in root `.env.local`, committed in `fd66d38` and still tracked at

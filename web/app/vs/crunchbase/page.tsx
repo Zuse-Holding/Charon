@@ -65,7 +65,7 @@ export default function CrunchbaseVsPage() {
       badge="CRUNCHBASE ALTERNATIVE"
       title="Metis vs."
       titleAccent="Crunchbase"
-      sub="Crunchbase gives you access to data. Metis gives you the answer — synthesized from that data automatically, at a fraction of the seat-based cost."
+      sub="Crunchbase gives you access to data. Metis gives you the answer, with every section citing the sources it came from. Month to month, no annual commitment."
       rows={ROWS}
       narrative={NARRATIVE}
       finalCtaTitle="Get the synthesis, not just the search results."
