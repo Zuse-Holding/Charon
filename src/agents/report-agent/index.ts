@@ -24,6 +24,10 @@ export class ReportAgent {
    * renders "Unverified" rather than silently having no citation at all,
    * which is what the flat end-of-report list let happen for e.g. Risks/
    * Opportunities (LLM-synthesized commentary, never actually sourced).
+   *
+   * Launch fix (Oct 22): a section is never shown "Unverified". With no
+   * source, a section that states anything is dropped whole; one that only
+   * says nothing was found (an italic "_..._" line) stays, with no badge.
    */
   private pushSectionSources(lines: string[], sources: Source[], tags: string[]) {
     const seen = new Set<string>();
@@ -33,7 +37,7 @@ export class ReportAgent {
       return true;
     });
     if (matched.length === 0) {
-      lines.push(`_Unverified — no sources recorded for this section._`);
+      dropUnsourcedSection(lines);
     } else {
       lines.push(`**Sources:**`);
       matched.forEach((s, i) => {
@@ -76,12 +80,12 @@ export class ReportAgent {
     lines.push(`## Executive Summary`);
     if (bundle.company.siteUnreadable && bundle.company.thin) {
       // Website-first (round 2, Fix 1): never a name-only report instead.
-      lines.push(`Couldn't read this website: ${bundle.company.siteUnreadable}. Metis matches a business to the website you give it, so it didn't fall back to searching the name alone. Check the address, or add the city instead, and run it again.`);
+      lines.push(`_Couldn't read this website: ${bundle.company.siteUnreadable}. Metis matches a business to the website you give it, so it didn't fall back to searching the name alone. Check the address, or add the city instead, and run it again._`);
     } else if (bundle.company.siteUnreadable) {
       lines.push(`Couldn't read this website: ${bundle.company.siteUnreadable}. Matched through the business listing that links to it instead.${bundle.company.description ? ` ${bundle.company.description}` : ""}`);
     } else if (bundle.company.thin) {
       // Honest thin report (Fix 1): never trade up to a namesake.
-      lines.push(`Little public presence. Metis couldn't tie a website or other public pages to this business, so this report covers only public records that match the name.${bundle.company.anchor?.unlisted ? " Other companies share this name; they're not included." : ""} Add the city or website and run it again for more.`);
+      lines.push(`_Little public presence. Metis couldn't tie a website or other public pages to this business, so this report covers only public records that match the name.${bundle.company.anchor?.unlisted ? " Other companies share this name; they're not included." : ""} Add the city or website and run it again for more._`);
     } else {
       lines.push(
         bundle.company.description
@@ -160,10 +164,9 @@ export class ReportAgent {
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["competitors"]);
 
-    // Risks/Opportunities are LLM-synthesized commentary across the whole
-    // bundle, not their own separately-sourced section — no usedFor tag
-    // maps to these, so they correctly render "Unverified" below, which
-    // is accurate: they're analysis, not a sourced claim.
+    // Risks/Opportunities cite the facts they rest on (synthesis-agent);
+    // an item with no cited source never reaches the bundle, and a section
+    // left with no source is dropped (pushSectionSources).
     lines.push(`## Risks`);
     if (bundle.risks && bundle.risks.length > 0) {
       for (const risk of bundle.risks) {
@@ -817,4 +820,23 @@ export class ReportAgent {
     this.pushFooter(lines);
     return lines.join("\n");
   }
+}
+
+/**
+ * Removes the section just written (from its "## " heading on) when its
+ * body states anything: with no source behind it, it doesn't ship. A body
+ * of only notices ("_No competitors identified..._", "Founded: Unknown")
+ * says nothing about the subject and stays.
+ */
+export function dropUnsourcedSection(lines: string[]): void {
+  let start = lines.length - 1;
+  while (start >= 0 && !lines[start].startsWith("## ")) start--;
+  if (start < 0) return;
+  const body = lines.slice(start + 1).map((l) => l.trim()).filter(Boolean);
+  // Not a claim: an italic notice, a field left "Unknown", or something
+  // the user typed ("Matched on: Ventura (from your search)").
+  const notice = (l: string) => (/^_.*_$/.test(l) && !/\]\(/.test(l))
+    || /^- \*\*[^*]+:\*\* Unknown$/.test(l) || /\(from your search|location from your search, not verified\)/.test(l);
+  if (body.every(notice)) return;
+  lines.length = start;
 }

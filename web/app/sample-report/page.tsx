@@ -7,8 +7,8 @@ import { MarketingShell } from "../../components/marketing/MarketingShell";
 import shellStyles from "../../components/marketing/MarketingShell.module.css";
 import styles from "./sample-report.module.css";
 
-// One real company report, published in full and exactly as Metis wrote it,
-// including the sections it couldn't source. Regenerate with
+// One real company report, published in full and exactly as Metis wrote it.
+// Sections Metis couldn't source are left out of every report. Regenerate with
 // `npm run research -- Stripe` from the repo root, then copy
 // reports/stripe.md here; don't hand-edit it.
 const REPORT_FILE = path.join(process.cwd(), "content", "sample-reports", "stripe.md");
@@ -16,10 +16,10 @@ const REPORT_FILE = path.join(process.cwd(), "content", "sample-reports", "strip
 export const metadata: Metadata = {
   title: "Sample report: Stripe — Metis Intelligence",
   description:
-    "A full Metis Intelligence company report on Stripe, shown exactly as generated: every section with its sources, and the ones Metis couldn't source marked unverified.",
+    "A full Metis Intelligence company report on Stripe, shown exactly as generated: every section with the sources it came from.",
   openGraph: {
     title: "Sample report: Stripe — Metis Intelligence",
-    description: "A full Metis Intelligence report, shown exactly as generated, unverified sections included.",
+    description: "A full Metis Intelligence report, shown exactly as generated, every section with its sources.",
     url: "https://metisanalytic.com/sample-report",
     type: "article",
   },
@@ -43,8 +43,7 @@ export default function SampleReportPage() {
         <h1 className={styles.title}>Stripe, as Metis reports it</h1>
         <p className={styles.sub}>
           A full company report, published exactly as Metis wrote it. Every section lists the sources
-          it came from. Where Metis couldn&apos;t find a source, the section says so and is marked
-          unverified, so you know which parts to check before relying on them.
+          it came from. If Metis can&apos;t source a section, the section isn&apos;t in the report.
         </p>
         {generated && (
           <p className={styles.meta}>

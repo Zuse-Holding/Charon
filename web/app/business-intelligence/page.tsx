@@ -37,9 +37,8 @@ function useScrollFade() {
 }
 
 // An excerpt of the full sample report on /sample-report
-// (web/content/sample-reports/stripe.md), copied as written. Sourced
-// sections only: the full report shows the unverified ones in context.
-// Keep the two in step.
+// (web/content/sample-reports/stripe.md), copied as written. Every
+// section a report shows has sources. Keep the two in step.
 const SAMPLE_REPORT = {
   subject: "Stripe",
   generated: "Oct 17, 2026",
@@ -208,13 +207,9 @@ export default function Landing() {
                     <span className={styles.termValue}>{value}</span>
                   </div>
                 ))}
-                {section.sources.length > 0 ? (
-                  <div className={styles.sampleSources}>
-                    {section.sources.length} sources · {section.sources.join(" · ")}
-                  </div>
-                ) : (
-                  <div className={styles.sampleUnverified}>Unverified — no sources recorded for this section.</div>
-                )}
+                <div className={styles.sampleSources}>
+                  {section.sources.length} sources · {section.sources.join(" · ")}
+                </div>
               </div>
             ))}
             <Link href="/sample-report" className={styles.sampleFullLink}>Read the full report →</Link>

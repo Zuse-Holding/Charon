@@ -57,7 +57,7 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
 }
 
 /**
- * Keeps items citing at least one valid fact, returning each with the
+ * Keeps items citing at least one valid fact with a source page, returning each with the
  * cited facts' source URLs, and tags the bundle's matching sources with
  * `tag`.
  */
@@ -72,6 +72,9 @@ export function resolveCitations(
     const valid = [...new Set(item.sources.filter((n) => Number.isInteger(n) && n >= 1 && n <= facts.length))];
     if (valid.length === 0) continue;
     const urls = [...new Set(valid.map((n) => facts[n - 1].url).filter((u): u is string => !!u))];
+    // Resting only on facts with no page behind them ("no public funding
+    // records found") leaves nothing to cite: the item doesn't ship.
+    if (urls.length === 0) continue;
     kept.push({ text: item.text, facts: valid, urls });
     for (const s of sources) {
       if (urls.includes(s.url) && !s.usedFor.includes(tag)) s.usedFor.push(tag);

@@ -224,6 +224,11 @@ describe("company report, second pass", () => {
       company: { name: "Foster's Freeze", brandLevel: true, anchor: { location: "Ventura" }, description: "Soft-serve chain." },
       leadership: [{ name: "Jane Doe", title: "CEO", sourceUrl: "https://fostersfreeze.com/about" }],
       products: [{ name: "Twist Cone", sourceUrl: "https://fostersfreeze.com/menu" }],
+      sources: [
+        { url: "https://fostersfreeze.com/", retrievedAt: "", usedFor: ["overview"] },
+        { url: "https://fostersfreeze.com/about", retrievedAt: "", usedFor: ["leadership"] },
+        { url: "https://fostersfreeze.com/menu", retrievedAt: "", usedFor: ["products"] },
+      ],
     } as ResearchBundle);
     assert.match(md, /\*\*Location:\*\* Ventura — franchise location of Foster's Freeze/);
     assert.match(md, /Brand-level: this describes Foster's Freeze overall, not the Ventura location/);
@@ -252,5 +257,33 @@ describe("source cache", () => {
     } finally {
       globalThis.fetch = original;
     }
+  });
+});
+
+describe("no section without a citation (launch P0)", () => {
+  const base = {
+    query: "X", generatedAt: "2026-10-22T12:00:00.000Z", leadership: [], products: [], news: [],
+    funding: [], competitors: [], sources: [],
+  };
+
+  it("drops a section that states something with no source, and never says Unverified", () => {
+    const md = new ReportAgent().generate({
+      ...base,
+      company: { name: "Stripe", description: "Payments.", website: "https://stripe.com" },
+      competitors: [{ name: "PayPal" }],
+      risks: ["Faces competition."],
+      sources: [{ url: "https://stripe.com", retrievedAt: "", usedFor: ["overview"] }],
+    } as ResearchBundle);
+    assert.doesNotMatch(md, /Unverified/);
+    assert.doesNotMatch(md, /## Competitors/);
+    assert.doesNotMatch(md, /## Risks/);
+    assert.match(md, /## Executive Summary\nPayments\./);
+  });
+
+  it("keeps a section that only says nothing was found", () => {
+    const md = new ReportAgent().generate({ ...base, company: { name: "Acme" } } as ResearchBundle);
+    assert.match(md, /## Competitors\n_No competitors identified in this pass._/);
+    assert.match(md, /## Company Overview\n- \*\*Website:\*\* Unknown/);
+    assert.doesNotMatch(md, /Unverified/);
   });
 });
