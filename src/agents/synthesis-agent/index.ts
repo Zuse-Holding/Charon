@@ -124,7 +124,10 @@ export async function synthesizeRisksOpportunities(
 
 You get a numbered list of FACTS. They are everything known about this business. Use nothing else.
 
-Also write "summary": {"text": "<2-3 sentences>", "sources": [<fact numbers>]}, an executive summary of what the facts show: what the business does, where, for whom, at what scale, and what stands out. Write it in your own words. Never copy or lightly reword the "What it does" fact or any marketing tagline.
+Answer with ONE JSON object, exactly this shape:
+{"summary": {"text": "...", "sources": [1, 2]}, "risks": [{"text": "...", "sources": [3]}], "opportunities": [{"text": "...", "sources": [4]}]}
+
+"summary" is an executive summary of what the facts show: what the business does, where, for whom, at what scale, and what stands out. Write it in your own words. Never copy or lightly reword the "What it does" fact or any marketing tagline.
 
 RULES — these are non-negotiable:
 - Every risk and opportunity must rest on one or more of the numbered facts. Return each item as {"text": "<one sentence>", "sources": [<fact numbers>]}. An item you can't tie to a fact does not go in.

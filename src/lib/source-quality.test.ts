@@ -139,3 +139,18 @@ describe("synthesis and consistency (fixes 4, 8, 10, 11)", () => {
     assert.match(md.split("## Executive Summary")[0], /## Status\n\*\*Sanctions screening didn't run\.\*\*/);
   });
 });
+
+describe("model answers shaped as a bare list (2026-10-22 Railway failure)", () => {
+  it("sorts typed items into risks and opportunities, and reads a competitor list", async () => {
+    const { RisksOpportunitiesSchema, CompetitorExtractionSchema } = await import("./llm.js");
+    const r = RisksOpportunitiesSchema.parse([
+      { type: "risk", text: "Depends on one distributor.", sources: [2] },
+      { type: "opportunity", text: "Expanding into Arizona.", sources: [3] },
+      { text: "Untyped item.", sources: [1] },
+    ]);
+    assert.deepEqual(r.risks.map((x) => x.text), ["Depends on one distributor."]);
+    assert.deepEqual(r.opportunities.map((x) => x.text), ["Expanding into Arizona."]);
+    assert.deepEqual(CompetitorExtractionSchema.parse([{ name: "WESCO" }, "Rexel"]).competitors.map((c) => c.name), ["WESCO", "Rexel"]);
+    assert.equal(RisksOpportunitiesSchema.parse({ risks: [{ text: "A", sources: [1] }] }).risks.length, 1);
+  });
+});

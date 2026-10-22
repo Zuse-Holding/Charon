@@ -662,7 +662,8 @@ export const FundingExtractionSchema = AnyObject.transform((obj) => {
 });
 export type FundingExtraction = z.infer<typeof FundingExtractionSchema>;
 
-export const CompetitorExtractionSchema = AnyObject.transform((obj) => ({
+// A bare list of competitors is the competitors (same failure as above).
+export const CompetitorExtractionSchema = z.union([AnyObject, z.array(z.unknown()).transform((competitors) => ({ competitors }))]).transform((obj) => ({
   competitors: toCompetitorArray(obj.competitors),
 }));
 export type CompetitorExtraction = z.infer<typeof CompetitorExtractionSchema>;
@@ -704,7 +705,24 @@ export const PersonExtractionSchema = AnyObject.transform((obj) => ({
 }));
 export type PersonExtraction = z.infer<typeof PersonExtractionSchema>;
 
-export const RisksOpportunitiesSchema = AnyObject.transform((obj) => {
+// Models sometimes answer with a bare list of items instead of the object
+// (a live Groq run, 2026-10-22, failed the whole report on it). A list whose
+// items say which kind they are is sorted into risks and opportunities;
+// an item that doesn't say is dropped rather than guessed.
+function itemsByKind(list: unknown[]): Record<string, unknown> {
+  const kind = (item: unknown) => {
+    if (typeof item !== "object" || item === null) return "";
+    const o = item as Record<string, unknown>;
+    return String(o.type ?? o.kind ?? o.category ?? o.section ?? "").toLowerCase();
+  };
+  return {
+    risks: list.filter((i) => /risk/.test(kind(i))),
+    opportunities: list.filter((i) => /opportun/.test(kind(i))),
+    summary: list.find((i) => /summary/.test(kind(i))),
+  };
+}
+
+export const RisksOpportunitiesSchema = z.union([AnyObject, z.array(z.unknown()).transform(itemsByKind)]).transform((obj) => {
   // Each item carries the numbered sources it rests on (see
   // synthesis-agent). A bare string has no citations and is kept with an
   // empty list; the caller decides what an uncited item is worth.
