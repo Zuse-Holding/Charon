@@ -30,6 +30,7 @@ import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.
 import { isLocationOnly, parseCompanyQuery, parsePersonQuery } from "../src/lib/nlp.js";
 import { companyCandidates, personCandidates } from "../src/lib/candidates.js";
 import { withCostTracking } from "../src/lib/cost-tracking.js";
+import { checkSpend } from "../src/lib/spend-alerts.js";
 import { persistProvenance } from "../src/lib/provenance/store.js";
 import type { Snapshot } from "../src/lib/provenance/snapshots.js";
 import type { ProvenanceRecord } from "../src/lib/provenance/build.js";
@@ -913,6 +914,7 @@ app.post("/research", async (req, res) => {
       console.error("[research] Supabase update error:", JSON.stringify(error));
       throw new Error(error.message);
     }
+    void checkSpend(supabase, { kind: `${type} report`, subject, costUsd: totalCostUsd });
 
     // Log person-search audit trail only after a successful run, and only
     // for non-internal users (internal bypasses the cap so no need to track).
@@ -1305,6 +1307,7 @@ app.post("/deep-dive", async (req, res) => {
       sections: bundle.sections,
       cost_usd: totalCostUsd,
     });
+    void checkSpend(supabase, { kind: "deep dive", subject: bundle.company, costUsd: totalCostUsd });
 
     trackEvent(userId, "deep_dive_run", { entity_type: "company" });
     res.end();
