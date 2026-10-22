@@ -29,7 +29,7 @@ import { upsertStatewideExecutives } from "../src/database/statewide-executives.
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { isLocationOnly, parseCompanyQuery, parsePersonQuery } from "../src/lib/nlp.js";
 import { companyCandidates, personCandidates } from "../src/lib/candidates.js";
-import { withCostTracking } from "../src/lib/cost-tracking.js";
+import { withCostTracking, writeWithCostSplit } from "../src/lib/cost-tracking.js";
 import { checkSpend } from "../src/lib/spend-alerts.js";
 import { persistProvenance } from "../src/lib/provenance/store.js";
 import type { Snapshot } from "../src/lib/provenance/snapshots.js";
@@ -828,7 +828,7 @@ app.post("/research", async (req, res) => {
     // instead of threading an accumulator through every agent signature.
     // refresh: the user's "Run again" asks for fresh sources; a new search
     // reuses cached ones so the same company gives the same facts (Fix 3).
-    const { totalCostUsd, searchCalls, llmFailures } = await withCostTracking(async () => {
+    const { totalCostUsd, modelCostUsd, searchCalls, llmFailures } = await withCostTracking(async () => {
       if (egg && egg.type === type) {
         report = egg.markdown;
         bundle = { query: subject, generatedAt: new Date().toISOString() };
@@ -898,17 +898,20 @@ app.post("/research", async (req, res) => {
 
     writeFileSync(outPath, report, "utf-8");
 
-    const { error } = await supabase
-      .from("research_runs")
-      .update({
-        generated_at: new Date().toISOString(),
-        report_path: outPath,
-        bundle: { ...(bundle as object), reportMarkdown: report },
-        status: "completed",
-        duration_ms: Date.now() - startedAt,
-        cost_usd: totalCostUsd,
-      })
-      .eq("id", runId);
+    const { error } = await writeWithCostSplit(
+      { model_cost_usd: totalCostUsd === null ? null : modelCostUsd, search_calls: searchCalls },
+      (split) => supabase
+        .from("research_runs")
+        .update({
+          generated_at: new Date().toISOString(),
+          report_path: outPath,
+          bundle: { ...(bundle as object), reportMarkdown: report },
+          status: "completed",
+          duration_ms: Date.now() - startedAt,
+          cost_usd: totalCostUsd,
+          ...split,
+        })
+        .eq("id", runId));
 
     if (error) {
       console.error("[research] Supabase update error:", JSON.stringify(error));
@@ -1296,17 +1299,20 @@ app.post("/deep-dive", async (req, res) => {
     const fetcher = new DirectFetchProvider();
     const searcher = new SerperSearchProvider();
     const agent = new DeepDiveAgent(fetcher, searcher);
-    const { result: bundle, totalCostUsd } = await withCostTracking(() => agent.run(company, send));
+    const { result: bundle, totalCostUsd, modelCostUsd, searchCalls } = await withCostTracking(() => agent.run(company, send));
 
-    await supabase.from("deep_dives").upsert({
-      id: bundle.id,
-      user_id: userId,
-      company: bundle.company,
-      generated_at: bundle.generatedAt,
-      duration_ms: bundle.durationMs,
-      sections: bundle.sections,
-      cost_usd: totalCostUsd,
-    });
+    await writeWithCostSplit(
+      { model_cost_usd: totalCostUsd === null ? null : modelCostUsd, search_calls: searchCalls },
+      (split) => supabase.from("deep_dives").upsert({
+        id: bundle.id,
+        user_id: userId,
+        company: bundle.company,
+        generated_at: bundle.generatedAt,
+        duration_ms: bundle.durationMs,
+        sections: bundle.sections,
+        cost_usd: totalCostUsd,
+        ...split,
+      }));
     void checkSpend(supabase, { kind: "deep dive", subject: bundle.company, costUsd: totalCostUsd });
 
     trackEvent(userId, "deep_dive_run", { entity_type: "company" });

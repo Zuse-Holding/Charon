@@ -441,6 +441,15 @@ ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS tier TEXT;
 
 ALTER TABLE deep_dives ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
 
+-- Launch P1 (Oct 2026): cost split per run. cost_usd stays the total;
+-- model_cost_usd is the LLM share and search_calls the Serper credits
+-- (priced at SERPER_COST_PER_CALL). The server writes these only once
+-- they exist, so running this migration late breaks nothing.
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS model_cost_usd NUMERIC;
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS search_calls INTEGER;
+ALTER TABLE deep_dives ADD COLUMN IF NOT EXISTS model_cost_usd NUMERIC;
+ALTER TABLE deep_dives ADD COLUMN IF NOT EXISTS search_calls INTEGER;
+
 CREATE INDEX IF NOT EXISTS idx_research_runs_duration
   ON research_runs (generated_at DESC) WHERE duration_ms IS NOT NULL;
 

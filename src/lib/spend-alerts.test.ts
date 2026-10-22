@@ -29,3 +29,17 @@ describe("spend alerts", () => {
     assert.equal(spendAlerts(report(2), 26, limits).length, 2);
   });
 });
+
+describe("cost split write (launch P1)", () => {
+  it("retries without the split columns when the migration hasn't run, then stops sending them", async () => {
+    const { writeWithCostSplit } = await import("./cost-tracking.js");
+    const seen: object[] = [];
+    const write = async (split: object) => {
+      seen.push(split);
+      return { error: "model_cost_usd" in split ? { code: "PGRST204", message: "Could not find the 'model_cost_usd' column" } : null };
+    };
+    assert.equal((await writeWithCostSplit({ model_cost_usd: 0.01, search_calls: 9 }, write)).error, null);
+    await writeWithCostSplit({ model_cost_usd: 0.02, search_calls: 3 }, write);
+    assert.deepEqual(seen, [{ model_cost_usd: 0.01, search_calls: 9 }, {}, {}]);
+  });
+});

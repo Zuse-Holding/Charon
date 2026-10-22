@@ -46,7 +46,7 @@ const storage = new AsyncLocalStorage<CostContext>();
 export async function withCostTracking<T>(
   fn: () => Promise<T>,
   options: { refresh?: boolean } = {}
-): Promise<{ result: T; totalCostUsd: number | null; calls: LlmCallUsage[]; searchCalls: number; llmFailures: number }> {
+): Promise<{ result: T; totalCostUsd: number | null; modelCostUsd: number; calls: LlmCallUsage[]; searchCalls: number; llmFailures: number }> {
   const ctx: CostContext = { calls: [], searchCalls: 0, llmFailures: 0, refresh: options.refresh ?? false };
   const result = await storage.run(ctx, fn);
   const modelCost = ctx.calls.reduce(
@@ -54,7 +54,7 @@ export async function withCostTracking<T>(
     0
   );
   const totalCostUsd = ctx.calls.length === 0 && ctx.searchCalls === 0 ? null : modelCost + ctx.searchCalls * SEARCH_COST_USD;
-  return { result, totalCostUsd, calls: ctx.calls, searchCalls: ctx.searchCalls, llmFailures: ctx.llmFailures };
+  return { result, totalCostUsd, modelCostUsd: modelCost, calls: ctx.calls, searchCalls: ctx.searchCalls, llmFailures: ctx.llmFailures };
 }
 
 /** One real Serper request (cache hits don't count). */
@@ -86,4 +86,34 @@ export function recordLlmUsage(usage: LlmCallUsage): void {
   console.log(`[llm] served by ${usage.provider}/${usage.model} (${usage.promptTokens}+${usage.completionTokens} tokens)`);
   const ctx = storage.getStore();
   if (ctx) ctx.calls.push(usage);
+}
+
+/** The cost-split columns (model_cost_usd, search_calls) as written per run. */
+export interface CostSplit {
+  model_cost_usd?: number | null;
+  search_calls?: number;
+}
+
+let splitColumnsMissing = false;
+
+/** PostgREST's "column not in the schema cache" or Postgres's undefined column. */
+function isMissingColumn(err: { code?: string; message?: string }): boolean {
+  return err.code === "PGRST204" || err.code === "42703" || /model_cost_usd|search_calls/.test(err.message ?? "");
+}
+
+/**
+ * Writes a run row with its cost split, and again without it if the
+ * database doesn't have those columns yet (the migration in
+ * supabase/schema.sql not run): a report is never lost over cost logging.
+ */
+export async function writeWithCostSplit<R extends { error: { code?: string; message?: string } | null }>(
+  split: CostSplit,
+  write: (split: CostSplit) => PromiseLike<R>,
+): Promise<R> {
+  if (splitColumnsMissing) return write({});
+  const first = await write(split);
+  if (!first.error || !isMissingColumn(first.error)) return first;
+  splitColumnsMissing = true;
+  console.warn("[cost-tracking] model_cost_usd/search_calls columns missing; run the cost-split migration in supabase/schema.sql");
+  return write({});
 }
