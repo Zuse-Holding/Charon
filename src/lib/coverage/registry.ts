@@ -103,7 +103,17 @@ export const SOURCES: SourceDef[] = [
     reports: ["company"], section: "Funding", hosts: ["efts.sec.gov", "www.sec.gov"],
     urlTemplate: "https://efts.sec.gov/LATEST/search-index?q=%22{q}%22&forms=D" },
 
+  { id: "fdd", name: "Franchise Disclosure Document figures (franchisors)", jurisdiction: "US", category: "corporate filings", access: "api",
+    reports: ["company"], section: "Franchise Disclosure", hosts: [SERPER], requiresEnv: ["SERPER_API_KEY"] },
+
   // Deep link only
+  { id: "state-courts", name: "State court records", jurisdiction: "US states", category: "courts", access: "deep_link",
+    reports: ["company"], reason: "State courts aren't searched automatically; CourtListener covers federal courts. Check the state's own court portal.",
+    urlTemplate: "https://www.google.com/search?q=%22{q}%22+state+court+case" },
+  { id: "wi-fdd", name: "Wisconsin franchise registry (FDDs)", jurisdiction: "Wisconsin", category: "corporate filings", access: "deep_link",
+    reports: ["company"], reason: "Search form only; no API.", urlTemplate: "https://www.google.com/search?q=site%3Adfi.wi.gov+%22{q}%22+franchise" },
+  { id: "mn-fdd", name: "Minnesota CARDS franchise filings (FDDs)", jurisdiction: "Minnesota", category: "corporate filings", access: "deep_link",
+    reports: ["company"], reason: "Search form only; no API.", urlTemplate: "https://www.google.com/search?q=site%3Acards.commerce.state.mn.us+%22{q}%22" },
   { id: "courtlistener-person", name: "CourtListener federal and state courts", jurisdiction: "US", category: "courts", access: "deep_link",
     reports: ["person"], reason: "Not searched automatically in this report.",
     urlTemplate: "https://www.courtlistener.com/?q=%22{q}%22" },

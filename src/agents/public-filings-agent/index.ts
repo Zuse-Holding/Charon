@@ -2,6 +2,7 @@ import type { FundingEntry, Source } from "../../types/research.js";
 import type { SearchProvider } from "../../lib/providers.js";
 import { CourtListenerAgent } from "../courtlistener-agent/index.js";
 import { mentionsCompany } from "../../lib/news-noise.js";
+import { extractStructured, FddExtractionSchema } from "../../lib/llm.js";
 
 /**
  * Registry checks for company reports (launch fixes 12-16). Each lookup is
@@ -118,6 +119,21 @@ export function fundNames(texts: string[], companyName: string): string[] {
   return [...out].slice(0, 4);
 }
 
+/**
+ * The names a company files under (launch fix 27): as searched, without
+ * its legal suffix, and with ", Inc." ("Gecko Robotics" ->
+ * "Gecko Robotics, Inc."). Search is case-insensitive, so no upper-case copy.
+ */
+/** "Gecko Robotics, Inc." -> "Gecko Robotics". */
+export function bareName(companyName: string): string {
+  return companyName.replace(/,?\s+(inc\.?|llc|corp\.?|corporation|co\.?|company|ltd\.?)$/i, "").trim() || companyName;
+}
+
+export function nameVariants(companyName: string): string[] {
+  const bare = bareName(companyName);
+  return [...new Set([companyName, bare, `${bare}, Inc.`, `${bare} LLC`])].filter(Boolean);
+}
+
 async function getJson<T>(url: string, headers: Record<string, string> = {}): Promise<T | null> {
   try {
     const res = await fetch(url, { headers: { accept: "application/json", ...headers }, signal: AbortSignal.timeout(15_000) });
@@ -226,11 +242,58 @@ export function parseFormD(xml: string): { offered?: string; sold?: string; issu
   return { offered: money(tag("totalOfferingAmount")), sold: money(tag("totalAmountSold")), issuer: tag("entityName") };
 }
 
+/** Franchise Disclosure Document figures, as published (launch fix 29). */
+export interface FddFigures {
+  year?: string;
+  franchisorRevenue?: string;
+  franchisorNetIncome?: string;
+  averageUnitSales?: string;
+  unitCount?: string;
+  franchiseFee?: string;
+  royalty?: string;
+  initialInvestment?: string;
+  /** Pages the figures came from. */
+  urls: string[];
+}
+
 export class PublicFilingsAgent {
   constructor(private searcher: SearchProvider) {}
 
+  /**
+   * FDD figures for a franchisor (launch fix 29). State registries publish
+   * FDDs, but behind search forms; the figures are found through search
+   * (registry copies and articles quoting them) and read from those pages.
+   */
+  async fddFigures(companyName: string): Promise<{ fdd?: FddFigures; sources: Source[] }> {
+    const results = (await Promise.all([
+      this.searcher.search(`"${companyName}" franchise disclosure document Item 19 average sales`, 6),
+      this.searcher.search(`"${companyName}" FDD franchisor revenue units initial investment`, 6),
+    ])).flat();
+    const seen = new Set<string>();
+    const tied = results.filter((r) => !seen.has(r.url) && seen.add(r.url) && mentionsCompany(`${r.title} ${r.snippet ?? ""}`, companyName));
+    if (tied.length === 0) return { sources: [] };
+    const text = tied.map((r, i) => `[${i + 1}] ${r.title} (${r.url}): ${r.snippet ?? ""}`).join("\n");
+    const r = await extractStructured(
+      `From these search results about ${companyName}'s Franchise Disclosure Document (FDD), return one JSON object with only the figures the results state, each as written with its unit:
+{"year": "<FDD year>", "franchisorRevenue": "...", "franchisorNetIncome": "...", "averageUnitSales": "<average or median gross sales per store, with any stated change>", "unitCount": "...", "franchiseFee": "...", "royalty": "...", "initialInvestment": "<range>", "sources": [<result numbers used>]}
+Omit anything not stated. Never estimate.`,
+      text, FddExtractionSchema);
+    if (!r) return { sources: [] };
+    const { sources: used, ...figures } = r;
+    if (!Object.values(figures).some(Boolean)) return { sources: [] };
+    const urls = (used.length ? used : [1]).map((n) => tied[n - 1]?.url).filter((u): u is string => !!u);
+    return {
+      fdd: { ...figures, urls },
+      sources: urls.map((u) => source(u, `Franchise disclosure figures — ${companyName}`, "fdd")),
+    };
+  }
+
   async courtCases(companyName: string): Promise<{ cases: CaseRecord[]; sources: Source[] }> {
-    const { records } = await new CourtListenerAgent().run(`"${companyName}"`);
+    // The name as searched and without its legal suffix, up to 3 pages each.
+    const variants = [...new Set([companyName, bareName(companyName)])];
+    const seen = new Set<string>();
+    const records = (await Promise.all(variants.map((v) => new CourtListenerAgent().run(`"${v}"`, 3)))).flat()
+      .flatMap((r) => r.records).filter((r) => !seen.has(r.url) && seen.add(r.url));
     const cases = records
       .filter((r) => mentionsCompany(r.caseName, companyName))
       .map((r) => ({ caption: r.caseName, court: r.court, docketNumber: r.docketNumber, filed: r.dateFiled, url: r.url, ...caseContext(r, companyName) }));
@@ -261,7 +324,7 @@ export class PublicFilingsAgent {
     const funding: FundingEntry[] = [];
     const sources: Source[] = [];
     const seen = new Set<string>();
-    for (const name of names.slice(0, 5)) {
+    for (const name of names.slice(0, 8)) {
       const data = await getJson<EftsResponse>(`https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(`"${name}"`)}&forms=D`, { "user-agent": SEC_UA });
       for (const hit of (data?.hits?.hits ?? []).slice(0, 3)) {
         const s = hit._source;

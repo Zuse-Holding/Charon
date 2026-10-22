@@ -58,6 +58,16 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
     const ctx = [c.court && `${c.court}${c.docketNumber ? ` ${c.docketNumber}` : ""}`, c.filed && `filed ${c.filed}`, side, c.caseType, c.status].filter(Boolean).join(", ");
     facts.push({ text: `Case: ${c.caption}${ctx ? ` (${ctx})` : ""}`, url: c.url });
   }
+  const spendingUrl = bundle.sources.find((s) => s.usedFor.includes("federal-spending"))?.url;
+  for (const c of bundle.contractCeilings ?? []) {
+    facts.push({ text: `Federal contract: ${c.agency} ceiling ${money(c.ceiling)} announced${c.newsDate ? ` (${c.newsDate})` : ""}; about ${money(c.obligated)} obligated to date`, url: spendingUrl ?? c.newsUrl });
+  }
+  const fdd = bundle.fdd;
+  if (fdd) {
+    const parts = [fdd.franchisorRevenue && `franchisor revenue ${fdd.franchisorRevenue}`, fdd.averageUnitSales && `average store sales ${fdd.averageUnitSales}`,
+      fdd.unitCount && `${fdd.unitCount} stores`].filter(Boolean);
+    if (parts.length) facts.push({ text: `Franchise disclosure${fdd.year ? ` (${fdd.year})` : ""}: ${parts.join(", ")}`, url: fdd.urls[0] });
+  }
   const sec = bundle.secFilings;
   if (sec) {
     const fin = bundle.sources.find((s) => s.url.includes("companyfacts"))?.url ?? sec.tenKUrl;
@@ -91,7 +101,12 @@ export function resolveCitations(
 ): { text: string; facts: number[]; urls: string[] }[] {
   const kept: { text: string; facts: number[]; urls: string[] }[] = [];
   for (const item of items) {
-    const valid = [...new Set(item.sources.filter((n) => Number.isInteger(n) && n >= 1 && n <= facts.length))];
+    let valid = [...new Set(item.sources.filter((n) => Number.isInteger(n) && n >= 1 && n <= facts.length))];
+    // A model that returns bare sentences cites nothing (launch fix 28:
+    // Gecko and Crumbl got "insufficient data" from rich findings). The
+    // facts an item plainly restates are its citations; one that restates
+    // none still doesn't ship.
+    if (valid.length === 0 && item.sources.length === 0) valid = factsRestated(item.text, facts);
     if (valid.length === 0) continue;
     const urls = [...new Set(valid.map((n) => facts[n - 1].url).filter((u): u is string => !!u))];
     // Resting only on facts with no page behind them ("no public funding
@@ -130,6 +145,22 @@ export function copiesDescription(summary: string, description: string | undefin
   return false;
 }
 
+const STOP = new Set(["that", "this", "with", "from", "into", "their", "there", "which", "while", "about", "could", "would",
+  "should", "have", "has", "been", "were", "will", "than", "more", "most", "less", "also", "its", "company", "business"]);
+const contentWords = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9$.%\s]/g, " ").split(/\s+/)
+  .filter((w) => (w.length >= 4 || /\d/.test(w)) && !STOP.has(w)));
+
+/** Facts (1-based) sharing at least two content words with the item, best first, at most two. */
+export function factsRestated(text: string, facts: Fact[]): number[] {
+  const words = contentWords(text);
+  return facts
+    .map((f, i) => ({ n: i + 1, hits: [...contentWords(f.text.replace(/^[^:]{1,30}:/, ""))].filter((w) => words.has(w)).length }))
+    .filter((x) => x.hits >= 2)
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, 2)
+    .map((x) => x.n);
+}
+
 export async function synthesizeRisksOpportunities(
   bundle: ResearchBundle
 ): Promise<{ summary?: string; risks: string[]; opportunities: string[]; citations: Record<string, string[]>; facts: Fact[] } | null> {
@@ -156,6 +187,7 @@ RULES — these are non-negotiable:
 - Each item: one direct sentence, no hedging, no "may" or "could" or "potentially" unless the uncertainty is itself the point.
 - Order risks by how much they matter now: an open case against the company, a recent filing or financial decline first; a case the company brought, or an old closed one, last or not at all.
 - Every risk must name something specific to this business from the facts: a location, a person, a contract, a filing, a figure, a date, a named competitor. Never a risk any company has ("faces competition from larger companies", "economic downturns", "regulatory changes").
+- A funding round more than 18 months old is history, never a current opportunity.
 - If the facts can't support a credible assessment, return empty arrays.`,
     context,
     RisksOpportunitiesSchema
@@ -164,6 +196,7 @@ RULES — these are non-negotiable:
   if (!result) return null;
 
   const risks = resolveCitations((result.risks ?? []).filter((r) => !isGenericRisk(r.text)), facts, bundle.sources, "risks");
+  console.log(`[synthesis] "${bundle.company.name}": model gave ${result.risks?.length ?? 0} risk(s), ${result.opportunities?.length ?? 0} opportunit(ies); ${risks.length} risk(s) kept with citations`);
   // The summary ships only when it cites a sourced fact and isn't the
   // site's own description again; otherwise the report keeps the extracted one.
   const summary = result.summary

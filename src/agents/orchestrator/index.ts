@@ -18,9 +18,10 @@ import { ProPublicaNonprofitAgent } from "../propublica-nonprofit-agent/index.js
 import { LittleSisAgent, LittleSisRelationshipEntry } from "../littlesis-agent/index.js";
 import { DomainPostureAgent } from "../domain-posture-agent/index.js";
 import { RelatedEntitiesAgent } from "../related-entities-agent/index.js";
-import { PublicFilingsAgent, fundNames, isHealthcare, rankCases } from "../public-filings-agent/index.js";
+import { PublicFilingsAgent, fundNames, isHealthcare, nameVariants, rankCases } from "../public-filings-agent/index.js";
 import { SecFilingsAgent, type SecFilings } from "../sec-filings-agent/index.js";
 import { personKey } from "../../lib/leadership.js";
+import { contractCeilings } from "../../lib/contract-ceilings.js";
 import { guardFromEnv } from "../../lib/exclusions/adapters.js";
 import { siteOf } from "../../lib/provenance/findings.js";
 import { cityOf, detectClosure, mergeClosure } from "../../lib/closure.js";
@@ -165,11 +166,13 @@ export class ResearchOrchestrator {
     // tied to its HQ city (launch fixes 22, 23): news needn't name Clayton
     // to be about Graybar, and its peers are national, not local. A city
     // the user typed always holds.
-    const national = !queryAnchor.location && (!!sec || isNationalScale(siteResult.company));
+    const national = !queryAnchor.location && (!!sec || !!siteResult.company.chain || isNationalScale(siteResult.company));
     const tieAnchor: CompanyAnchor = national ? { ...anchor, location: undefined } : anchor;
     const subject: SubjectRecord = { name: companyName, anchor: tieAnchor, domain: hostOf(siteResult.company.website) };
-    // The site couldn't be read: nothing found by name alone stands in for it.
-    const unreadable = !!siteResult.company.siteUnreadable;
+    // The site couldn't be read and nothing else tied the name to it:
+    // nothing found by name alone stands in for it. A listing linking to the
+    // site settles who it is, so news and peers still run (Crumbl, fix 25).
+    const unreadable = !!siteResult.company.siteUnreadable && !!siteResult.company.thin;
 
     const [newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
@@ -231,6 +234,8 @@ export class ResearchOrchestrator {
     if (!proAccess) for (const id of ["courtlistener", "nlrb", "formd"]) cov.skip(id, "Included with Pro.");
     if (!healthcare) cov.skip("npi", "Not a healthcare business.");
     if (siteResult.company.founded) cov.skip("state-records", "Founding year already on the company's own site.");
+    const franchisor = !!siteResult.company.chain || /\bfranchis/i.test(`${siteResult.company.description ?? ""} ${siteResult.company.industry ?? ""} ${siteResult.company.role ?? ""}`);
+    if (!franchisor) cov.skip("fdd", "Not a franchisor.");
     const fundTexts = [siteResult.company.description ?? "", ...siteResult.products.map((p) => `${p.name} ${p.description ?? ""}`),
       ...newsResult.news.map((n) => `${n.headline} ${n.summary ?? ""}`)];
     const registry = Promise.all([
@@ -239,7 +244,9 @@ export class ResearchOrchestrator {
       healthcare ? cov.run("npi", () => filings.npiRecords(companyName, stateCode), { records: [], sources: [] }, (r) => r.records.length) : Promise.resolve({ records: [], sources: [] }),
       siteResult.company.founded ? Promise.resolve({ record: undefined, sources: [] })
         : cov.run("state-records", () => filings.stateFormation(companyName, recordState), { record: undefined, sources: [] }, (r) => (r.record ? 1 : 0)),
-      proAccess ? cov.run("formd", () => filings.formDFilings([companyName, ...fundNames(fundTexts, companyName)]), { funding: [], sources: [] }, (r) => r.funding.length)
+      franchisor ? cov.run("fdd", () => filings.fddFigures(companyName), { fdd: undefined, sources: [] }, (r) => (r.fdd ? 1 : 0))
+        : Promise.resolve({ fdd: undefined, sources: [] }),
+      proAccess ? cov.run("formd", () => filings.formDFilings([...nameVariants(companyName), ...fundNames(fundTexts, companyName)]), { funding: [], sources: [] }, (r) => r.funding.length)
         : Promise.resolve({ funding: [], sources: [] }),
     ]);
 
@@ -260,12 +267,12 @@ export class ResearchOrchestrator {
             { matches: [], relationships: [], sources: [] }, (r) => r.matches.length)
           : Promise.resolve({ matches: [], relationships: [], sources: [] }),
         checkDomain && domain
-          ? cov.run("domain", () => new DomainPostureAgent().run(domain), { sources: [] }, (r) => r.posture?.checks.length ?? 0, domain)
+          ? cov.run("domain", () => new DomainPostureAgent().run(domain, siteResult.company.emailDomain), { sources: [] }, (r) => r.posture?.checks.length ?? 0, domain)
           : Promise.resolve({ posture: undefined, sources: [] }),
         related,
       ]);
 
-    const [courtResult, nlrbResult, npiResult, formationResult, formDResult] = await registry;
+    const [courtResult, nlrbResult, npiResult, formationResult, fddResult, formDResult] = await registry;
 
     const sources: Source[] = [
       ...secResult.sources,
@@ -274,6 +281,7 @@ export class ResearchOrchestrator {
       ...npiResult.sources,
       ...formationResult.sources,
       ...formDResult.sources,
+      ...fddResult.sources,
       ...siteResult.sources,
       ...newsResult.sources,
       ...competitorResult.sources,
@@ -310,9 +318,12 @@ export class ResearchOrchestrator {
       // Most material first (launch fix 21).
       courtCases: [...courtResult.cases, ...nlrbResult.cases].length ? rankCases([...courtResult.cases, ...nlrbResult.cases]) : undefined,
       secFilings: sec,
+      fdd: fddResult.fdd,
       npiRecords: npiResult.records.length ? npiResult.records : undefined,
     };
     if (sec) applySecFilings(bundle, sec);
+    const ceilings = contractCeilings(bundle.federalSpending ?? [], bundle.news);
+    if (ceilings.length) bundle.contractCeilings = ceilings;
     // A state record's formation date when the site gives none (fix 15).
     if (!bundle.company.founded && formationResult.record) {
       bundle.company.founded = formationResult.record.date.slice(0, 4);
@@ -353,6 +364,7 @@ export class ResearchOrchestrator {
     if (synthesis) {
       bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts);
       bundle.opportunities = plausibleAnalysis(synthesis.opportunities, bundle, synthesis.facts);
+      console.log(`[synthesis] "${companyName}": ${bundle.risks.length} risk(s), ${bundle.opportunities.length} opportunit(ies) after the consistency check`);
       bundle.synthesisCitations = synthesis.citations;
       // Same drift checks as the analysis: nothing the facts don't state.
       const [summary] = synthesis.summary ? plausibleAnalysis([synthesis.summary], bundle, synthesis.facts) : [];

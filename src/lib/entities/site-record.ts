@@ -197,7 +197,7 @@ export const CRAWL_KINDS: { kind: string; path: RegExp }[] = [
   { kind: "about", path: /\/(about|about-us|who-we-are|our-story|history|company|our-company|overview|mission)(\/|\.\w+)?$/i },
   { kind: "team", path: /\/(team|our-team|leadership|management|executives?|people|staff|providers|our-people|board|founders?)(\/|\.\w+)?$/i },
   { kind: "locations", path: /\/(locations?|offices?|branches|our-locations|find-us|where-we-are|service-areas?|areas-we-serve)(\/|\.\w+)?$/i },
-  { kind: "services", path: /\/(services?|our-services|what-we-do|solutions|programs?|capabilities|products|offerings|markets|industries|treatment|therapy)(\/|\.\w+)?$/i },
+  { kind: "services", path: /\/(services?|our-services|what-we-do|solutions|programs?|capabilities|products|offerings|markets|industries|treatment|therapy|robots?|platform|technology|hardware|software|menu)(\/|\.\w+)?$/i },
   { kind: "press", path: /\/(press|news|newsroom|media|press-releases|in-the-news|announcements)(\/|\.\w+)?$/i },
   { kind: "acquisitions", path: /\/(acquisitions?|portfolio|investments?|properties|criteria|investment-criteria|acquisition-criteria|funds?|track-record)(\/|\.\w+)?$/i },
   { kind: "contact", path: /\/(contact|contact-us|get-in-touch)(\/|\.\w+)?$/i },

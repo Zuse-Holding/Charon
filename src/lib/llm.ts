@@ -679,6 +679,19 @@ export const TenKExtractionSchema = AnyObject.transform((obj) => ({
   executiveOfficers: toLeadershipArray(obj.executiveOfficers),
 }));
 
+// FDD figures from search results (public-filings-agent, launch fix 29).
+export const FddExtractionSchema = AnyObject.transform((obj) => ({
+  year: toStringOrUndefined(obj.year),
+  franchisorRevenue: toStringOrUndefined(obj.franchisorRevenue),
+  franchisorNetIncome: toStringOrUndefined(obj.franchisorNetIncome),
+  averageUnitSales: toStringOrUndefined(obj.averageUnitSales),
+  unitCount: toStringOrUndefined(obj.unitCount),
+  franchiseFee: toStringOrUndefined(obj.franchiseFee),
+  royalty: toStringOrUndefined(obj.royalty),
+  initialInvestment: toStringOrUndefined(obj.initialInvestment),
+  sources: (Array.isArray(obj.sources) ? obj.sources : []).map((n) => Number(n)).filter((n) => Number.isInteger(n) && n > 0),
+}));
+
 // Proxy statement board passages (sec-filings-agent).
 export const ProxyExtractionSchema = AnyObject.transform((obj) => ({
   directors: (Array.isArray(obj.directors) ? obj.directors : []).flatMap((d: unknown) => {

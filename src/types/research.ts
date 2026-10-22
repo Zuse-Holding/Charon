@@ -3,8 +3,9 @@ import type { CoverageEntry } from "../lib/coverage/recorder.js";
 import type { DomainPosture } from "../agents/domain-posture-agent/index.js";
 import type { RelatedGraph } from "../lib/expansion/engine.js";
 import type { ClosureEvidence } from "../lib/closure.js";
-import type { CaseRecord, NpiRecord } from "../agents/public-filings-agent/index.js";
+import type { CaseRecord, FddFigures, NpiRecord } from "../agents/public-filings-agent/index.js";
 import type { SecFilings } from "../agents/sec-filings-agent/index.js";
+import type { ContractCeiling } from "../lib/contract-ceilings.js";
 
 // Core data models shared across agents.
 // These map directly to the spec's per-agent output shapes, plus a Source
@@ -64,6 +65,13 @@ export interface CompanyProfile {
   brandLevel?: boolean;
   /** A source calls this location a franchise (launch fix 20). */
   franchise?: boolean;
+  /** Many locations link to its site: a chain; no one store is its HQ (launch fix 25). */
+  chain?: boolean;
+  /** The site refused automated requests and was read through a render
+   *  service or the Internet Archive's latest copy (launch fix 24). */
+  siteVia?: "rendered" | "archived";
+  /** The domain its contact emails use, when not the website's (launch fix 31). */
+  emailDomain?: string;
   /** Street address, phone and hours read from the business's own site or
    *  listing (round 2, Fix 1). */
   address?: string;
@@ -348,6 +356,10 @@ export interface ResearchBundle {
   courtCases?: CaseRecord[];
   /** NPPES registrations, for healthcare businesses (launch fix 14). */
   npiRecords?: NpiRecord[];
+  /** Franchise Disclosure Document figures, for franchisors (launch fix 29). */
+  fdd?: FddFigures;
+  /** Announced contract ceilings next to what's obligated (launch fix 28). */
+  contractCeilings?: ContractCeiling[];
   /** Parsed SEC filings: financials, 10-K and proxy (launch fix 19). */
   secFilings?: SecFilings;
 }

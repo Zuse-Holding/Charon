@@ -26,6 +26,10 @@ interface SiteRead {
   record: SiteRecord;
   url: string;
   pages: { url: string; kind: string; text: string }[];
+  /** Read through a render service or the Internet Archive (launch fix 24). */
+  via?: "rendered" | "archived";
+  /** The domain its contact emails use, when not the website's (launch fix 31). */
+  emailDomain?: string;
 }
 import {
   extractPeopleWithTitles,
@@ -38,7 +42,7 @@ import { mentionsCompany, normalizeWords } from "../../lib/news-noise.js";
 import { cityOf, detectClosure } from "../../lib/closure.js";
 import { hostOf, tiedToSubject } from "../../lib/entities/subject.js";
 import { isCitable } from "../../lib/source-quality.js";
-import { cleanLeadership } from "../../lib/leadership.js";
+import { cleanLeadership, titleNear } from "../../lib/leadership.js";
 
 const FILLER_WORDS = new Set(["a", "an", "and", "the", "of", "for", "to", "in", "on", "at", "by", "with", "our", "&"]);
 const wordSet = (t: string) => new Set(normalizeWords(t).trim().split(" "));
@@ -68,6 +72,34 @@ export function isLinkTitle(name: string, companyName: string): boolean {
 // 4 characters each): the site's pages first, then search results.
 const SITE_TEXT_BUDGET = 10_000;
 const PROMPT_TEXT_BUDGET = 18_000;
+
+const FREE_MAIL = /^(gmail|yahoo|hotmail|outlook|aol|icloud|me|msn|live|proton(mail)?|example|sentry|wixpress|sentry-next)\./i;
+
+/**
+ * The domain a company's own email addresses use, when it isn't the
+ * website's (launch fix 31: Crumbl's site is crumblcookies.com, its mail
+ * another domain). The most common one across its pages; free webmail,
+ * placeholders and image names ("logo@2x.png") don't count.
+ */
+export function sendingDomain(htmls: string[], website: string): string | undefined {
+  let site = "";
+  try { site = new URL(website).hostname.replace(/^www\./, "").toLowerCase(); } catch { return undefined; }
+  const counts = new Map<string, number>();
+  for (const html of htmls) {
+    for (const m of html.matchAll(/[a-z0-9._%+-]+@((?:[a-z0-9-]+\.)+[a-z]{2,24})\b/gi)) {
+      const d = m[1].toLowerCase();
+      if (FREE_MAIL.test(d) || /\.(png|jpe?g|gif|svg|webp)$/.test(d) || d === site || d.endsWith(`.${site}`)) continue;
+      // The company's own other domain shares its name (crumbl.com and
+      // crumblcookies.com); a vendor's or partner's address doesn't.
+      const label = d.split(".").slice(-2)[0];
+      const siteLabel = site.split(".").slice(-2)[0];
+      if (label.length < 4 || !(siteLabel.includes(label) || label.includes(siteLabel))) continue;
+      counts.set(d, (counts.get(d) ?? 0) + 1);
+    }
+  }
+  const best = [...counts].sort((a, b) => b[1] - a[1])[0];
+  return best?.[0];
+}
 
 const FRANCHISE = /\bfranchis(e|ed|ee|ing)\b/i;
 
@@ -220,8 +252,8 @@ export class WebsiteAgent {
   }
 
   /** Fetches a page with the reason it failed, from providers that report one. */
-  private async fetchPage(url: string): Promise<FetchedPage> {
-    if (this.fetcher.fetchPage) return this.fetcher.fetchPage(url);
+  private async fetchPage(url: string, fallback = false): Promise<FetchedPage> {
+    if (this.fetcher.fetchPage) return this.fetcher.fetchPage(url, fallback);
     const html = await this.fetcher.fetchText(url);
     return html ? { html } : { html: null, reason: "the site couldn't be reached" };
   }
@@ -235,23 +267,36 @@ export class WebsiteAgent {
    * states, or why it couldn't be read.
    */
   private async readSite(website: string): Promise<SiteRead | { error: string }> {
-    const home = await this.fetchPage(website);
+    // A site that refuses us gets its www/bare twin, then a render or its
+    // archived copy (launch fix 24: crumblcookies.com wasn't down).
+    let home = await this.fetchPage(website, true);
+    if (!home.html) {
+      try {
+        const u = new URL(website);
+        u.hostname = u.hostname.startsWith("www.") ? u.hostname.slice(4) : `www.${u.hostname}`;
+        const twin = await this.fetchPage(u.origin, true);
+        if (twin.html) { home = twin; website = u.origin; }
+      } catch { /* keep the first failure */ }
+    }
     if (!home.html) return { error: home.reason ?? "the site couldn't be reached" };
+    const viaFallback = !!home.via;
     const homeText = htmlToFullText(home.html);
     if (homeText.length < 80) return { error: "the site has no readable text (it may need a browser to load)" };
     let origin = website;
     try { origin = new URL(website).origin; } catch { /* keep as given */ }
-    const sitemap = await this.fetcher.fetchText(`${origin}/sitemap.xml`);
+    // Inner pages come the same way the homepage did.
+    const get = async (u: string) => viaFallback ? (await this.fetchPage(u, true)).html : this.fetcher.fetchText(u);
+    const sitemap = await get(`${origin}/sitemap.xml`);
     // A sitemap index points at the real ones; the page sitemap holds the
     // inner pages (WordPress: page-sitemap.xml).
     let pagesXml = sitemap && /<sitemapindex/i.test(sitemap) ? null : sitemap;
     if (sitemap && !pagesXml) {
       const children = sitemapUrls(sitemap);
       const pick = children.find((u) => /page/i.test(u)) ?? children[0];
-      pagesXml = pick ? await this.fetcher.fetchText(pick) : null;
+      pagesXml = pick ? await get(pick) : null;
     }
     const targets = crawlTargets(home.html, website, pagesXml);
-    const subpages = await Promise.all(targets.map(async (t) => ({ ...t, html: await this.fetcher.fetchText(t.url) })));
+    const subpages = await Promise.all(targets.map(async (t) => ({ ...t, html: await get(t.url) })));
     const record = readSiteRecord(home.html);
     for (const p of subpages) {
       if (!p.html) continue;
@@ -275,7 +320,8 @@ export class WebsiteAgent {
     const homeShare = 2000;
     const share = Math.max(600, Math.floor((SITE_TEXT_BUDGET - homeShare) / Math.max(1, pages.length - 1)) - 40);
     const text = pages.map((p) => `PAGE (${p.kind}, ${p.url}):\n${p.text.slice(0, p.kind === "home" ? homeShare : share)}`).join("\n\n");
-    return { text, record, url: website, pages };
+    const emailDomain = sendingDomain([home.html, ...subpages.map((p) => p.html ?? "")], website);
+    return { text, record, url: website, pages, via: home.via, emailDomain };
   }
 
   /**
@@ -284,7 +330,7 @@ export class WebsiteAgent {
    * name: a URL-only search looks its name up from the site's search
    * results first.
    */
-  private async listingForSite(queryName: string, anchor: CompanyAnchor): Promise<PlaceResult | undefined> {
+  private async listingForSite(queryName: string, anchor: CompanyAnchor): Promise<{ listing: PlaceResult; chain: boolean } | undefined> {
     if (!this.searcher.places || !anchor.website) return undefined;
     const domain = hostOf(anchor.website);
     let name = queryName;
@@ -294,14 +340,20 @@ export class WebsiteAgent {
       if (!name) return undefined;
     }
     const places = await this.searcher.places(`${name}${anchor.location ? ` ${anchor.location}` : ""}`);
-    const found = places.find((p) => hostOf(p.website) === domain);
+    const own = places.filter((p) => hostOf(p.website) === domain);
+    const found = own[0];
+    if (!found) return undefined;
+    // Several listings link to the one site: a chain (launch fix 25). One
+    // store is never the company, its city never the HQ (Crumbl's report
+    // was anchored to a Hilton Head store).
+    const chain = !anchor.location && own.length >= 2;
     // Name-only listings sometimes give just the street ("19524 Nordhoff
     // St #3B"): looking it up by that street returns the full address.
-    if (found && !listingCity(found.address) && found.address) {
+    if (!chain && !listingCity(found.address) && found.address) {
       const full = (await this.searcher.places(`${found.title} ${found.address}`)).find((p) => hostOf(p.website) === domain);
-      if (full && listingCity(full.address)) return full;
+      if (full && listingCity(full.address)) return { listing: full, chain };
     }
-    return found;
+    return { listing: found, chain };
   }
 
   /**
@@ -340,6 +392,7 @@ export class WebsiteAgent {
     let anchor = anchorIn;
     let siteUnreadable: string | undefined;
     let siteListing: PlaceResult | undefined;
+    let chain = false;
     if (anchorIn.website) {
       const read = await this.readSite(anchorIn.website);
       if ("error" in read) {
@@ -347,17 +400,20 @@ export class WebsiteAgent {
         siteUnreadable = read.error;
         // Still matched on the website, never the name: a business listing
         // whose own website is this domain says which business it is.
-        siteListing = await this.listingForSite(queryName, anchorIn);
+        const matched = await this.listingForSite(queryName, anchorIn);
+        siteListing = matched?.listing;
+        chain = !!matched?.chain;
         if (!siteListing) {
           return {
             company: { name: queryName, anchor: anchorIn, website: anchorIn.website, siteUnreadable, thin: true },
             leadership: [], products: [], sources,
           };
         }
-        companyName = anchorIn.nameFromSite ? siteListing.title : queryName;
+        // A chain store's title carries its location ("Crumbl - Hilton Head").
+        companyName = anchorIn.nameFromSite ? (chain ? siteListing.title.split(/\s[|\-–—·]\s/)[0].trim() : siteListing.title) : queryName;
         const city = listingCity(siteListing.address);
         const state = siteListing.address?.match(/\b([A-Z]{2})\s+\d{5}\b/)?.[1];
-        if (!anchorIn.location && city) anchor = { ...anchorIn, location: [city, state].filter(Boolean).join(", ") };
+        if (!anchorIn.location && city && !chain) anchor = { ...anchorIn, location: [city, state].filter(Boolean).join(", ") };
       } else {
         site = read;
       }
@@ -445,6 +501,8 @@ export class WebsiteAgent {
     if (anchor.location || anchor.website) company.anchor = anchor;
     if (siteUnreadable) company.siteUnreadable = siteUnreadable;
 
+    if (site?.via) company.siteVia = site.via;
+    if (site?.emailDomain) company.emailDomain = site.emailDomain;
     if (site) {
       company.website = site.url;
     } else if (listingSite) {
@@ -498,7 +556,12 @@ export class WebsiteAgent {
         usedFor: ["overview"],
       });
     }
-    if (listing) {
+    if (listing && chain) {
+      // One store of a chain: it proves the site, nothing more.
+      company.chain = true;
+      sources.push({ url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(listing.title)}`,
+        title: `${listing.title} — one location's listing`, retrievedAt: new Date().toISOString(), usedFor: ["overview"] });
+    } else if (listing) {
       company.listing = {
         title: listing.title,
         address: listing.address,
@@ -741,7 +804,7 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
         }
       }
     }
-    if (listing?.address) company.address ??= listing.address;
+    if (listing?.address && !chain) company.address ??= listing.address;
 
     // Never echo the query as a finding: the city the user typed is the
     // headquarters only if a source used here names it.
@@ -769,6 +832,9 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
       return { company, leadership: [], products: [], sources: [] };
     }
 
+    // A name extracted without a title gets the one its pages give.
+    const pageTexts = [...(own ? own.pages.map((p) => p.text) : []), ...[...leadershipResults, ...overviewResults].map((r) => `${r.title}. ${r.snippet ?? ""}`)];
+    leadership = leadership.map((l) => (!l.title || /^unknown$/i.test(l.title.trim()) ? { ...l, title: titleNear(l.name, pageTexts) ?? l.title } : l));
     leadership = cleanLeadership(leadership, subject.domain);
 
     // Section citations list only pages about this company: its own site,

@@ -440,7 +440,8 @@ export function cleanProducts<T extends { name: string }>(products: T[], company
   const seen = new Set<string>();
   const out: T[] = [];
   for (const p of products) {
-    const name = p.name.replace(/\*\*/g, "").replace(/\s+/g, " ").replace(/^[\s\-–—•,.;:]+|[\s\-–—•,.;:]+$/g, "");
+    // Trademark marks go (launch fix 32: "Cantileve r ®").
+    const name = p.name.replace(/\*\*/g, "").replace(/\s*[®™©]/g, "").replace(/\s+/g, " ").replace(/^[\s\-–—•,.;:]+|[\s\-–—•,.;:]+$/g, "");
     const w = words(name);
     if (name.length < 3 || w.length === 0 || name.length > 80) continue;
     if (w.length === 1 && !ONE_WORD_OFFERING.test(w[0])) continue;

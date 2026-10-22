@@ -35,32 +35,37 @@ interface CourtListenerSearchResult {
 
 interface CourtListenerSearchResponse {
   results?: CourtListenerSearchResult[];
+  /** The next page's URL, when there is one. */
+  next?: string | null;
 }
 
 export class CourtListenerAgent {
-  async run(name: string): Promise<{ records: CourtListenerRecord[]; sources: Source[] }> {
+  /** @param pages Result pages to read (20 dockets each). Company reports
+   *  read up to 3 (launch fix 30: one page missed Warner Records v. Crumbl). */
+  async run(name: string, pages = 1): Promise<{ records: CourtListenerRecord[]; sources: Source[] }> {
     const token = process.env.COURTLISTENER_API_TOKEN;
     const headers: Record<string, string> = token ? { Authorization: `Token ${token}` } : {};
 
     try {
       // type=r — RECAP (federal district court dockets), the closest
       // free mirror of PACER data.
-      const res = await fetch(
-        `${COURTLISTENER_BASE}/search/?q=${encodeURIComponent(name)}&type=r`,
-        { headers, signal: AbortSignal.timeout(15_000) }
-      );
-
-      if (!res.ok) {
-        console.warn(`[courtlistener-agent] "${name}" — HTTP ${res.status}`);
-        return { records: [], sources: [] };
+      const results: CourtListenerSearchResult[] = [];
+      let url: string | null | undefined = `${COURTLISTENER_BASE}/search/?q=${encodeURIComponent(name)}&type=r`;
+      for (let page = 0; url && page < pages; page++) {
+        const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+        if (!res.ok) {
+          console.warn(`[courtlistener-agent] "${name}" — HTTP ${res.status}`);
+          if (page === 0) return { records: [], sources: [] };
+          break;
+        }
+        const data = (await res.json()) as CourtListenerSearchResponse;
+        results.push(...(data.results ?? []));
+        url = data.next;
       }
-
-      const data = (await res.json()) as CourtListenerSearchResponse;
-      const results = data.results ?? [];
 
       const records: CourtListenerRecord[] = results
         .filter((r) => r.caseName && r.docket_absolute_url)
-        .slice(0, 10)
+        .slice(0, pages * 20)
         .map((r) => ({
           caseName: r.caseName as string,
           url: `https://www.courtlistener.com${r.docket_absolute_url}`,

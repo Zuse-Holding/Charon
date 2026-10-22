@@ -111,6 +111,7 @@ export class ReportAgent {
     if (anchor?.location || anchor?.website) lines.push(`- **Matched on:** ${[anchor.location, anchor.website].filter(Boolean).join(" · ")} (from your search)`);
     if (bundle.company.brandLevel) lines.push(`- **Location:** ${anchor?.location} — ${bundle.company.franchise ? "franchise location" : "a location"} of ${bundle.company.name}`);
     lines.push(`- **Website:** ${bundle.company.website ?? "Unknown"}`);
+    if (bundle.company.siteVia === "archived") lines.push(`_The site blocks automated reading, so it was read from its latest Internet Archive copy._`);
     if (bundle.company.address) lines.push(`- **Address:** ${bundle.company.address}`);
     if (bundle.company.phone) lines.push(`- **Phone:** ${bundle.company.phone}`);
     if (bundle.company.hours) lines.push(`- **Hours:** ${bundle.company.hours}`);
@@ -226,9 +227,13 @@ export class ReportAgent {
     this.pushSectionSources(lines, bundle.sources, ["funding"]);
 
     this.pushSecSection(lines, bundle);
+    this.pushFddSection(lines, bundle);
 
     if (bundle.federalSpending && bundle.federalSpending.length > 0) {
       lines.push(`## Federal Spending`);
+      for (const c of bundle.contractCeilings ?? []) {
+        lines.push(`- **${c.agency}: ${money(c.ceiling)} ceiling announced; about ${money(c.obligated)} obligated to date.**${c.newsUrl ? ` ([announcement](${c.newsUrl}))` : ""}`);
+      }
       for (const f of bundle.federalSpending) {
         lines.push(
           `- **${f.amount ?? "Undisclosed"}**${f.awardType ? ` (${f.awardType})` : ""} — ${
@@ -296,7 +301,7 @@ export class ReportAgent {
    */
   private pushPublicRecordsSection(
     lines: string[],
-    bundle: Pick<ResearchBundle, "sanctionsMatches" | "sanctionsUnavailable" | "webArchive" | "nonprofitFilings" | "powerMapConnections">
+    bundle: Pick<ResearchBundle, "sanctionsMatches" | "sanctionsUnavailable" | "webArchive" | "nonprofitFilings" | "powerMapConnections"> & Partial<Pick<ResearchBundle, "domainPosture">>
   ) {
     const hasAny =
       bundle.sanctionsUnavailable ||
@@ -324,6 +329,13 @@ export class ReportAgent {
     if (bundle.webArchive) {
       lines.push(`**Web Archive History**`);
       if (bundle.webArchive.firstSnapshot) lines.push(`- First archived: [${bundle.webArchive.firstSnapshot.timestamp}](${bundle.webArchive.firstSnapshot.url})`);
+      // Snapshots from before the current registration are a previous
+      // owner's site (launch fix 32: Gecko archived from 2001, registered 2013).
+      const registered = bundle.domainPosture?.registeredAt;
+      const first = bundle.webArchive.firstSnapshot?.timestamp;
+      if (registered && first && first.slice(0, 8) < registered.slice(0, 10).replace(/-/g, "")) {
+        lines.push(`- The domain was registered on ${registered.slice(0, 10)}; snapshots before that date likely belong to a previous owner.`);
+      }
       if (bundle.webArchive.latestSnapshot) lines.push(`- Most recent snapshot: [${bundle.webArchive.latestSnapshot.timestamp}](${bundle.webArchive.latestSnapshot.url})`);
       if (bundle.webArchive.snapshotCount) lines.push(`- ${bundle.webArchive.snapshotCount} snapshot(s) on record`);
       lines.push(``);
@@ -376,6 +388,22 @@ export class ReportAgent {
     lines.push(...body);
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["sec-filings"]);
+  }
+
+  /** FDD figures as published (launch fix 29), each linked to its page. */
+  private pushFddSection(lines: string[], bundle: ResearchBundle) {
+    const f = bundle.fdd;
+    if (!f) return;
+    const rows: [string, string | undefined][] = [
+      ["Franchisor revenue", f.franchisorRevenue], ["Franchisor net income", f.franchisorNetIncome],
+      ["Average store sales", f.averageUnitSales], ["Stores", f.unitCount], ["Franchise fee", f.franchiseFee],
+      ["Royalty", f.royalty], ["Initial investment", f.initialInvestment],
+    ];
+    lines.push(`## Franchise Disclosure`);
+    lines.push(`_Figures from ${f.year ? `the ${f.year} ` : "its "}Franchise Disclosure Document, as quoted by the pages cited._`);
+    for (const [label, v] of rows) if (v) lines.push(`- **${label}:** ${v}`);
+    lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["fdd"]);
   }
 
   /** Court dockets, NLRB cases and NPI registrations (launch fixes 12-14),

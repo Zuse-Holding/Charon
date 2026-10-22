@@ -33,6 +33,8 @@ export interface PostureCheck {
 export interface DomainPosture {
   domain: string;
   checkedAt: string;
+  /** When the current registration began (RDAP), if published. */
+  registeredAt?: string;
   checks: PostureCheck[];
 }
 
@@ -54,6 +56,8 @@ export interface DomainFacts {
   dmarc?: string[];
   caa?: string[];
   tls?: { validTo?: string; issuer?: string; error?: string };
+  /** The domain the company sends email from, when not the website's. */
+  sending?: { domain: string; txt?: string[]; dmarc?: string[] };
 }
 
 const DOH = "https://cloudflare-dns.com/dns-query";
@@ -100,6 +104,49 @@ export function systemsInUse(mx: string[] | undefined, txt: string[] | undefined
     if (records.some((r) => re.test(r)) && !found.includes(name)) found.push(name);
   }
   return found;
+}
+
+/** SPF and DMARC for one domain; `suffix` names it when it isn't the website's. */
+function mailChecks(domain: string, txt: string[] | undefined, dmarc: string[] | undefined, suffix = ""): PostureCheck[] {
+  const out: PostureCheck[] = [];
+  // SPF
+  const spfUrl = dohUrl(domain, "TXT");
+  if (txt === undefined) {
+    out.push({ id: "spf", label: `SPF${suffix}`, status: "unknown", detail: "TXT lookup failed.", sourceName: "Public DNS (TXT)", sourceUrl: spfUrl });
+  } else {
+    const spf = txt.find((t) => /^v=spf1(\s|$)/i.test(t));
+    const allMech = spf?.trim().split(/\s+/).find((m) => /^[+?~-]?all$/i.test(m));
+    if (!spf) {
+      out.push({ id: "spf", label: `SPF${suffix}`, status: "flag", severity: "medium", detail: "No SPF record.",
+        impact: "Anyone can send email that appears to come from this domain, which makes invoice and payment fraud easier.", sourceName: "Public DNS (TXT)", sourceUrl: spfUrl });
+    } else if (allMech && (allMech === "all" || allMech.startsWith("+"))) {
+      out.push({ id: "spf", label: `SPF${suffix}`, status: "flag", severity: "high", detail: `SPF ends in ${allMech === "all" ? "all (same as +all)" : "+all"}: it authorizes every server.`,
+        impact: "The SPF record allows any server to send as this domain, so it gives no protection against spoofed email.", sourceName: "Public DNS (TXT)", sourceUrl: spfUrl });
+    } else {
+      out.push({ id: "spf", label: `SPF${suffix}`, status: "ok", detail: `SPF published: ${spf}`, sourceName: "Public DNS (TXT)", sourceUrl: spfUrl });
+    }
+  }
+
+  // DMARC
+  const dmarcUrl = dohUrl(`_dmarc.${domain}`, "TXT");
+  if (dmarc === undefined) {
+    out.push({ id: "dmarc", label: `DMARC${suffix}`, status: "unknown", detail: "DMARC lookup failed.", sourceName: "Public DNS (_dmarc TXT)", sourceUrl: dmarcUrl });
+  } else {
+    const rec = dmarc.find((t) => /^v=DMARC1/i.test(t));
+    const policy = rec?.match(/(?:^|;)\s*p\s*=\s*(\w+)/i)?.[1]?.toLowerCase();
+    if (!rec) {
+      out.push({ id: "dmarc", label: `DMARC${suffix}`, status: "flag", severity: "medium", detail: "No DMARC record.",
+        impact: "Spoofed email from this domain isn't rejected, so fake invoices or payment-change requests can reach customers and staff.",
+        sourceName: "Public DNS (_dmarc TXT)", sourceUrl: dmarcUrl });
+    } else if (!policy || policy === "none") {
+      out.push({ id: "dmarc", label: `DMARC${suffix}`, status: "flag", severity: "low", detail: "DMARC is set to p=none (monitoring only).",
+        impact: "DMARC only reports spoofed email and doesn't block it. Moving to quarantine or reject is a quick fix to ask for.",
+        sourceName: "Public DNS (_dmarc TXT)", sourceUrl: dmarcUrl });
+    } else {
+      out.push({ id: "dmarc", label: `DMARC${suffix}`, status: "ok", detail: `DMARC policy: p=${policy}.`, sourceName: "Public DNS (_dmarc TXT)", sourceUrl: dmarcUrl });
+    }
+  }
+  return out;
 }
 
 export function evaluatePosture(f: DomainFacts, now = new Date()): DomainPosture {
@@ -157,42 +204,22 @@ export function evaluatePosture(f: DomainFacts, now = new Date()): DomainPosture
     checks.push({ id: "dns", label: "DNS and mail provider", status: "info", detail: `Name servers: ${ns}. Mail: ${mx}.`, sourceName: "Public DNS", sourceUrl: nsUrl });
   }
 
-  // SPF
-  const spfUrl = dohUrl(f.domain, "TXT");
-  if (f.txt === undefined) {
-    checks.push({ id: "spf", label: "SPF", status: "unknown", detail: "TXT lookup failed.", sourceName: "Public DNS (TXT)", sourceUrl: spfUrl });
-  } else {
-    const spf = f.txt.find((t) => /^v=spf1(\s|$)/i.test(t));
-    const allMech = spf?.trim().split(/\s+/).find((m) => /^[+?~-]?all$/i.test(m));
-    if (!spf) {
-      checks.push({ id: "spf", label: "SPF", status: "flag", severity: "medium", detail: "No SPF record.",
-        impact: "Anyone can send email that appears to come from this domain, which makes invoice and payment fraud easier.", sourceName: "Public DNS (TXT)", sourceUrl: spfUrl });
-    } else if (allMech && (allMech === "all" || allMech.startsWith("+"))) {
-      checks.push({ id: "spf", label: "SPF", status: "flag", severity: "high", detail: `SPF ends in ${allMech === "all" ? "all (same as +all)" : "+all"}: it authorizes every server.`,
-        impact: "The SPF record allows any server to send as this domain, so it gives no protection against spoofed email.", sourceName: "Public DNS (TXT)", sourceUrl: spfUrl });
-    } else {
-      checks.push({ id: "spf", label: "SPF", status: "ok", detail: `SPF published: ${spf}`, sourceName: "Public DNS (TXT)", sourceUrl: spfUrl });
+  // SPF and DMARC. When the company sends email from another domain than
+  // its website (launch fix 31: Crumbl's site is crumblcookies.com), that
+  // domain is checked too, and the website's own missing records matter
+  // less if it doesn't handle mail at all.
+  const siteMail = mailChecks(f.domain, f.txt, f.dmarc);
+  if (f.sending) {
+    const noMail = f.mx !== undefined && f.mx.length === 0;
+    for (const c of siteMail) {
+      if (c.status === "flag" && noMail) {
+        c.severity = "low";
+        c.detail = `${c.detail} This domain receives no email; the company's email comes from ${f.sending.domain}, checked below.`;
+      }
     }
-  }
-
-  // DMARC
-  const dmarcUrl = dohUrl(`_dmarc.${f.domain}`, "TXT");
-  if (f.dmarc === undefined) {
-    checks.push({ id: "dmarc", label: "DMARC", status: "unknown", detail: "DMARC lookup failed.", sourceName: "Public DNS (_dmarc TXT)", sourceUrl: dmarcUrl });
+    checks.push(...siteMail, ...mailChecks(f.sending.domain, f.sending.txt, f.sending.dmarc, ` (email domain ${f.sending.domain})`));
   } else {
-    const rec = f.dmarc.find((t) => /^v=DMARC1/i.test(t));
-    const policy = rec?.match(/(?:^|;)\s*p\s*=\s*(\w+)/i)?.[1]?.toLowerCase();
-    if (!rec) {
-      checks.push({ id: "dmarc", label: "DMARC", status: "flag", severity: "medium", detail: "No DMARC record.",
-        impact: "Spoofed email from this domain isn't rejected, so fake invoices or payment-change requests can reach customers and staff.",
-        sourceName: "Public DNS (_dmarc TXT)", sourceUrl: dmarcUrl });
-    } else if (!policy || policy === "none") {
-      checks.push({ id: "dmarc", label: "DMARC", status: "flag", severity: "low", detail: "DMARC is set to p=none (monitoring only).",
-        impact: "DMARC only reports spoofed email and doesn't block it. Moving to quarantine or reject is a quick fix to ask for.",
-        sourceName: "Public DNS (_dmarc TXT)", sourceUrl: dmarcUrl });
-    } else {
-      checks.push({ id: "dmarc", label: "DMARC", status: "ok", detail: `DMARC policy: p=${policy}.`, sourceName: "Public DNS (_dmarc TXT)", sourceUrl: dmarcUrl });
-    }
+    checks.push(...siteMail);
   }
 
   // CAA
@@ -228,7 +255,7 @@ export function evaluatePosture(f: DomainFacts, now = new Date()): DomainPosture
     checks.push({ id: "systems", label: "Systems in use", status: "info", detail: `${systems.join(", ")} (from mail and SPF records).`,
       sourceName: "Public DNS (MX, TXT)", sourceUrl: dohUrl(f.domain, "MX") });
   }
-  return { domain: f.domain, checkedAt: now.toISOString(), checks };
+  return { domain: f.domain, checkedAt: now.toISOString(), registeredAt: f.rdap?.registeredAt, checks };
 }
 
 // --- Gathering public records ---
@@ -341,7 +368,7 @@ export async function rdapBase(domain: string): Promise<string | undefined> {
 }
 
 export class DomainPostureAgent {
-  async gather(domain: string): Promise<DomainFacts> {
+  async gather(domain: string, sendingDomain?: string): Promise<DomainFacts> {
     const rdap = async () => {
       const base = await rdapBase(domain);
       if (!base) return undefined;
@@ -360,11 +387,16 @@ export class DomainPostureAgent {
       settle(dnsLookup(domain, "CAA")),
       readCertificate(domain),
     ]);
-    return { domain, rdap: rdapFacts, ns, mx, txt, dmarc, caa, tls: cert };
+    const sending = sendingDomain && sendingDomain !== domain
+      ? { domain: sendingDomain, txt: await settle(dnsLookup(sendingDomain, "TXT")), dmarc: await settle(dnsLookup(`_dmarc.${sendingDomain}`, "TXT")) }
+      : undefined;
+    return { domain, rdap: rdapFacts, ns, mx, txt, dmarc, caa, tls: cert, sending };
   }
 
-  async run(domain: string): Promise<{ posture?: DomainPosture; sources: Source[] }> {
-    const facts = await this.gather(domain);
+  /** @param sendingDomain The domain the company's email comes from, when
+   *  its site names a different one (launch fix 31). */
+  async run(domain: string, sendingDomain?: string): Promise<{ posture?: DomainPosture; sources: Source[] }> {
+    const facts = await this.gather(domain, sendingDomain);
     const posture = evaluatePosture(facts);
     // Nothing answered at all: no card, so coverage reports an error.
     if (posture.checks.every((c) => c.status === "unknown")) return { sources: [] };

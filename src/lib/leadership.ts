@@ -112,3 +112,20 @@ export function markDirectoryOnly(entries: LeadershipEntry[], subjectDomain?: st
 export function cleanLeadership(entries: LeadershipEntry[], subjectDomain?: string): LeadershipEntry[] {
   return markDirectoryOnly(resolveTitleConflicts(dedupeLeadership(entries, subjectDomain), subjectDomain), subjectDomain);
 }
+
+const TITLE = "(?:co-?founder(?:\\s+(?:and|&)\\s+(?:ceo|president|cto|chief [a-z]+ officer))?|founder|chief [a-z]+ officer|ceo|cto|coo|cfo|president|chair(?:man|woman)?|managing (?:director|partner)|vice president(?: of [a-z ]{3,30})?|head of [a-z ]{3,30}|general counsel)";
+
+/**
+ * A title the pages give next to the name ("Jake Loosararian, CEO", "CEO
+ * Jake Loosararian") for an entry extracted without one (launch fix 32).
+ */
+export function titleNear(name: string, texts: string[]): string | undefined {
+  const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const after = new RegExp(`${n}\\s*(?:,|-|–|—|\\(|\\bis\\b|\\bas\\b)?\\s*(?:the\\s+|our\\s+)?(${TITLE})\\b`, "i");
+  const before = new RegExp(`\\b(${TITLE})\\s*(?:,|-|–|—|:)?\\s*${n}`, "i");
+  for (const t of texts) {
+    const m = t.match(after) ?? t.match(before);
+    if (m) return m[1].replace(/\b(ceo|cto|coo|cfo)\b/gi, (x) => x.toUpperCase()).replace(/\b[a-z]/g, (c) => c.toUpperCase()).replace(/\b(Of|And)\b/g, (x) => x.toLowerCase());
+  }
+  return undefined;
+}

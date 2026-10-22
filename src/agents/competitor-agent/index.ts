@@ -35,6 +35,21 @@ const STATES: Record<string, string> = {
   VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
 };
 
+// Not a company (launch fix 26): Gecko's "competitors" were phrases lifted
+// from a news article ("Largest Capital Investment", "Shapiro
+// Administration", "U.S").
+const NOT_A_COMPANY = /\b(largest|biggest|leading|top|best|administration|department|government|ministry|agency|commission|congress|senate|council|county|city of|state of|federal|national guard|navy|army|air force|university|program|initiative|investment|announcement|report|market|industry|sector|companies|competitors|alternatives)\b/i;
+const PLACE_OR_ABBREV = /^(u\.?s\.?a?|u\.?k\.?|e\.?u\.?|america|united states|europe|china|california|texas|new york)$/i;
+
+export function isCompanyName(name: string, companyName: string): boolean {
+  const n = name.trim();
+  if (n.length < 3 || PLACE_OR_ABBREV.test(n) || /^the\s/i.test(n)) return false;
+  if (NOT_A_COMPANY.test(n) && !/\b(inc|llc|corp|corporation|co|company|ltd|group|holdings|technologies|robotics|systems)\.?$/i.test(n)) return false;
+  // A name starts with a capital or digit, and isn't a sentence.
+  if (!/^[A-Z0-9]/.test(n) || n.split(/\s+/).length > 5) return false;
+  return n.toLowerCase() !== companyName.toLowerCase();
+}
+
 /** What the competitor search knows about the business (launch fix 3). */
 export interface PeerProfile {
   role?: string;
@@ -139,7 +154,9 @@ STRICT RULES:
           counts.set(name, (counts.get(name) ?? 0) + 1);
         }
       }
-      candidates = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name]) => ({ name }));
+      // The heuristic fallback reads names out of prose, so a name counts
+      // only when two pages give it (launch fix 26).
+      candidates = [...counts.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name]) => ({ name }));
     }
 
     // Claim-to-source: each competitor links to a page that names it;
@@ -148,7 +165,8 @@ STRICT RULES:
     const competitors: CompetitorEntry[] = [];
     const cited = new Set<string>();
     for (const c of candidates) {
-      if (c.name.toLowerCase() === own || pageSupports(c.name, companyName) || NON_COMPETITOR_ENTITIES.has(c.name.toLowerCase())) continue;
+      if (c.name.toLowerCase() === own || pageSupports(c.name, companyName) || NON_COMPETITOR_ENTITIES.has(c.name.toLowerCase())
+        || !isCompanyName(c.name, companyName)) continue;
       const at = texts.find((t) => pageSupports(t.text, c.name));
       if (!at || competitors.some((x) => x.name.toLowerCase() === c.name.toLowerCase())) continue;
       competitors.push({ name: c.name, url: at.url });

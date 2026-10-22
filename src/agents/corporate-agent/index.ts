@@ -10,6 +10,35 @@ import { FundingExtractionSchema, extractStructured } from "../../lib/llm.js";
 import { Form4Agent } from "../form4-agent/index.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
 
+/**
+ * Funding, complete and clean (launch fix 27): amounts under $50K are
+ * prizes or grants, not rounds (Gecko's $10K and $7.5K "seed" rounds); the
+ * same round listed twice keeps one entry, the dated and larger one; and
+ * rounds run newest first.
+ */
+export function cleanFunding(entries: FundingEntry[]): FundingEntry[] {
+  const dollars = (a?: string) => {
+    const m = a?.match(/\$\s?(\d+(?:[.,]\d+)?)\s*(billion|bn|b|million|mm|m|thousand|k)?\b/i);
+    if (!m) return undefined;
+    const unit = (m[2] ?? "").toLowerCase();
+    return Number(m[1].replace(/,/g, "")) * (unit.startsWith("b") ? 1e9 : unit.startsWith("m") ? 1e6 : unit === "k" || unit === "thousand" ? 1e3 : 1);
+  };
+  const time = (d?: string) => {
+    const t = d ? Date.parse(/^\d{4}$/.test(d) ? `${d}-07-01` : d) : NaN;
+    return isNaN(t) ? 0 : t;
+  };
+  const key = (f: FundingEntry) => (f.round ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\b(round|funding)\b/g, "").trim();
+  const kept = new Map<string, FundingEntry>();
+  for (const f of entries) {
+    const amount = dollars(f.amount);
+    if (amount !== undefined && amount < 50_000) continue;
+    const k = key(f) || `${f.amount}-${f.date}`;
+    const prev = kept.get(k);
+    if (!prev || (time(f.date) > 0 && time(prev.date) === 0) || (dollars(f.amount) ?? 0) > (dollars(prev.amount) ?? 0)) kept.set(k, f);
+  }
+  return [...kept.values()].sort((a, b) => time(b.date) - time(a.date));
+}
+
 const AMOUNT_RE = /\$\s?\d+(?:[.,]\d+)?\s?(?:million|billion|M|B|K)\b/i;
 const ROUND_RE = /\b(Pre-[Ss]eed|[Ss]eed|Series [A-F])\b/;
 const FUNDING_CONTEXT_RE = /\b(raised|raises|funding round|secured|closed a|investment of)\b/i;
@@ -53,13 +82,18 @@ export class CorporateAgent {
     // website-agent's filter does for company overview/leadership/products.
     const override = findOverride(companyName);
 
-    const [rawResults, form4Result] = await Promise.all([
+    const [olderResults, recentResults, form4Result] = await Promise.all([
       this.searcher.search(appendDomainExclusions(`${companyName}${anchorSuffix(subject.anchor)} funding round investors raised parent company subsidiary`, override), 5),
+      // The latest rounds (launch fix 27): Gecko stopped at a 2022 Series C,
+      // missing its Dec 2023 extension and Jun 2025 Series D.
+      this.searcher.search(appendDomainExclusions(`"${companyName}" raises Series funding valuation latest round`, override), 5),
       // Insider activity (Round 2, item 5) — same "who owns/controls this
       // company" question funding/ownership already answers here.
       this.form4Agent.run(companyName),
     ]);
 
+    const seenUrl = new Set<string>();
+    const rawResults = [...recentResults, ...olderResults].filter((r) => !seenUrl.has(r.url) && seenUrl.add(r.url));
     const results = rawResults
       .filter((r) => !isRejectedDomain(r.url, override))
       .filter((r) => tiedToSubject(`${r.title} ${r.snippet ?? ""}`, r.url, subject));
@@ -94,7 +128,7 @@ export class CorporateAgent {
 
     if (combinedText.length > 0) {
       const llmResult = await extractStructured(
-        `You are a business research assistant extracting funding history and ownership structure for the company "${companyName}" from search results. Only extract actual funding ROUNDS (raised/secured money), not valuation figures or unrelated dollar amounts. Also set "ownership" to a short note if the text says this company is a subsidiary of, owned by, or a division of another company (e.g. "Owned by Warner Bros. Discovery" or "Subsidiary of VF Corporation") — leave it unset if no such relationship is mentioned.`,
+        `You are a business research assistant extracting funding history and ownership structure for the company "${companyName}" from search results. Only extract actual equity or venture funding ROUNDS (raised/secured money), with the date each was announced, every round through the most recent. Never include prizes, competition winnings, grants, SBIR or government awards, loans, or valuation figures on their own; an extension of a round is its own entry (e.g. "Series C extension"). Also set "ownership" to a short note if the text says this company is a subsidiary of, owned by, or a division of another company (e.g. "Owned by Warner Bros. Discovery" or "Subsidiary of VF Corporation") — leave it unset if no such relationship is mentioned.`,
         combinedText,
         FundingExtractionSchema
       );
@@ -145,7 +179,7 @@ export class CorporateAgent {
     }
 
     return {
-      funding,
+      funding: cleanFunding(funding),
       ownership,
       insiderActivity: form4Result.filings,
       sources: [...sources, ...form4Result.sources],

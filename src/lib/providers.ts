@@ -79,11 +79,16 @@ export interface FetchedPage {
   html: string | null;
   /** "the site returned HTTP 403", "the site didn't respond in time"... */
   reason?: string;
+  /** Read through a fallback (launch fix 24): a browser render, or the
+   *  Internet Archive's latest copy because the live site refused us. */
+  via?: "rendered" | "archived";
 }
 
 export interface FetchProvider {
   fetchText(url: string): Promise<string | null>;
-  fetchPage?(url: string): Promise<FetchedPage>;
+  /** @param fallback Retry a refused page through a render service or
+   *  the Internet Archive (launch fix 24). */
+  fetchPage?(url: string, fallback?: boolean): Promise<FetchedPage>;
 }
 
 // Identifies Metis honestly. No "bot" token: small-business hosts (e.g.
@@ -123,7 +128,30 @@ export class DirectFetchProvider implements FetchProvider {
     return (await this.fetchPage(url)).html;
   }
 
-  async fetchPage(url: string): Promise<FetchedPage> {
+  /**
+   * Launch fix 24: a site that refuses automated requests (Crumbl's 403 and
+   * bot checks) isn't down. A page that fails is fetched again through a
+   * browser-render service when RENDER_URL_TEMPLATE is set ("{url}" is
+   * replaced), then from its latest Internet Archive copy. Only when the
+   * caller asks (`fallback`): the company's own site, not every news page.
+   * A page that doesn't exist (no such address) isn't retried.
+   */
+  async fetchPage(url: string, fallback = false): Promise<FetchedPage> {
+    const direct = await this.fetchDirect(url);
+    if (!fallback || direct.html || direct.reason === "the address doesn't exist" || direct.reason === "the address isn't a web page"
+      || isUnfetchable(url) || /^https?:\/\/web\.archive\.org\//.test(url)) return direct;
+    const template = process.env.RENDER_URL_TEMPLATE;
+    if (template) {
+      const rendered = await this.fetchDirect(template.replace("{url}", encodeURIComponent(url)));
+      if (rendered.html) return { html: rendered.html, via: "rendered" };
+    }
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const archived = await this.fetchDirect(`https://web.archive.org/web/${stamp}id_/${url}`);
+    if (archived.html) return { html: archived.html, via: "archived" };
+    return direct;
+  }
+
+  private async fetchDirect(url: string): Promise<FetchedPage> {
     if (isUnfetchable(url)) return { html: null, reason: "the site doesn't allow automated reading" };
     const cached = pageCache.get(url);
     if (cached !== undefined) return { html: cached };
@@ -280,6 +308,10 @@ export function htmlToText(html: string): string {
  */
 export function htmlToFullText(html: string): string {
   return html
+    // An inline tag inside a word ("Cantileve<span>r</span>") or before a
+    // trademark mark joins, not splits (launch fix 32).
+    .replace(/([a-z])<\/?(?:span|sup|sub|b|strong|i|em|small|mark|u|font)\b[^>]*>(?=[a-z®™©]|<\/?(?:span|sup|sub|b|strong|i|em|small|mark|u|font)\b)/g, "$1")
+    .replace(/<\/?(?:sup|span)\b[^>]*>\s*([®™©])\s*<\/(?:sup|span)>/gi, "$1")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
