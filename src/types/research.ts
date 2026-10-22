@@ -32,6 +32,9 @@ export interface CompanyAnchor {
 export interface CompanyProfile {
   name: string;
   description?: string;
+  /** Executive summary written from the report's facts (launch fix 4);
+   *  shown instead of the description, which is often the site's tagline. */
+  summary?: string;
   website?: string;
   founded?: string;
   headquarters?: string;

@@ -147,15 +147,23 @@ export class CoverageRecorder {
       return empty;
     }
     installFailureWatcher();
-    const ctx: SourceContext = { hosts: s.hosts ?? [], failures: [] };
+    let ctx: SourceContext;
     let value: T;
-    try {
-      value = await storage.run(ctx, () => withTimeout(fn(), this.timeoutMs));
-    } catch (err) {
-      const reason = err instanceof TimeoutError ? `Timed out. ${err.message}.` : `Failed: ${err instanceof Error ? err.message : "unknown error"}.`;
-      this.entries.set(id, entry(s, "error", query, { reason }));
-      this.emit(s, "failed", { reason });
-      return empty;
+    // A source that errors is retried once (launch fix 11). A timeout
+    // isn't: a second wait would make the whole report slower.
+    for (let attempt = 1; ; attempt++) {
+      ctx = { hosts: s.hosts ?? [], failures: [] };
+      try {
+        value = await storage.run(ctx, () => withTimeout(fn(), this.timeoutMs));
+      } catch (err) {
+        if (attempt < 2 && !(err instanceof TimeoutError)) continue;
+        const reason = err instanceof TimeoutError ? `Timed out. ${err.message}.` : `Failed: ${err instanceof Error ? err.message : "unknown error"}.`;
+        this.entries.set(id, entry(s, "error", query, { reason }));
+        this.emit(s, "failed", { reason });
+        return empty;
+      }
+      if (attempt < 2 && count(value) === 0 && ctx.failures.length > 0) continue;
+      break;
     }
     const n = count(value);
     if (n > 0) {

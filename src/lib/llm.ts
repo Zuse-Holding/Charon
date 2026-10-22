@@ -725,7 +725,11 @@ export const RisksOpportunitiesSchema = AnyObject.transform((obj) => {
       })
       .filter((s): s is { text: string; sources: number[] } => s !== null && s.text.length > 0);
   }
+  const summary = typeof obj.summary === "object" && obj.summary !== null
+    ? toCitedItems([obj.summary])[0]
+    : typeof obj.summary === "string" ? { text: obj.summary, sources: [] } : undefined;
   return {
+    summary,
     risks: toCitedItems(obj.risks ?? obj.risk),
     opportunities: toCitedItems(obj.opportunities ?? obj.opportunity),
   };

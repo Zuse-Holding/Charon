@@ -83,9 +83,34 @@ export function resolveCitations(
   return kept;
 }
 
+// Risks any company "faces" (launch fix 4): ACCO's and MJW's top risk was
+// competing with bigger names. A risk has to be about this business.
+const GENERIC_RISK = /\b(faces?|facing) (direct |stiff |intense |significant )?competition\b|\bcompet\w* (with|against) (larger|bigger|established|well[- ]funded|major|national)\b|\b(larger|bigger|established|well[- ]funded) (competitors|rivals|players)\b|\b(economic|market) (downturns?|conditions|volatility)\b|\bregulatory changes\b/i;
+
+export function isGenericRisk(text: string): boolean {
+  return GENERIC_RISK.test(text);
+}
+
+/** Lowercased words, for comparing a summary with the site's own copy. */
+const words = (t: string) => t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+
+/**
+ * The summary repeats the site's description: it shares a run of six or
+ * more words with it (Promise ABA's summary was its tagline, typo and all).
+ */
+export function copiesDescription(summary: string, description: string | undefined): boolean {
+  if (!description) return false;
+  const d = words(description);
+  const runs = new Set<string>();
+  for (let i = 0; i + 6 <= d.length; i++) runs.add(d.slice(i, i + 6).join(" "));
+  const sw = words(summary);
+  for (let i = 0; i + 6 <= sw.length; i++) if (runs.has(sw.slice(i, i + 6).join(" "))) return true;
+  return false;
+}
+
 export async function synthesizeRisksOpportunities(
   bundle: ResearchBundle
-): Promise<{ risks: string[]; opportunities: string[]; citations: Record<string, string[]>; facts: Fact[] } | null> {
+): Promise<{ summary?: string; risks: string[]; opportunities: string[]; citations: Record<string, string[]>; facts: Fact[] } | null> {
   const facts = lockedFacts(bundle);
   if (facts.length === 0) return null;
   const context = facts.map((f, i) => `[${i + 1}] ${f.text}`).join("\n");
@@ -95,6 +120,8 @@ export async function synthesizeRisksOpportunities(
 
 You get a numbered list of FACTS. They are everything known about this business. Use nothing else.
 
+Also write "summary": {"text": "<2-3 sentences>", "sources": [<fact numbers>]}, an executive summary of what the facts show: what the business does, where, for whom, at what scale, and what stands out. Write it in your own words. Never copy or lightly reword the "What it does" fact or any marketing tagline.
+
 RULES — these are non-negotiable:
 - Every risk and opportunity must rest on one or more of the numbered facts. Return each item as {"text": "<one sentence>", "sources": [<fact numbers>]}. An item you can't tie to a fact does not go in.
 - Never name a company, product, person, place, technology or figure that isn't in the facts. Never bring in anything you know about other companies with a similar name.
@@ -102,6 +129,7 @@ RULES — these are non-negotiable:
 - NEVER use generic filler phrases: "well-positioned", "significant opportunity", "faces challenges", "rapidly evolving landscape", "capitalize on trends", "leverage synergies", "disruptive innovation".
 - If the facts are thin, return 1-3 specific items, or none. Fewer specific items beat generic ones.
 - Each item: one direct sentence, no hedging, no "may" or "could" or "potentially" unless the uncertainty is itself the point.
+- Every risk must name something specific to this business from the facts: a location, a person, a contract, a filing, a figure, a date, a named competitor. Never a risk any company has ("faces competition from larger companies", "economic downturns", "regulatory changes").
 - If the facts can't support a credible assessment, return empty arrays.`,
     context,
     RisksOpportunitiesSchema
@@ -109,9 +137,15 @@ RULES — these are non-negotiable:
 
   if (!result) return null;
 
-  const risks = resolveCitations(result.risks ?? [], facts, bundle.sources, "risks");
+  const risks = resolveCitations((result.risks ?? []).filter((r) => !isGenericRisk(r.text)), facts, bundle.sources, "risks");
+  // The summary ships only when it cites a sourced fact and isn't the
+  // site's own description again; otherwise the report keeps the extracted one.
+  const summary = result.summary
+    ? resolveCitations([result.summary], facts, bundle.sources, "overview")[0]
+    : undefined;
   const opportunities = resolveCitations(result.opportunities ?? [], facts, bundle.sources, "opportunities");
   return {
+    summary: summary && !copiesDescription(summary.text, bundle.company.description) ? summary.text : undefined,
     risks: risks.map((r) => r.text),
     opportunities: opportunities.map((o) => o.text),
     citations: Object.fromEntries([...risks, ...opportunities].map((i) => [i.text, i.urls])),

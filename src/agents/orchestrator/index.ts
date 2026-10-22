@@ -287,6 +287,9 @@ export class ResearchOrchestrator {
       bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts);
       bundle.opportunities = plausibleAnalysis(synthesis.opportunities, bundle, synthesis.facts);
       bundle.synthesisCitations = synthesis.citations;
+      // Same drift checks as the analysis: nothing the facts don't state.
+      const [summary] = synthesis.summary ? plausibleAnalysis([synthesis.summary], bundle, synthesis.facts) : [];
+      if (summary) bundle.company.summary = summary;
     }
 
     return {

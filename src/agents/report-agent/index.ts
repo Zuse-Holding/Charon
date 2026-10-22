@@ -65,6 +65,7 @@ export class ReportAgent {
     // Closed status leads the report (Fix 4); ReportViewer shows the
     // Status section as a banner under the title.
     const closure = bundle.company.closure;
+    const status: string[] = [];
     if (closure) {
       // How sure the report is depends on how many sites say so (round 2, Fix 5).
       const strength = closure.sources >= 2
@@ -72,8 +73,16 @@ export class ReportAgent {
         : closure.communityOnly
           ? `Reported closed in a community post; not otherwise confirmed`
           : `Reported closed by one source; not otherwise confirmed`;
+      status.push(`**Closed.** ${strength}: "${closure.evidence}" ([source](${closure.url}))`);
+    }
+    // A critical check that failed after its retry is said up top, not
+    // only in a coverage row (launch fix 11).
+    if (bundle.sanctionsUnavailable) {
+      status.push(`**Sanctions screening didn't run.** The Consolidated Screening List couldn't be reached after a retry, so this report is not a clean result. [Check it by hand](https://www.trade.gov/consolidated-screening-list).`);
+    }
+    if (status.length) {
       lines.push(`## Status`);
-      lines.push(`**Closed.** ${strength}: "${closure.evidence}" ([source](${closure.url}))`);
+      lines.push(...status);
       lines.push(``);
     }
 
@@ -88,8 +97,8 @@ export class ReportAgent {
       lines.push(`_Little public presence. Metis couldn't tie a website or other public pages to this business, so this report covers only public records that match the name.${bundle.company.anchor?.unlisted ? " Other companies share this name; they're not included." : ""} Add the city or website and run it again for more._`);
     } else {
       lines.push(
-        bundle.company.description
-          ? `${bundle.company.brandLevel ? `Brand-level: this describes ${bundle.company.name} overall, not the ${bundle.company.anchor?.location} location. ` : ""}${bundle.company.description}`
+        bundle.company.summary ?? bundle.company.description
+          ? `${bundle.company.brandLevel ? `Brand-level: this describes ${bundle.company.name} overall, not the ${bundle.company.anchor?.location} location. ` : ""}${bundle.company.summary ?? bundle.company.description}`
           : `_No summary data found for ${bundle.company.name}. Try refining the company name or check network/source access._`
       );
     }

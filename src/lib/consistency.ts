@@ -2,6 +2,7 @@ import type { PersonResearchBundle, ResearchBundle } from "../types/research.js"
 import { cityOf } from "./closure.js";
 import { normalizeWords } from "./news-noise.js";
 import { tiedToSubject, type SubjectRecord } from "./entities/subject.js";
+import { isCitable } from "./source-quality.js";
 
 /**
  * Consistency and plausibility pass, run on a company bundle before
@@ -22,6 +23,8 @@ export function parseMoney(text: string): number[] {
   }
   return out;
 }
+
+const JOB_LISTING = /\b(hiring|job(s| opening| posting)?|careers?|vacan(cy|te)|empleo|trabajo|apply now|now hiring|internship)\b|indeed\.com|ziprecruiter\.com|glassdoor\.com|linkedin\.com\/jobs|monster\.com|simplyhired\.com/i;
 
 const LATE_ROUND = /\bseries\s+[d-z]\b/i;
 // A local or unlisted business, or one with no website: a nine-figure
@@ -55,6 +58,13 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
 
   bundle.news = keep("news not tied to the subject", bundle.news,
     (n) => tiedToSubject(`${n.headline} ${n.summary ?? ""}`, n.url, subject));
+  // A job posting names the company but isn't news about it (launch fix 8:
+  // Promise ABA's one "news" hit was a data-analyst listing in Burbank).
+  bundle.news = keep("job listings in news", bundle.news,
+    (n) => !JOB_LISTING.test(`${n.headline} ${n.url ?? ""}`));
+  // Forums and other vendors' marketing pages are never cited (launch P0).
+  bundle.news = keep("news from uncitable pages", bundle.news, (n) => !n.url || isCitable(n.url, subject.domain));
+  bundle.sources = keep("uncitable sources", bundle.sources, (src) => isCitable(src.url, subject.domain));
 
   if (bundle.nonprofitFilings) {
     bundle.nonprofitFilings = keep("nonprofit filings in another city", bundle.nonprofitFilings, (n) => namesCity(n.city));
@@ -96,7 +106,9 @@ function factFigures(bundle: ResearchBundle): number[] {
   return parseMoney(text);
 }
 
-const FUNDING_TERMS = /\b(raised?|raising|seed|series [a-z]|funding|funded|valuation|valued at|investors?|venture[- ]backed|vc[- ]backed|ipo)\b/i;
+// "fund" too (launch fix 10): MJW's Opportunities cited a $100M fund
+// target while its Funding section said nothing was found.
+const FUNDING_TERMS = /\b(raised?|raising|seed|series [a-z]|funding|funded|funds?|fundraise|valuation|valued at|investors?|venture[- ]backed|vc[- ]backed|ipo)\b/i;
 
 // Capitalized words that aren't names: sentence words, units, months.
 const COMMON_CAPS = new Set([

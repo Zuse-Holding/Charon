@@ -113,3 +113,29 @@ describe("competitor agent claim-to-source check", () => {
     assert.deepEqual(r.sources.map((s) => s.url), r.competitors.length ? ["https://www.enr.com/toplists/ca"] : []);
   });
 });
+
+describe("synthesis and consistency (fixes 4, 8, 10, 11)", () => {
+  it("rejects generic risks and a summary that repeats the site's tagline", async () => {
+    const { isGenericRisk, copiesDescription } = await import("../agents/synthesis-agent/index.js");
+    assert.ok(isGenericRisk("ACCO faces competition from larger national firms."));
+    assert.ok(isGenericRisk("MJW competes with larger, well-funded sponsors."));
+    assert.ok(!isGenericRisk("The open NLRB case filed in Sept 2025 could delay ACCO's union contract talks."));
+    const tagline = "Promise ABA provides compassionate, individualized ABA therapy for children and familes across Los Angeles.";
+    assert.ok(copiesDescription("Promise ABA provides compassionate, individualized ABA therapy for children in LA.", tagline));
+    assert.ok(!copiesDescription("A Burbank ABA provider founded in 2017, serving children and adults from two clinics.", tagline));
+  });
+
+  it("drops job listings from news and says up top when sanctions screening didn't run", async () => {
+    const { applyCompanyConsistency } = await import("./consistency.js");
+    const { ReportAgent } = await import("../agents/report-agent/index.js");
+    const bundle = {
+      query: "Promise ABA", generatedAt: "2026-10-22T00:00:00Z", leadership: [], products: [], funding: [], competitors: [],
+      company: { name: "Promise ABA" }, sources: [], sanctionsUnavailable: true,
+      news: [{ headline: "Analista de datos - Promise ABA - Empleo en Burbank", url: "https://www.indeed.com/viewjob?jk=1", date: "Oct 1, 2026" }],
+    };
+    applyCompanyConsistency(bundle as never, { name: "Promise ABA", anchor: {} });
+    assert.equal(bundle.news.length, 0);
+    const md = new ReportAgent().generate(bundle as never);
+    assert.match(md.split("## Executive Summary")[0], /## Status\n\*\*Sanctions screening didn't run\.\*\*/);
+  });
+});

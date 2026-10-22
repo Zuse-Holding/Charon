@@ -837,14 +837,24 @@ function ReportGlance({ sections }: { sections: Section[] }) {
 /** Closed or dissolved status (report-agent's "Status" section): a banner
  *  directly under the title, never buried in Risks. */
 function StatusBanner({ section }: { section: Section }) {
-  const line = section.content.find((l) => l.trim()) ?? "";
-  const href = line.match(/\[source\]\(([^)]+)\)/)?.[1];
-  const text = line.replace(/\s*\(\[source\]\([^)]+\)\)/, "").replace(/\*\*/g, "");
+  // One banner per line: closed status, a critical check that didn't run.
+  const lines = section.content.filter((l) => l.trim());
   return (
-    <div className={styles.statusBanner} role="alert">
-      {text}
-      {href && <> <a href={href} target="_blank" rel="noopener noreferrer">See the source</a></>}
-    </div>
+    <>
+      {lines.map((line, i) => {
+        const href = line.match(/\[(?:source|Check it by hand)\]\(([^)]+)\)/)?.[1];
+        const text = line
+          .replace(/\s*\(\[source\]\([^)]+\)\)/, "")
+          .replace(/\s*\[Check it by hand\]\([^)]+\)\.?/, "")
+          .replace(/\*\*/g, "");
+        return (
+          <div key={i} className={styles.statusBanner} role="alert">
+            {text}
+            {href && <> <a href={href} target="_blank" rel="noopener noreferrer">{/Check it by hand/.test(line) ? "Check it by hand" : "See the source"}</a></>}
+          </div>
+        );
+      })}
+    </>
   );
 }
 

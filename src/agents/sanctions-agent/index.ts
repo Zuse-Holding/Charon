@@ -43,7 +43,16 @@ interface CslResponse {
 export class SanctionsAgent {
   private apiKey = process.env.TRADE_GOV_API_KEY;
 
+  /** A failed lookup is retried once before the report says screening
+   *  didn't run (launch fix 11). */
   async run(name: string): Promise<{ matches: SanctionsMatch[]; sources: Source[]; unavailable?: boolean }> {
+    const first = await this.lookup(name);
+    if (!first.unavailable || !this.apiKey) return first;
+    await new Promise((r) => setTimeout(r, 1500));
+    return this.lookup(name);
+  }
+
+  private async lookup(name: string): Promise<{ matches: SanctionsMatch[]; sources: Source[]; unavailable?: boolean }> {
     const unavailable = { matches: [], sources: [], unavailable: true };
     if (!this.apiKey) {
       console.warn("[sanctions-agent] TRADE_GOV_API_KEY not set — screening unavailable");
