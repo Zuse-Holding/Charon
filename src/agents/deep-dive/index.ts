@@ -1,6 +1,7 @@
 import { DeepDiveBundle, DeepDiveSection, RiskLevel } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractStructured } from "../../lib/llm.js";
+import { rankCitable } from "../../lib/source-quality.js";
 import { SECTION_ORDER, SECTION_ESTIMATES, TOTAL_ESTIMATED_SECONDS } from "../../lib/deep-dive-constants.js";
 import { z } from "zod";
 
@@ -24,6 +25,10 @@ const SectionSchema = z.object({
 
 type SectionResult = z.infer<typeof SectionSchema>;
 
+const FollowUpSchema = z.object({
+  questions: z.array(z.object({ question: z.string(), query: z.string() })).default([]),
+});
+
 export class DeepDiveAgent {
   constructor(
     private fetcher: FetchProvider,
@@ -37,13 +42,14 @@ export class DeepDiveAgent {
     );
     const flat = allResults.flat();
 
-    // Deduplicate by URL
+    // Deduplicate by URL; forums and other vendors' marketing pages are
+    // never read (launch P0), and the best sources come first.
     const seen = new Set<string>();
-    const unique = flat.filter(r => {
+    const unique = rankCitable(flat.filter(r => {
       if (seen.has(r.url)) return false;
       seen.add(r.url);
       return true;
-    });
+    }));
 
     const pages: (string | null)[] = fetchCount > 0 && unique.length > 0
       ? await Promise.all(unique.slice(0, fetchCount).map(r => fetchPageText(r.url, this.fetcher, 3000)))
@@ -95,6 +101,28 @@ WRITING STANDARDS — mandatory:
     return {
       content: `_Analysis unavailable for this section — LLM synthesis failed. Raw research data gathered but could not be processed. Re-run the deep dive to retry._`,
     };
+  }
+
+  /**
+   * Follow-up pass (launch fix 5): once the research sections are in, a
+   * lead step lists what they left open, runs targeted searches for it,
+   * and returns what it found for the synthesis sections to use. Nothing
+   * on a failure: the deep dive goes on with what it has.
+   */
+  private async followUp(companyName: string, findings: string): Promise<string> {
+    const plan = await extractStructured(
+      `You lead a research team writing a deep dive on ${companyName}. Read the findings so far and list the most important open questions they leave unanswered or contradictory (founding date, ownership, leadership changes, lawsuits or regulatory cases, locations, acquisitions, funds raised, real competitors).
+
+Return JSON: {"questions": [{"question": "<one line>", "query": "<a web search query that would answer it, naming ${companyName}>"}]}. At most 4. Return an empty list if nothing important is open.`,
+      findings.slice(-12000),
+      FollowUpSchema
+    );
+    const queries = (plan?.questions ?? []).map((q) => q.query).filter(Boolean).slice(0, 4);
+    if (queries.length === 0) return "";
+    const found = await this.gather(queries, 2);
+    if (!found) return "";
+    const questions = (plan?.questions ?? []).slice(0, 4).map((q) => `- ${q.question}`).join("\n");
+    return `\n\n=== FOLLOW-UP RESEARCH ===\nOpen questions:\n${questions}\n\n${found}`;
   }
 
   async run(
@@ -215,6 +243,10 @@ WRITING STANDARDS — mandatory:
         `Analyze ${companyName}'s product portfolio: what they offer, how it's priced, who the target customer is, and evidence of traction (user counts, revenue signals, review scores, growth indicators). Note any product gaps or quality concerns.`,
         3
       );
+
+      // Follow-up pass: targeted searches for what the research sections
+      // left open, for every synthesis section below.
+      accumulatedContext += await this.followUp(companyName, accumulatedContext);
 
       // 6. Risk Flags (synthesis — no new searches)
       await runSection(
