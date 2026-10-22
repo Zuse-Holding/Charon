@@ -479,15 +479,31 @@ async function extractViaOllama<T>(
  * Tries OpenRouter first, falls back to Groq, then Ollama.
  * Returns null on any failure — callers always fall back to heuristics.
  */
+// The judgment calls (risks, opportunities and the summary; reading a 10-K
+// or proxy; Deep Dive analysis sections) go to a stronger model first: the
+// small default models are where the format and citation failures came
+// from. ANALYSIS_MODEL overrides it; the default chain stays as fallback.
+const ANALYSIS_MODEL = process.env.ANALYSIS_MODEL ?? "google/gemini-2.5-flash";
+
+/** extractStructured for analysis: ANALYSIS_MODEL first, then the usual chain. */
+export function extractAnalysis<T>(systemPrompt: string, userContent: string, schema: z.ZodType<T>): Promise<T | null> {
+  // OpenRouter's fallback list takes three models: the stronger one, then
+  // the two cheapest defaults.
+  return extractStructured(systemPrompt, userContent, schema, undefined, [ANALYSIS_MODEL, ...DEFAULT_OPENROUTER_MODELS.slice(0, 2)]);
+}
+
 export async function extractStructured<T>(
   systemPrompt: string,
   userContent: string,
   schema: z.ZodType<T>,
-  modelOverride?: string
+  modelOverride?: string,
+  /** OpenRouter models to try in order instead of the default chain;
+   *  unlike modelOverride, never sent to Groq. */
+  openRouterModels?: string[]
 ): Promise<T | null> {
   if (LLM_PROVIDER === "none") return null;
 
-  const key = cacheKey(systemPrompt, userContent);
+  const key = cacheKey(`${openRouterModels?.[0] ?? ""}|${systemPrompt}`, userContent);
   if (extractionCache.has(key)) {
     const cached = extractionCache.get(key);
     const result = schema.safeParse(cached);
@@ -503,7 +519,7 @@ export async function extractStructured<T>(
       systemPrompt,
       userContent,
       schema,
-      modelOverride ? [modelOverride] : undefined
+      modelOverride ? [modelOverride] : openRouterModels
     );
   }
 

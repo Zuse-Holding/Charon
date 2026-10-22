@@ -125,3 +125,33 @@ describe("launch round 3-4", () => {
     assert.match(md, /registered on 2013-06-11; snapshots before that date likely belong to a previous owner/);
   });
 });
+
+describe("analysis model (Oct 22)", () => {
+  it("sends analysis calls to Gemini 2.5 Flash first, ordinary extraction to the default chain", async () => {
+    const { extractAnalysis, extractStructured, RisksOpportunitiesSchema } = await import("./llm.js");
+    const bodies: { models: string[] }[] = [];
+    const prev = process.env.OPENROUTER_API_KEY;
+    process.env.OPENROUTER_API_KEY = "test-key";
+    try {
+      await withFetch(async (url) => {
+        if (url.includes("openrouter.ai")) return new Response(JSON.stringify({ choices: [{ message: { content: '{"risks":[],"opportunities":[]}' } }] }), { status: 200 });
+        return new Response("", { status: 404 });
+      }, async () => {
+        const original = globalThis.fetch;
+        globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+          if (String(input).includes("openrouter.ai")) bodies.push(JSON.parse(String(init?.body)));
+          return original(input, init);
+        }) as typeof fetch;
+        try {
+          await extractAnalysis(`analysis ${Date.now()}`, "facts", RisksOpportunitiesSchema);
+          await extractStructured(`plain ${Date.now()}`, "text", RisksOpportunitiesSchema);
+        } finally { globalThis.fetch = original; }
+      });
+    } finally {
+      if (prev === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = prev;
+    }
+    assert.equal(bodies[0].models[0], "google/gemini-2.5-flash");
+    assert.equal(bodies[0].models.length, 3);
+    assert.equal(bodies[1].models[0], "google/gemma-4-31b-it");
+  });
+});

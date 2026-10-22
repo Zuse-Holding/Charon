@@ -37,6 +37,9 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   "google/gemma-4-31b-it": { inputPer1M: 0.09, outputPer1M: 0.34 },
   "mistralai/mistral-small-3.2-24b-instruct": { inputPer1M: 0.094, outputPer1M: 0.25 },
   "google/gemini-2.5-flash-lite": { inputPer1M: 0.10, outputPer1M: 0.40 },
+  // ANALYSIS_MODEL default (Oct 22). Google's list price; not yet checked
+  // against OpenRouter's /api/v1/models from here, so verify it there.
+  "google/gemini-2.5-flash": { inputPer1M: 0.30, outputPer1M: 2.50 },
 
   // Ollama (local, OLLAMA_MODEL default) — always $0, no API cost.
   "llama3.1:8b": { inputPer1M: 0, outputPer1M: 0 },

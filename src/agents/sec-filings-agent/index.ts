@@ -1,6 +1,6 @@
 import type { Source } from "../../types/research.js";
 import { htmlToFullText } from "../../lib/providers.js";
-import { extractStructured, ProxyExtractionSchema, TenKExtractionSchema } from "../../lib/llm.js";
+import { extractAnalysis, ProxyExtractionSchema, TenKExtractionSchema } from "../../lib/llm.js";
 import { mentionsCompany } from "../../lib/news-noise.js";
 
 /**
@@ -238,7 +238,7 @@ export class SecFilingsAgent {
         x.officers && `EXECUTIVE OFFICERS:\n${x.officers}`,
       ].filter(Boolean).join("\n\n");
       if (input) {
-        const r = await extractStructured(
+        const r = await extractAnalysis(
           `You read excerpts of ${filings.name}'s latest annual report (10-K, filed ${tenK.date}). Return one JSON object:
 {"description": "<2 sentences: what the company does and for whom>", "founded": "<year the business was founded, if stated>", "incorporatedYear": "<year incorporated, if stated>", "employees": "<employee count as stated>", "riskFactors": ["<one line per material risk factor, at most 8, most specific first>"], "legalProceedings": "<1-3 sentences with the numbers stated, e.g. how many asbestos suits are pending>", "executiveOfficers": [{"name": "...", "title": "..."}]}
 Only what the excerpts state. Omit a field the excerpts don't give.`,
@@ -258,7 +258,7 @@ Only what the excerpts state. Omit a field the excerpts don't give.`,
     if (proxy && proxyHtml) {
       const passages = proxyExcerpts(proxyHtml);
       if (passages) {
-        const r = await extractStructured(
+        const r = await extractAnalysis(
           `You read passages of ${filings.name}'s proxy or information statement (filed ${proxy.date}) about its board. Return one JSON object:
 {"directors": [{"name": "...", "independent": true}], "independence": "<1-2 sentences on how many directors are independent and any stated exception, e.g. directors who are also employees>"}
 Only what the passages state.`,

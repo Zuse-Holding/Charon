@@ -1,5 +1,5 @@
 import { ResearchBundle, Source } from "../../types/research.js";
-import { extractStructured, RisksOpportunitiesSchema } from "../../lib/llm.js";
+import { extractAnalysis, RisksOpportunitiesSchema } from "../../lib/llm.js";
 import { money } from "../report-agent/index.js";
 
 /**
@@ -168,7 +168,7 @@ export async function synthesizeRisksOpportunities(
   if (facts.length === 0) return null;
   const context = facts.map((f, i) => `[${i + 1}] ${f.text}`).join("\n");
 
-  const result = await extractStructured(
+  const result = await extractAnalysis(
     `You are a senior business analyst writing a Risks and Opportunities assessment for "${bundle.company.name}".
 
 You get a numbered list of FACTS. They are everything known about this business. Use nothing else.

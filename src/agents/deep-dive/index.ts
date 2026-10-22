@@ -1,6 +1,6 @@
 import { DeepDiveBundle, DeepDiveSection, RiskLevel } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
-import { extractStructured } from "../../lib/llm.js";
+import { extractAnalysis, extractStructured } from "../../lib/llm.js";
 import { rankCitable } from "../../lib/source-quality.js";
 import { SECTION_ORDER, SECTION_ESTIMATES, TOTAL_ESTIMATED_SECONDS } from "../../lib/deep-dive-constants.js";
 import { z } from "zod";
@@ -77,7 +77,7 @@ export class DeepDiveAgent {
     prompt: string,
     context: string
   ): Promise<SectionResult> {
-    const result = await extractStructured(
+    const result = await extractAnalysis(
       `You are a senior business analyst writing the "${sectionTitle}" section of a deep dive report on ${company}.
 
 ${prompt}
