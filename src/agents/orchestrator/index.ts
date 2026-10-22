@@ -18,6 +18,7 @@ import { ProPublicaNonprofitAgent } from "../propublica-nonprofit-agent/index.js
 import { LittleSisAgent, LittleSisRelationshipEntry } from "../littlesis-agent/index.js";
 import { DomainPostureAgent } from "../domain-posture-agent/index.js";
 import { RelatedEntitiesAgent } from "../related-entities-agent/index.js";
+import { PublicFilingsAgent, fundNames, isHealthcare } from "../public-filings-agent/index.js";
 import { guardFromEnv } from "../../lib/exclusions/adapters.js";
 import { siteOf } from "../../lib/provenance/findings.js";
 import { cityOf, detectClosure, mergeClosure } from "../../lib/closure.js";
@@ -202,6 +203,28 @@ export class ResearchOrchestrator {
         }), { sources: [] }, (r) => r.graph ? r.graph.nodes.length - 1 : 0)
       : Promise.resolve({ graph: undefined, sources: [] });
 
+    // Registry checks (launch fixes 12-16). Courts, NLRB and Form D are
+    // public-record fusion sources like sanctions (Pro and up); the NPI
+    // registry and the state formation record fill basic facts on every plan.
+    const filings = new PublicFilingsAgent(this.searcher);
+    const hq = siteResult.company.headquarters ?? anchor.location;
+    const stateCode = hq?.match(/,\s*([A-Z]{2})\b/)?.[1];
+    const healthcare = isHealthcare([siteResult.company.industry, siteResult.company.role, siteResult.company.description].filter(Boolean).join(" "));
+    if (!proAccess) for (const id of ["courtlistener", "nlrb", "formd"]) cov.skip(id, "Included with Pro.");
+    if (!healthcare) cov.skip("npi", "Not a healthcare business.");
+    if (siteResult.company.founded) cov.skip("state-records", "Founding year already on the company's own site.");
+    const fundTexts = [siteResult.company.description ?? "", ...siteResult.products.map((p) => `${p.name} ${p.description ?? ""}`),
+      ...newsResult.news.map((n) => `${n.headline} ${n.summary ?? ""}`)];
+    const registry = Promise.all([
+      proAccess ? cov.run("courtlistener", () => filings.courtCases(companyName), { cases: [], sources: [] }, (r) => r.cases.length) : Promise.resolve({ cases: [], sources: [] }),
+      proAccess ? cov.run("nlrb", () => filings.nlrbCases(companyName), { cases: [], sources: [] }, (r) => r.cases.length) : Promise.resolve({ cases: [], sources: [] }),
+      healthcare ? cov.run("npi", () => filings.npiRecords(companyName, stateCode), { records: [], sources: [] }, (r) => r.records.length) : Promise.resolve({ records: [], sources: [] }),
+      siteResult.company.founded ? Promise.resolve({ record: undefined, sources: [] })
+        : cov.run("state-records", () => filings.stateFormation(companyName, stateCode), { record: undefined, sources: [] }, (r) => (r.record ? 1 : 0)),
+      proAccess ? cov.run("formd", () => filings.formDFilings([companyName, ...fundNames(fundTexts, companyName)]), { funding: [], sources: [] }, (r) => r.funding.length)
+        : Promise.resolve({ funding: [], sources: [] }),
+    ]);
+
     const [sanctionsResult, waybackResult, nonprofitResult, littleSisResult, postureResult, relatedResult] =
       await Promise.all([
         proAccess
@@ -224,7 +247,14 @@ export class ResearchOrchestrator {
         related,
       ]);
 
+    const [courtResult, nlrbResult, npiResult, formationResult, formDResult] = await registry;
+
     const sources: Source[] = [
+      ...courtResult.sources,
+      ...nlrbResult.sources,
+      ...npiResult.sources,
+      ...formationResult.sources,
+      ...formDResult.sources,
       ...siteResult.sources,
       ...newsResult.sources,
       ...competitorResult.sources,
@@ -245,7 +275,7 @@ export class ResearchOrchestrator {
       leadership: siteResult.leadership,
       products: siteResult.products,
       news: newsResult.news,
-      funding: corporateResult.funding,
+      funding: [...corporateResult.funding, ...formDResult.funding],
       competitors: competitorResult.competitors,
       ownership: corporateResult.ownership,
       sources,
@@ -258,7 +288,22 @@ export class ResearchOrchestrator {
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
       domainPosture: postureResult.posture,
       relatedEntities: relatedResult.graph,
+      courtCases: [...courtResult.cases, ...nlrbResult.cases].length ? [...courtResult.cases, ...nlrbResult.cases] : undefined,
+      npiRecords: npiResult.records.length ? npiResult.records : undefined,
     };
+    // A state record's formation date when the site gives none (fix 15).
+    if (!bundle.company.founded && formationResult.record) {
+      bundle.company.founded = formationResult.record.date.slice(0, 4);
+      bundle.company.foundedSource = formationResult.record.url;
+    }
+    // The NPI's authorized official is a named owner (fix 14).
+    for (const r of npiResult.records) {
+      const name = r.official?.split(",")[0];
+      if (name && !bundle.leadership.some((l) => l.name.toLowerCase() === name.toLowerCase())) {
+        bundle.leadership.push({ name, title: r.official!.split(",").slice(1).join(",").trim() || "Authorized official (NPI record)", sourceUrl: r.url });
+        bundle.sources.push({ url: r.url, title: `NPPES NPI registry — ${r.name}`, retrievedAt: new Date().toISOString(), usedFor: ["leadership"] });
+      }
+    }
 
     // Closure can surface in news as well as on the business's own pages.
     const city = cityOf(anchor.location);

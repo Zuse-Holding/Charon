@@ -49,6 +49,10 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
   for (const n of bundle.news.slice(0, 5)) {
     facts.push({ text: `News${n.date ? ` (${n.date})` : ""}: ${n.headline}${n.summary ? `. ${n.summary}` : ""}`, url: n.url });
   }
+  for (const c of (bundle.courtCases ?? []).slice(0, 5)) {
+    facts.push({ text: `Case: ${c.caption}${c.court ? ` (${c.court}${c.docketNumber ? ` ${c.docketNumber}` : ""})` : ""}${c.filed ? `, filed ${c.filed}` : ""}`, url: c.url });
+  }
+  for (const l of c.locations ?? []) facts.push({ text: `Location: ${l}`, url: site });
   const spendingSource = bundle.sources.find((s) => s.usedFor.includes("federal-spending"))?.url;
   for (const s of (bundle.federalSpending ?? []).slice(0, 5)) {
     facts.push({ text: `Federal award: ${[s.amount, s.awardingAgency, s.date].filter(Boolean).join(", ")}`, url: spendingSource });

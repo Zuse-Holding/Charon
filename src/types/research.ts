@@ -3,6 +3,7 @@ import type { CoverageEntry } from "../lib/coverage/recorder.js";
 import type { DomainPosture } from "../agents/domain-posture-agent/index.js";
 import type { RelatedGraph } from "../lib/expansion/engine.js";
 import type { ClosureEvidence } from "../lib/closure.js";
+import type { CaseRecord, NpiRecord } from "../agents/public-filings-agent/index.js";
 
 // Core data models shared across agents.
 // These map directly to the spec's per-agent output shapes, plus a Source
@@ -37,6 +38,8 @@ export interface CompanyProfile {
   summary?: string;
   website?: string;
   founded?: string;
+  /** A state business record the founding year came from (launch fix 15). */
+  foundedSource?: string;
   headquarters?: string;
   /** headquarters is the location the user typed, not found in any source. */
   headquartersUnverified?: boolean;
@@ -330,6 +333,10 @@ export interface ResearchBundle {
   /** Related-entities graph from public filings (Feature 4). Present only
    *  when FEATURE_RELATED_ENTITIES was on. */
   relatedEntities?: RelatedGraph;
+  /** Federal court dockets and NLRB cases naming the company (launch fixes 12, 13). */
+  courtCases?: CaseRecord[];
+  /** NPPES registrations, for healthcare businesses (launch fix 14). */
+  npiRecords?: NpiRecord[];
 }
 
 // --- Political research types (Round 2, item 1) ---

@@ -84,9 +84,25 @@ export const SOURCES: SourceDef[] = [
     reports: ["company", "person"], section: "Public Records", hosts: ["littlesis.org"],
     urlTemplate: "https://littlesis.org/search?q={q}" },
 
+  // Registry checks (launch fixes 12-16).
+  { id: "courtlistener", name: "CourtListener federal court dockets", jurisdiction: "US", category: "courts", access: "api",
+    reports: ["company"], section: "Court and Agency Records", hosts: ["www.courtlistener.com"],
+    urlTemplate: "https://www.courtlistener.com/?q=%22{q}%22" },
+  { id: "nlrb", name: "NLRB case search", jurisdiction: "US federal", category: "courts", access: "api",
+    reports: ["company"], section: "Court and Agency Records", hosts: [SERPER], requiresEnv: ["SERPER_API_KEY"],
+    urlTemplate: "https://www.nlrb.gov/search/case/{q}" },
+  { id: "npi", name: "NPPES NPI registry (healthcare providers)", jurisdiction: "US federal", category: "corporate filings", access: "api",
+    reports: ["company"], section: "Court and Agency Records", hosts: ["npiregistry.cms.hhs.gov"],
+    urlTemplate: "https://npiregistry.cms.hhs.gov/search?organizationName={q}" },
+  { id: "state-records", name: "State business records (formation date, entity number)", jurisdiction: "US", category: "corporate filings", access: "api",
+    reports: ["company"], section: "Company Overview", hosts: [SERPER], requiresEnv: ["SERPER_API_KEY"] },
+  { id: "formd", name: "SEC Form D filings (company and fund names)", jurisdiction: "US federal", category: "corporate filings", access: "api",
+    reports: ["company"], section: "Funding", hosts: ["efts.sec.gov", "www.sec.gov"],
+    urlTemplate: "https://efts.sec.gov/LATEST/search-index?q=%22{q}%22&forms=D" },
+
   // Deep link only
-  { id: "courtlistener", name: "CourtListener federal and state courts", jurisdiction: "US", category: "courts", access: "deep_link",
-    reports: ["company", "person"], reason: "Not searched automatically in this report.",
+  { id: "courtlistener-person", name: "CourtListener federal and state courts", jurisdiction: "US", category: "courts", access: "deep_link",
+    reports: ["person"], reason: "Not searched automatically in this report.",
     urlTemplate: "https://www.courtlistener.com/?q=%22{q}%22" },
   { id: "pacer", name: "PACER federal court records", jurisdiction: "US federal", category: "courts", access: "deep_link",
     reports: ["company", "person"], reason: "Paid, registered accounts only; no public API.",

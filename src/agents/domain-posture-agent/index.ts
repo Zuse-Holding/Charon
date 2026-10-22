@@ -18,7 +18,7 @@ export type CheckStatus = "ok" | "flag" | "info" | "unknown";
 export type Severity = "high" | "medium" | "low";
 
 export interface PostureCheck {
-  id: "expiry" | "registrant" | "transfer_lock" | "dns" | "spf" | "dmarc" | "caa" | "tls";
+  id: "expiry" | "registrant" | "transfer_lock" | "dns" | "spf" | "dmarc" | "caa" | "tls" | "systems";
   label: string;
   status: CheckStatus;
   severity?: Severity;
@@ -64,6 +64,43 @@ export const dohUrl = (name: string, type: string) => `${DOH}?name=${encodeURICo
 
 const days = (iso: string | undefined, now: Date) => (iso ? Math.floor((Date.parse(iso) - now.getTime()) / DAY) : undefined);
 const dateOnly = (iso: string | undefined) => (iso ? iso.slice(0, 10) : "unknown");
+
+// MX hosts, SPF includes and verification TXT records -> the service
+// behind them. Only services a record names outright; nothing inferred.
+const SYSTEM_PATTERNS: [RegExp, string][] = [
+  [/google\.com|googlemail\.com|_spf\.google|google-site-verification/i, "Google Workspace"],
+  [/protection\.outlook\.com|spf\.protection\.outlook|^ms=ms\d+/i, "Microsoft 365"],
+  [/pphosted\.com|ppe-hosted\.com/i, "Proofpoint"],
+  [/mimecast/i, "Mimecast"],
+  [/barracudanetworks/i, "Barracuda"],
+  [/oracleemaildelivery|oraclecloud|oracle-cloud/i, "Oracle Cloud"],
+  [/hubspotemail|hubspot/i, "HubSpot"],
+  [/_spf\.salesforce\.com|salesforce|pardot/i, "Salesforce"],
+  [/paubox/i, "Paubox (HIPAA email)"],
+  [/sendgrid/i, "SendGrid"],
+  [/mailgun/i, "Mailgun"],
+  [/amazonses/i, "Amazon SES"],
+  [/mcsv\.net|mailchimp|mandrillapp/i, "Mailchimp"],
+  [/zendesk/i, "Zendesk"],
+  [/freshdesk|freshworks/i, "Freshworks"],
+  [/zoho/i, "Zoho"],
+  [/atlassian/i, "Atlassian"],
+  [/docusign/i, "DocuSign"],
+  [/bidtracer/i, "BidTracer"],
+  [/intuit|quickbooks/i, "QuickBooks"],
+  [/stripe-verification|stripe/i, "Stripe"],
+  [/apple-domain-verification/i, "Apple Business"],
+  [/facebook-domain-verification/i, "Meta Business"],
+];
+
+export function systemsInUse(mx: string[] | undefined, txt: string[] | undefined): string[] {
+  const records = [...(mx ?? []), ...(txt ?? []).filter((t) => /^v=spf1|verification|^ms=/i.test(t))];
+  const found: string[] = [];
+  for (const [re, name] of SYSTEM_PATTERNS) {
+    if (records.some((r) => re.test(r)) && !found.includes(name)) found.push(name);
+  }
+  return found;
+}
 
 export function evaluatePosture(f: DomainFacts, now = new Date()): DomainPosture {
   const checks: PostureCheck[] = [];
@@ -184,6 +221,13 @@ export function evaluatePosture(f: DomainFacts, now = new Date()): DomainPosture
       detail: `Certificate valid until ${dateOnly(f.tls.validTo)}${f.tls.issuer ? `, issued by ${f.tls.issuer.replace(/\.$/, "")}` : ""}.`, ...tlsSource });
   }
 
+  // What the company runs on, read from where its mail goes and whom its
+  // SPF lets send for it (launch fix 18).
+  const systems = systemsInUse(f.mx, f.txt);
+  if (systems.length) {
+    checks.push({ id: "systems", label: "Systems in use", status: "info", detail: `${systems.join(", ")} (from mail and SPF records).`,
+      sourceName: "Public DNS (MX, TXT)", sourceUrl: dohUrl(f.domain, "MX") });
+  }
   return { domain: f.domain, checkedAt: now.toISOString(), checks };
 }
 

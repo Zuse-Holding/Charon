@@ -71,21 +71,54 @@ export function recipientMatches(recipient: string | null | undefined, needles: 
   });
 }
 
+interface RecipientAutocomplete {
+  results?: { recipient_name?: string; uei?: string | null; recipient_level?: string }[];
+}
+
+/** The UEIs registered under the company's name (whole-word match). */
+export function matchingUeis(data: RecipientAutocomplete | null, needles: string[]): string[] {
+  return [...new Set((data?.results ?? [])
+    .filter((r) => r.uei && recipientMatches(r.recipient_name, needles))
+    .map((r) => r.uei!.trim().toUpperCase()))].slice(0, 5);
+}
+
 export class USASpendingAgent {
+  /**
+   * The government's unique entity IDs for the company (launch fix 17):
+   * awards are then matched on UEI, so a contract is attributed to this
+   * registered entity, not anyone sharing the words of its name. Empty
+   * when the lookup fails; the caller falls back to the name.
+   */
+  private async resolveUeis(searchName: string, needles: string[]): Promise<string[]> {
+    try {
+      const res = await fetch(`${USASPENDING_BASE}/autocomplete/recipient/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ search_text: searchName, limit: 20 }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return [];
+      return matchingUeis((await res.json()) as RecipientAutocomplete, needles);
+    } catch {
+      return [];
+    }
+  }
+
   // Each type-category request catches and logs its own failure rather
   // than throwing, so a slow/timed-out contracts request (seen in
   // production — "operation was aborted due to timeout") can't also
   // wipe out a successful grants request riding alongside it in
   // Promise.all, or vice versa. 20s timeout (up from 10s) since
   // USASpending's search endpoint is known to be slow under load.
-  private async searchByType(companyName: string, awardTypeCodes: string[]): Promise<Record<string, unknown>[]> {
+  private async searchByType(searchText: string[], awardTypeCodes: string[]): Promise<Record<string, unknown>[]> {
+    const companyName = searchText.join(", ");
     try {
       const res = await fetch(`${USASPENDING_BASE}/search/spending_by_award/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           filters: {
-            recipient_search_text: [companyName],
+            recipient_search_text: searchText,
             award_type_codes: awardTypeCodes,
             time_period: [fiveYearWindow()],
           },
@@ -97,6 +130,7 @@ export class USASpendingAgent {
             "Start Date",
             "Description",
             "Award Type",
+            "Recipient UEI",
           ],
           sort: "Award Amount",
           order: "desc",
@@ -140,10 +174,19 @@ export class USASpendingAgent {
         ? [...new Set([companyName, override.canonical_name, ...override.aka])].map((n) => n.toLowerCase())
         : [companyName.toLowerCase()];
 
-      const [contracts, grants] = await Promise.all([
-        this.searchByType(searchName, CONTRACT_TYPE_CODES),
-        this.searchByType(searchName, GRANT_TYPE_CODES),
+      // Matched on the UEI when the name resolves to one (launch fix 17).
+      // Falls back to the name if the UEI search returns nothing, so a
+      // lookup quirk can't cost a report the awards it found before.
+      let ueis = await this.resolveUeis(searchName, acceptedNeedles);
+      const search = (text: string[]) => Promise.all([
+        this.searchByType(text, CONTRACT_TYPE_CODES),
+        this.searchByType(text, GRANT_TYPE_CODES),
       ]);
+      let [contracts, grants] = await search(ueis.length ? ueis : [searchName]);
+      if (ueis.length && contracts.length + grants.length === 0) {
+        ueis = [];
+        [contracts, grants] = await search([searchName]);
+      }
       const results = [...contracts, ...grants];
 
       console.log(`[usaspending-agent] "${companyName}"${searchName !== companyName ? ` (searched as "${searchName}")` : ""}: ${contracts.length} contract result(s), ${grants.length} grant result(s) before name-match filtering.`);
@@ -152,7 +195,12 @@ export class USASpendingAgent {
       // awards for an unrelated namesake — only keep results whose
       // recipient name contains the searched company name (or one of its
       // known aka/rename variants) as whole words.
-      const filtered = results.filter((r) => recipientMatches(toStr(r["Recipient Name"]), acceptedNeedles));
+      // With UEIs, an award's own UEI must be one of them; one without a
+      // UEI field still has to match on the name.
+      const filtered = results.filter((r) => {
+        const uei = toStr(r["Recipient UEI"])?.toUpperCase();
+        return ueis.length && uei ? ueis.includes(uei) : recipientMatches(toStr(r["Recipient Name"]), acceptedNeedles);
+      });
 
       if (results.length > 0 && filtered.length === 0) {
         console.warn(`[usaspending-agent] "${companyName}": ${results.length} raw result(s) all rejected by the recipient-name match guard — check for a naming mismatch (e.g. "${companyName}" vs the recipient's registered legal name).`);
@@ -169,8 +217,8 @@ export class USASpendingAgent {
 
       const sources: Source[] = awards.length > 0
         ? [{
-            url: `https://www.usaspending.gov/search/?hash=&recipient_search_text=${encodeURIComponent(companyName)}`,
-            title: `USASpending.gov — ${companyName}`,
+            url: `https://www.usaspending.gov/search/?hash=&recipient_search_text=${encodeURIComponent(ueis[0] ?? companyName)}`,
+            title: `USASpending.gov — ${companyName}${ueis.length ? ` (UEI ${ueis.join(", ")})` : ""}`,
             retrievedAt: new Date().toISOString(),
             usedFor: ["federal-spending"],
           }]

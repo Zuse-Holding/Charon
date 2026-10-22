@@ -115,7 +115,7 @@ export class ReportAgent {
     if (bundle.company.phone) lines.push(`- **Phone:** ${bundle.company.phone}`);
     if (bundle.company.hours) lines.push(`- **Hours:** ${bundle.company.hours}`);
     if (bundle.company.listing) lines.push(`- **Business listing:** [${bundle.company.listing.title}${bundle.company.listing.address ? `, ${bundle.company.listing.address}` : ""}](${bundle.company.listing.url})`);
-    lines.push(`- **Founded:** ${bundle.company.founded ?? "Unknown"}`);
+    lines.push(`- **Founded:** ${bundle.company.founded ?? "Unknown"}${bundle.company.foundedSource ? ` ([state record](${bundle.company.foundedSource}))` : ""}`);
     lines.push(
       `- **Headquarters:** ${bundle.company.headquarters
         ? `${bundle.company.headquarters}${bundle.company.headquartersUnverified ? " (location from your search, not verified)" : ""}`
@@ -273,6 +273,7 @@ export class ReportAgent {
     // problem this task is fixing, so it's left as-is rather than also
     // getting a redundant Sources sub-list.
     this.pushPublicRecordsSection(lines, bundle);
+    this.pushCourtRecordsSection(lines, bundle);
     pushRelatedSection(lines, bundle.relatedEntities);
     pushPostureSection(lines, bundle.domainPosture);
     pushProvenanceSection(lines, bundle.provenance);
@@ -341,6 +342,23 @@ export class ReportAgent {
       lines.push(``);
     }
 
+  }
+
+  /** Court dockets, NLRB cases and NPI registrations (launch fixes 12-14),
+   *  each linked to its record. Nothing when none were found. */
+  private pushCourtRecordsSection(lines: string[], bundle: ResearchBundle) {
+    if (!bundle.courtCases?.length && !bundle.npiRecords?.length) return;
+    lines.push(`## Court and Agency Records`);
+    for (const c of bundle.courtCases ?? []) {
+      const meta = [c.court, c.docketNumber, c.filed ? `filed ${c.filed}` : ""].filter(Boolean).join(" · ");
+      lines.push(`- [${c.caption}](${c.url})${meta ? ` — ${meta}` : ""}`);
+    }
+    for (const r of bundle.npiRecords ?? []) {
+      const meta = [r.taxonomy, r.location, r.official ? `authorized official ${r.official}` : "", r.enumerated ? `registered ${r.enumerated}` : ""].filter(Boolean).join(" · ");
+      lines.push(`- [NPI ${r.npi}: ${r.name}](${r.url})${meta ? ` — ${meta}` : ""}`);
+    }
+    lines.push(``);
+    this.pushSectionSources(lines, bundle.sources, ["court-records", "public-filings"]);
   }
 
   /**
