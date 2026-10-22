@@ -77,6 +77,13 @@ export default function PrivacyPage() {
           reaching out to the contact below. We'll respond within a reasonable time.
         </p>
 
+        <h2>People and businesses named in reports</h2>
+        <p>
+          Reports are built from public sources. If you appear in one and want something
+          corrected, or want to be left out of future reports, see{" "}
+          <a href="/removal">removal requests</a>. You don&apos;t need an account.
+        </p>
+
         <h2>Children's privacy</h2>
         <p>Metis is not directed at, and is not knowingly used by, anyone under 16.</p>
 
