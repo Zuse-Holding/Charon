@@ -345,7 +345,10 @@ async function extractViaOpenRouter<T>(
             { role: "user", content: userContent },
           ],
           temperature: 0,
-          max_tokens: 1024,
+          // Room for a full company extraction (every leader, location and
+          // service line from a crawled site): at 1,024 the JSON was cut off
+          // mid-object and the report failed as "model busy".
+          max_tokens: 4096,
           response_format: { type: "json_object" },
         }),
       });

@@ -62,6 +62,13 @@ export function isLinkTitle(name: string, companyName: string): boolean {
   return OTHER_FIRM.test(name) && !OTHER_FIRM.test(companyName);
 }
 
+// Prompt size for the one extraction call. Groq, the fallback when
+// OpenRouter fails, rejects any request over 8K tokens a minute counting
+// the 2K-token answer, so the whole prompt stays near 5K tokens (about
+// 4 characters each): the site's pages first, then search results.
+const SITE_TEXT_BUDGET = 10_000;
+const PROMPT_TEXT_BUDGET = 18_000;
+
 // The extracted description calls the business a chain or franchise.
 const CHAIN_DESCRIPTION = /\b(chain|franchis\w*|\d+\+? locations)\b/i;
 
@@ -260,9 +267,12 @@ export class WebsiteAgent {
       { url: website, kind: "home", text: homeText },
       ...subpages.filter((p) => p.html).map((p) => ({ url: p.url, kind: p.kind, text: htmlToFullText(p.html!) })),
     ];
-    // Each page gets a share, so a long homepage can't crowd out the About
-    // page that has the founding year.
-    const text = pages.map((p) => `PAGE (${p.kind}, ${p.url}):\n${p.text.slice(0, p.kind === "home" ? 2500 : 2000)}`).join("\n\n");
+    // Each page gets an even share of the budget, so a long homepage can't
+    // crowd out the About page that has the founding year, and the last
+    // kinds read (press, acquisitions, contact) still fit.
+    const homeShare = 2000;
+    const share = Math.max(600, Math.floor((SITE_TEXT_BUDGET - homeShare) / Math.max(1, pages.length - 1)) - 40);
+    const text = pages.map((p) => `PAGE (${p.kind}, ${p.url}):\n${p.text.slice(0, p.kind === "home" ? homeShare : share)}`).join("\n\n");
     return { text, record, url: website, pages };
   }
 
@@ -526,7 +536,7 @@ export class WebsiteAgent {
     // Combine everything gathered into one block for a single LLM call.
     // The business's own site leads, in full (its nav lists the services).
     const combinedText = [
-      own ? `OFFICIAL SITE TEXT (${own.url}):\n${own.text.slice(0, 16000)}`
+      own ? `OFFICIAL SITE TEXT (${own.url}):\n${own.text.slice(0, SITE_TEXT_BUDGET)}`
         : page ? `OFFICIAL SITE TEXT:\n${extractBestChunk(cleanPageText(page.text), 2000)}` : "",
       locationResults.length
         ? `LISTINGS AND LICENSE RECORDS:\n${locationResults.map((r) => `${r.title}: ${r.snippet ?? ""}`).join("\n")}`
@@ -548,7 +558,8 @@ export class WebsiteAgent {
         : "",
     ]
       .filter(Boolean)
-      .join("\n\n");
+      .join("\n\n")
+      .slice(0, PROMPT_TEXT_BUDGET);
 
     let leadership: LeadershipEntry[] = [];
     let products: ProductEntry[] = [];
