@@ -139,6 +139,16 @@ const NON_OFFICIAL_DOMAINS = new Set([
 
 /** "19524 Nordhoff St #3B, Northridge, CA 91324" -> "Northridge"; undefined
  *  when the address has no "City, ST" part. */
+/** A listing for one store: its website is a page under the brand's site, not the site itself. */
+export function isStoreListing(p: { website?: string }): boolean {
+  try {
+    const path = p.website ? new URL(p.website).pathname.replace(/\/+$/, "").toLowerCase() : "";
+    return path.length > 0 && !/^\/(home|index\.(html?|php)|[a-z]{2}(-[a-z]{2})?)$/.test(path);
+  } catch {
+    return false;
+  }
+}
+
 function listingCity(address: string | undefined): string | undefined {
   const parts = address?.split(",").map((p) => p.trim()) ?? [];
   if (parts.length < 2 || !/\b[A-Z]{2}\b/.test(parts[parts.length - 1])) return undefined;
@@ -386,7 +396,9 @@ export class WebsiteAgent {
     // Several listings link to the one site: a chain (launch fix 25). One
     // store is never the company, its city never the HQ (Crumbl's report
     // was anchored to a Hilton Head store).
-    const chain = !anchor.location && own.length >= 2;
+    // A single listing linking to a store page ("crumblcookies.com/njholmdel")
+    // is one store too (launch fix 77: Crumbl matched a Holmdel, NJ store).
+    const chain = !anchor.location && (own.length >= 2 || own.some(isStoreListing));
     // Name-only listings sometimes give just the street ("19524 Nordhoff
     // St #3B"): looking it up by that street returns the full address.
     if (!chain && !listingCity(found.address) && found.address) {

@@ -391,14 +391,15 @@ export class ResearchOrchestrator {
       if (src) { if (!src.usedFor.includes("funding")) src.usedFor.push("funding"); }
       else bundle.sources.push({ url: t.url, title: t.round, retrievedAt: new Date().toISOString(), usedFor: ["funding"] });
     }
-    applyEntityType(bundle, franchisor);
-    const ceilings = contractCeilings(bundle.federalSpending ?? [], bundle.news);
-    if (ceilings.length) bundle.contractCeilings = ceilings;
-    // A state record's formation date when the site gives none (fix 15).
+    // A state record's formation date when the site gives none (fix 15);
+    // before the entity type, which checks rounds against it.
     if (!bundle.company.founded && formationResult.record) {
       bundle.company.founded = formationResult.record.date.slice(0, 4);
       bundle.company.foundedSource = formationResult.record.url;
     }
+    applyEntityType(bundle, franchisor);
+    const ceilings = contractCeilings(bundle.federalSpending ?? [], bundle.news);
+    if (ceilings.length) bundle.contractCeilings = ceilings;
     // The NPI's authorized official is a named owner (fix 14).
     for (const r of npiResult.records) {
       const name = r.official?.split(",")[0];
@@ -802,13 +803,25 @@ function orgMatches<T extends { name: string; entityKind?: string }>(matches: T[
   return kept.length ? kept : undefined;
 }
 
+const EARLY_ROUND = /\b(pre-?seed|seed|angel|series [a-h])\b/i;
+const MAX_VENTURE_AGE = 25;
+
 /**
  * Entity type before Funding is filled (launch fix 34). A nonprofit's
  * rounds are someone else's (Homeboy's "Series B: $76M"), so none are
  * kept; its 990 figures and a public company's filed financials are what
  * the Funding section cites.
  */
-export function applyEntityType(bundle: ResearchBundle, franchisor: boolean): void {
+export function applyEntityType(bundle: ResearchBundle, franchisor: boolean, now = new Date()): void {
+  // A venture round decades after founding is a namesake's (launch fix 77:
+  // Patagonia, founded 1973, kept "Seed" and "Series B" rounds).
+  const founded = Number(bundle.company.founded?.match(/\b(1[89]|20)\d{2}\b/)?.[0]);
+  if (founded) {
+    const before = bundle.funding.length;
+    bundle.funding = bundle.funding.filter((f) => !EARLY_ROUND.test(f.round ?? "")
+      || (Number(f.date?.match(/\b(19|20)\d{2}\b/)?.[0]) || now.getFullYear()) - founded <= MAX_VENTURE_AGE);
+    if (bundle.funding.length < before) console.log(`[entity-type] "${bundle.company.name}": founded ${founded}, dropped ${before - bundle.funding.length} venture round(s) too late to be its own`);
+  }
   const type = entityTypeOf({ company: bundle.company, sec: bundle.secFilings, nonprofit: bundle.nonprofitFinancials, franchisor, funding: bundle.funding });
   bundle.company.entityType = type;
   const tag = (match: (url: string) => boolean) => {
@@ -822,13 +835,26 @@ export function applyEntityType(bundle: ResearchBundle, franchisor: boolean): vo
     if (np) tag((u) => u === np.url);
   } else if (type === "public") {
     tag((u) => u.includes("/api/xbrl/companyfacts/"));
+    // A company filing its own 10-K isn't anyone's subsidiary; that note is
+    // from before it listed (launch fix 77: Limbach and its 2016 SPAC, 1347 Capital).
+    if (bundle.ownership && /\b(subsidiary|wholly[- ]owned|division of)\b/i.test(bundle.ownership)) {
+      console.log(`[entity-type] "${bundle.company.name}": public, dropped ownership note "${bundle.ownership}"`);
+      bundle.ownership = undefined;
+    }
   }
 }
 
 export function applySecFilings(bundle: ResearchBundle, sec: SecFilings): void {
   const c = bundle.company;
-  if (!c.founded && (sec.founded || sec.incorporatedYear)) {
-    c.founded = sec.founded ?? sec.incorporatedYear;
+  // The year the 10-K states over one read off the site (launch fix 77:
+  // Graybar showed 1864; its 10-K says 1869).
+  const filedYear = sec.founded?.match(/\b(1[789]|20)\d{2}\b/)?.[0];
+  if (filedYear && c.founded !== filedYear) {
+    if (c.founded) console.log(`[sec] "${c.name}": founded ${c.founded} replaced by the 10-K's ${filedYear}`);
+    c.founded = filedYear;
+    c.foundedSource = sec.tenKUrl;
+  } else if (!c.founded && sec.incorporatedYear) {
+    c.founded = sec.incorporatedYear;
     c.foundedSource = sec.tenKUrl;
   }
   if (sec.incorporatedYear || sec.stateOfIncorporation) {

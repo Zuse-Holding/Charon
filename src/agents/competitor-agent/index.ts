@@ -190,7 +190,7 @@ export class CompetitorAgent {
 
 STRICT RULES:
 - Only companies that do the same kind of work for the same kind of customer${profile.local ? " in the same region" : ""}. A contractor's competitors are other contractors, not the manufacturers whose equipment it installs; an investment sponsor's are other sponsors, not brokers, lenders or property managers.
-- Only companies named in the text below. Never add one from memory.
+${profile.local ? "" : `- "${companyName}" operates nationally: only national or multi-region rivals of comparable scale, never a single-city shop or local supplier.\n`}- Only companies named in the text below. Never add one from memory.
 - NEVER include "${companyName}" itself, social media platforms, news publishers, directories, or software vendors unless "${companyName}" is one.
 - If you are not confident a company is a direct competitor, exclude it.
 - Order by significance: the largest, best-known rivals named in the text first.

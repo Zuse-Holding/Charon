@@ -7,6 +7,10 @@
 const NEWS_NOISE_HOSTS = [
   "youtube.com", "youtu.be", "facebook.com", "instagram.com", "tiktok.com",
   "twitter.com", "x.com", "reddit.com", "pinterest.com", "quora.com",
+  // Reviews and directories (launch fix 77: Promise ABA's only
+  // "opportunity" was a Yelp review of a competitor).
+  "yelp.com", "tripadvisor.com", "trustpilot.com", "glassdoor.com", "indeed.com", "angi.com", "thumbtack.com",
+  "yellowpages.com", "bbb.org", "mapquest.com", "birdeye.com", "nextdoor.com",
 ];
 // Template galleries, help centers, docs, and tag/archive index pages
 // (e.g. a celebrity site's /tags/<name>/ page) aren't articles either.
@@ -158,7 +162,8 @@ export function brandName(companyName: string, domain?: string): string | undefi
 // fix 49: Crumbl's news had a tabloid item about a co-founder's personal life).
 const TABLOID_HOSTS = ["dailymail.co.uk", "tmz.com", "pagesix.com", "people.com", "usmagazine.com", "eonline.com", "thesun.co.uk",
   "radaronline.com", "hollywoodlife.com", "intouchweekly.com", "okmagazine.com", "lifeandstylemag.com", "perezhilton.com",
-  "thesun.com", "mirror.co.uk", "dailystar.co.uk", "nickiswift.com", "distractify.com", "thelist.com", "celebritynetworth.com"];
+  "thesun.com", "mirror.co.uk", "dailystar.co.uk", "nickiswift.com", "distractify.com", "thelist.com", "celebritynetworth.com",
+  "dailymail.com", "the-sun.com", "inquisitr.com", "bossip.com", "realitytea.com", "starcasm.net", "thethings.com", "suggest.com"];
 const PERSONAL_LIFE = /\b(divorc\w*|wedding|married|marries|engaged|engagement ring|girlfriend|boyfriend|ex-wife|ex-husband|his wife|her husband|dating|romance|affair|cheating|pregnan\w*|baby (boy|girl|news)|gender reveal|mansion|house tour|net worth|plastic surgery|weight loss journey|instagram post|tiktok drama)\b/i;
 
 export function isPersonalLifeNews(headline: string, snippet: string | undefined, url: string | undefined): boolean {
@@ -187,7 +192,10 @@ const AFTER_NAME = new Set(["inc", "llc", "corp", "co", "company", "ltd", "lp", 
   "files", "wins", "expands", "plans", "to", "and", "in", "at", "for", "of", "on", "with", "is", "has", "says", "said", "reports",
   "posts", "cuts", "lays", "closing", "closes", "unveils", "debuts", "partners", "agrees", "completes", "receives", "gets", "faces",
   "stock", "shares", "employees", "workers", "stores", "locations", "jacket", "jackets", "x", "vs", "v", "news", "inc.", "llc."]);
-const BEFORE_NAME = /\b(town|city|county|village|lake|port|university|school|district|church|hotel|bank|state) of\s*$/i;
+const BEFORE_NAME = /\b(town|city|county|village|lake|port|university|school|district|church|hotel|bank|state) of\s*$|\b(chilean|argentine|argentinian|argentina['’]s|chile['’]s|southern|northern|eastern|western|central)\s*$/i;
+// A place, not the company: "Patagonia region", "Patagonia glaciers"
+// (launch fix 77: regional data-center news and EPA research on the region).
+const PLACE_AFTER = /^\s*(region|regions|province|steppe|ice ?fields?|glaciers?|lakes?|coast|desert|wilderness)\b/i;
 
 /**
  * The text names this organization itself, not a longer name that
@@ -205,6 +213,7 @@ export function namesItself(text: string, name: string): boolean {
     if (BEFORE_NAME.test(before)) continue;
     if (m[1]) return true;
     const rest = text.slice((m.index ?? 0) + m[0].length);
+    if (PLACE_AFTER.test(rest)) continue;
     const next = rest.match(/^\s*([A-Za-z][\w.'’-]*)/)?.[1];
     if (!next || /^[^A-Za-z]*$/.test(rest.slice(0, 2).trim()) || /^[a-z]/.test(next) || AFTER_NAME.has(next.toLowerCase())) return true;
     // "Patagonia, Inc." / "Patagonia:" / "Patagonia —"
@@ -215,7 +224,8 @@ export function namesItself(text: string, name: string): boolean {
 
 // Shopping and deal content (launch fix 61: Patagonia's "news" was sale
 // articles), and stock-quote pages (Limbach).
-const SHOPPING = /\b(on sale|sale:|deals?\b|discount|\d+% off|coupon|promo code|best .{0,30} to buy|gift guide|black friday|cyber monday|prime day|review:|reviewed|we tested)\b/i;
+// A store "sale", not the sale of a business ("sale of", "sale to").
+const SHOPPING = /\b(on sale|sale:|deals?\b|discount|\d+% off|save \$?\d+|coupon|promo code|best .{0,30} to buy|gift guide|black friday|cyber monday|prime day|review:|reviewed|we tested|clearance|web specials?|markdowns?|sale(?!\s+(of|to)\b|-))\b|\bup to \d+%/i;
 const QUOTE_PAGE = /\b(stock (price|quote)|share price|stock forecast|price target|\(NASDAQ:|\(NYSE:)\b/i;
 const QUOTE_HOSTS = ["finance.yahoo.com", "marketbeat.com", "stockanalysis.com", "investing.com", "marketwatch.com", "nasdaq.com",
   "zacks.com", "stocktitan.net", "simplywall.st", "macrotrends.net", "tipranks.com", "stockinvest.us", "wallmine.com", "companiesmarketcap.com"];
