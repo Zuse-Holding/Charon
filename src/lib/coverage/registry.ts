@@ -52,7 +52,7 @@ export const SOURCES: SourceDef[] = [
   { id: "competitors", name: "Competitor search", jurisdiction: "Global", category: "web", access: "api",
     reports: ["company"], section: "Competitors", hosts: [SERPER], requiresEnv: ["SERPER_API_KEY"] },
   { id: "sec", name: "Funding news and insider filings (Form 4)", jurisdiction: "US federal", category: "corporate filings", access: "api",
-    reports: ["company"], section: "Funding and Insider Activity", hosts: ["data.sec.gov", "www.sec.gov", "efts.sec.gov", SERPER], requiresEnv: ["SERPER_API_KEY"],
+    reports: ["company"], section: "Funding and Insider Activity", hosts: [SERPER], requiresEnv: ["SERPER_API_KEY"],
     urlTemplate: "https://www.sec.gov/cgi-bin/browse-edgar?company={q}&type=&dateb=&owner=include&count=40" },
   { id: "usaspending", name: "USAspending federal awards", jurisdiction: "US federal", category: "government contracts", access: "api",
     reports: ["company"], section: "Federal Spending", hosts: ["api.usaspending.gov"],

@@ -458,7 +458,7 @@ export class ResearchOrchestrator {
     if (appointed.length) console.log(`[leadership] "${companyName}": ${appointed.map((a) => `${a.name} (${a.title})`).join(", ")} from news`);
     // Officers the insider filings name (launch fix 83: Limbach's CFO).
     const filers = officersFromFilings(bundle.insiderActivity ?? []).filter((o) => !bundle.leadership.some((l) => samePerson(l.name, o.name)));
-    bundle.leadership = cleanLeadership(applyAppointments([...bundle.leadership, ...filers], appointed), subject.domain);
+    bundle.leadership = cleanLeadership(applyAppointments([...bundle.leadership, ...filers], appointed), subject.domain, national);
     bundle.leadership = checkFoundersAgainst(bundle.leadership, foundedBy([
       bundle.company.description ?? "", sec?.description ?? "",
       ...bundle.leadership.map((l) => l.bio ?? ""), ...bundle.news.map((n) => `${n.headline}. ${n.summary ?? ""}`),
@@ -804,7 +804,7 @@ function attachProvenance<B extends { provenance?: BuiltProvenance["record"] }>(
 }
 
 // Many locations, or says it works nationally: not a local business.
-const NATIONAL = /\b\d{2,}\+?\s+(locations|branches|offices|distribution centers|facilities|stores|warehouses)\b|\bnationwide\b|\bacross the (u\.?s\.?|united states|country)\b|\b(global|worldwide|international|multinational|fortune 500)\b|\b(nasdaq|nyse)\b|\bpublicly (traded|held|listed)\b/i;
+const NATIONAL = /\b\d{2,}\+?\s+(locations|branches|offices|distribution centers|facilities|stores|warehouses)\b|\bnationwide\b|\bacross the (u\.?s\.?|united states|country)\b|\b(global|worldwide|international|multinational|fortune 500)\b|\b(nasdaq|nyse)\b|\bpublicly (traded|held|listed)\b|\bnorth america(n)?\b/i;
 
 export function isNationalScale(c: { locations?: string[]; description?: string; summary?: string }): boolean {
   return (c.locations?.length ?? 0) >= 5 || NATIONAL.test(`${c.description ?? ""} ${c.summary ?? ""}`);

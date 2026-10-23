@@ -11,6 +11,8 @@ const NEWS_NOISE_HOSTS = [
   // "opportunity" was a Yelp review of a competitor).
   "yelp.com", "tripadvisor.com", "trustpilot.com", "glassdoor.com", "indeed.com", "angi.com", "thumbtack.com",
   "yellowpages.com", "bbb.org", "mapquest.com", "birdeye.com", "nextdoor.com",
+  // Company-profile directories ("Careers, Perks + Culture"), not news (launch fix 84).
+  "builtin.com", "comparably.com", "zippia.com", "zoominfo.com", "rocketreach.co", "craft.co", "owler.com", "dnb.com", "cbinsights.com",
 ];
 // Template galleries, help centers, docs, and tag/archive index pages
 // (e.g. a celebrity site's /tags/<name>/ page) aren't articles either.
@@ -258,7 +260,7 @@ export function isEnforcementSource(url: string | undefined): boolean {
 const COMPANY_FILING_PATH = /\/(Archives\/edgar|cgi-bin\/browse-edgar|edgar)\//i;
 const COMPANY_FILING_TITLE = /\b(10-K|10-Q|8-K|S-1(\/A)?|S-4|DEF ?14A|20-F|Form D|annual report|quarterly report|prospectus|proxy statement|registration statement)\b/i;
 const ENFORCEMENT_PATH = /\/(litigation|enforcement|enforce|litreleases|admin|complaints|cases|citations?)(\/|-|$)|\/(opa|usao-[a-z]+|usao)\/pr\//i;
-const ENFORCEMENT_ACTION = /\b(United States|U\.S\.|SEC|FTC|EEOC|EPA|People|State of [A-Z][a-z]+) v\.\s|\b(charg(e|es|ed|ing)|indict(ed|ment)|plead(s|ed)? guilty|pleaded guilty|sentenced|convicted|settle(s|d|ment)?|consent (order|decree|judgment)|complaint against|civil penalt(y|ies)|penalt(y|ies)|fined|agrees? to pay|ordered to pay|to resolve (allegations|claims)|false claims act|litigation release|administrative proceeding|cease[- ]and[- ]desist|cited for|citations? (to|against)|sues|sued|lawsuit against)\b/i;
+const ENFORCEMENT_ACTION = /\b(United States|U\.S\.|SEC|FTC|EEOC|EPA|People|State of [A-Z][a-z]+) v\.\s|\b(charg(e|es|ed|ing)|indict(ed|ment)|plead(s|ed)? guilty|pleaded guilty|sentenced|convicted|settle(s|d|ment)?|consent (order|decree|judgment)|conciliation agreement|complaint against|civil penalt(y|ies)|penalt(y|ies)|fined|agrees? to pay|ordered to pay|to resolve (allegations|claims)|false claims act|litigation release|administrative proceeding|cease[- ]and[- ]desist|cited for|citations? (to|against)|sues|sued|lawsuit against)\b/i;
 
 const OSHA_INSPECTION = /^https?:\/\/(www\.)?osha\.gov\/(ords\/imis\/|pls\/imis\/)?establishment|osha\.gov\/.*inspection_detail/i;
 

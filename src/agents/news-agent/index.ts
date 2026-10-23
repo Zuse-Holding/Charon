@@ -56,6 +56,8 @@ export class NewsAgent {
       return terms.some((t) => lower.includes(t)) || (!!domain && lower.includes(domain)) || BUSINESS_EVENT.test(text);
     };
     const partyNames = [companyName, ...(alias ? [alias] : [])];
+    // A dated or press path on its own site is an article; its home and about pages aren't.
+    const isArticlePath = (u: string) => { try { return /\/(news|press|press-releases|blog|media|insights|stories)\/[^/]+|\/20\d{2}\//i.test(new URL(u).pathname); } catch { return false; } };
     const lookup = async (location?: string) => {
       const where = location ? ` ${location}` : "";
       const [web, press] = await Promise.all([
@@ -80,14 +82,37 @@ export class NewsAgent {
     // Government enforcement (launch fix 62: "United States v. ACCO
     // Engineered Systems" on justice.gov never reached court records or
     // risks): its own search, kept apart from the top-five cut.
-    const [found, enforcementRaw] = await Promise.all([
+    // Located and unlocated together (launch fix 84: ACCO's located search
+    // found only 2018-2020 LA items; its Colorado and Arizona news never
+    // names the HQ city), newest first.
+    // OSHA gets its own search: its inspection pages filled the shared one
+    // and pushed out "United States v. ACCO" (launch fix 84).
+    const [located, unlocated, dojRaw, actionsRaw, oshaRaw] = await Promise.all([
       lookup(anchor.location),
-      this.searcher.search(`"${companyName}" (site:justice.gov OR site:sec.gov OR site:ftc.gov OR site:epa.gov OR site:osha.gov OR site:dol.gov OR site:eeoc.gov)`, 5),
+      anchor.location ? lookup() : Promise.resolve([]),
+      this.searcher.search(`"${companyName}" site:justice.gov`, 5),
+      this.searcher.search(`"${companyName}" (site:sec.gov OR site:ftc.gov OR site:epa.gov OR site:dol.gov OR site:eeoc.gov)`, 5),
+      this.searcher.search(`"${companyName}" site:osha.gov`, 5),
     ]);
-    let filtered = found;
-    if (filtered.length === 0 && anchor.location) filtered = await lookup();
-    const enforcement = enforcementRaw.filter((r) => isEnforcementAction(r, partyNames) && isUsableHeadline(r.title) && aboutIt(r)
-      && !filtered.some((f) => f.url === r.url)).slice(0, 3);
+    const enforcementRaw = [...dojRaw, ...actionsRaw, ...oshaRaw];
+    const seenNews = new Set<string>();
+    const merged = [...located, ...unlocated].filter((r) => !seenNews.has(r.url) && !!seenNews.add(r.url));
+    // An agency action the news search found belongs with the enforcement
+    // items, not at the bottom of the news (launch fix 84: ACCO's DOJ case).
+    const filtered = merged
+      .filter((r) => !isEnforcementAction(r, partyNames))
+      // Its own home, about and service pages aren't news.
+      .filter((r) => !domain || !(host(r.url) === domain || host(r.url).endsWith(`.${domain}`)) || isArticlePath(r.url))
+      .map((r, i) => ({ r, i, t: Date.parse(newsDate(r.date, r.url) ?? "") }))
+      .sort((a, b) => (isNaN(b.t) ? -Infinity : b.t) - (isNaN(a.t) ? -Infinity : a.t) || a.i - b.i)
+      .map((x) => x.r);
+    // Charges and settlements first, then up to three OSHA inspections: the
+    // inspections had crowded out ACCO's DOJ case (launch fix 84).
+    const seenAgency = new Set<string>();
+    const agency = [...merged, ...enforcementRaw].filter((r) => isEnforcementAction(r, partyNames) && isUsableHeadline(r.title) && aboutIt(r)
+      && !seenAgency.has(r.url) && !!seenAgency.add(r.url));
+    const inspection = (r: { url: string }) => /osha\.gov/i.test(r.url) && /establishment|inspection/i.test(r.url);
+    const enforcement = [...agency.filter((r) => !inspection(r)).slice(0, 3), ...agency.filter(inspection).slice(0, 3)];
     if (enforcement.length) console.log(`[news] "${companyName}": ${enforcement.length} enforcement item(s) from agency sites`);
     const top = [...filtered.slice(0, 5), ...enforcement];
 

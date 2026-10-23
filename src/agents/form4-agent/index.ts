@@ -2,6 +2,7 @@ import { Form4Entry, Source } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { Form4ExtractionSchema, extractStructured } from "../../lib/llm.js";
 import { findOverride } from "../../entity-validation.js";
+import { GENERIC_SEC_DOC } from "../../lib/insiders.js";
 
 /**
  * Form 4 Agent (Round 2, item 5) — insider trading activity.
@@ -81,9 +82,13 @@ export class Form4Agent {
     // snippet for pulling out actual filer names/roles/share counts.
     // Fetched pages stay scoped to their own numbered source below, same
     // as snippets, so this doesn't weaken the same-source grounding rule.
-    const fetchedPages = await Promise.all(
-      results.slice(0, 3).map((r) => fetchPageText(r.url, this.fetcher, 2500))
-    );
+    // Insider-tracker pages list every transaction with its total; sec.gov
+    // pages come last (launch fix 84: Limbach's 12 transactions fell to 4,
+    // with per-share prices and no totals).
+    const onSec = (u: string) => /^https?:\/\/([a-z0-9-]+\.)*sec\.gov\//i.test(u);
+    const order = results.map((_r, i) => i).sort((a, b) => Number(onSec(results[a].url)) - Number(onSec(results[b].url)));
+    const fetchedPages: (string | null)[] = results.map(() => null);
+    await Promise.all(order.slice(0, 3).map(async (i) => { fetchedPages[i] = await fetchPageText(results[i].url, this.fetcher, 4000); }));
 
     // Numbered + clearly bounded per source, so the LLM can't blend a
     // name from one snippet with a company/role mentioned in another —
@@ -105,7 +110,8 @@ RULES:
 - filerName: the insider's FULL name (first and last name at minimum) exactly as it appears in that source. Never return a single word, a bare initial, or a truncated fragment — if the source text doesn't give a full name, skip that entry entirely rather than guessing or completing it.
 - relationship: their role, e.g. "CEO", "Director", "10% Owner", if stated.
 - transactionType: "Buy", "Sell", "Grant", or "Other" based on what's described.
-- shares/value: only if a specific number is given in the source text.
+- shares: the number of shares, if given. value: the transaction's total dollar value if the source gives it; if it gives only a price per share, write it as "$X per share". Never guess either.
+- source: the SOURCE number the transaction comes from. List every transaction a source gives, not just the first few.
 - date: the filing or transaction date if mentioned.
 - If you are not confident a specific named person is actually an insider of "${searchName}" (as opposed to some other company that happened to appear in the search results), omit them.
 - Return an empty filings array if no source contains a specific, fully-named, clearly-attributed insider transaction — do not pad with generic or uncertain entries.`,
@@ -114,9 +120,13 @@ RULES:
     );
 
     const rawCount = llmResult?.filings?.length ?? 0;
-    const filings: Form4Entry[] = (llmResult?.filings ?? []).filter((f) =>
-      looksLikeFullPersonName(f.filerName)
-    );
+    // Each transaction links to the page it came from, never SEC's generic
+    // Forms 3/4/5 instructions.
+    const filings: Form4Entry[] = (llmResult?.filings ?? []).filter((f) => looksLikeFullPersonName(f.filerName)).map(({ source, ...f }) => {
+      const given = f.filingUrl && /^https?:\/\//.test(f.filingUrl) && !GENERIC_SEC_DOC.test(f.filingUrl) ? f.filingUrl : undefined;
+      const fromSource = source && results[source - 1] && !GENERIC_SEC_DOC.test(results[source - 1].url) ? results[source - 1].url : undefined;
+      return { ...f, filingUrl: given ?? fromSource };
+    });
 
     console.log(`[form4-agent] "${companyName}"${searchName !== companyName ? ` (searched as "${searchName}")` : ""} — ${results.length} search result(s), LLM returned ${rawCount}, ${filings.length} passed name validation`);
 

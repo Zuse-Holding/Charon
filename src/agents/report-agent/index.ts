@@ -4,6 +4,8 @@ import { pushCoverageSection } from "../../lib/coverage/render.js";
 import { pushPostureSection } from "../domain-posture-agent/render.js";
 import { pushRelatedSection } from "../related-entities-agent/render.js";
 import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle, Source } from "../../types/research.js";
+import type { Form4Entry } from "../../types/research.js";
+import { saleValue } from "../../lib/insiders.js";
 
 /**
  * Report Agent
@@ -251,8 +253,9 @@ export class ReportAgent {
           `- **${f.filerName}**${f.relationship ? ` (${f.relationship})` : ""} — ${
             f.transactionType ?? "Filing"
           }${f.shares ? ` · ${f.shares} shares` : ""}${f.value ? ` · ${f.value}` : ""}${
-            f.date ? ` (${f.date})` : ""
-          }`
+            // Shares times a per-share price (launch fix 84: totals were missing).
+            totalOf(f) ? ` · about ${money(totalOf(f)!)} total` : ""
+          }${f.date ? ` (${f.date})` : ""}${f.filingUrl ? ` ([filing](${f.filingUrl}))` : ""}`
         );
       }
       lines.push(``);
@@ -1023,4 +1026,11 @@ export function dropUnsourcedSection(lines: string[]): void {
     || /^- \*\*[^*]+:\*\* Unknown$/.test(l) || /\(from your search|location from your search, not verified\)/.test(l);
   if (body.every(notice)) return;
   lines.length = start;
+}
+
+/** A sale's total when the row gives only a per-share price and a share count. */
+function totalOf(f: Form4Entry): number | undefined {
+  if (!f.value || !f.shares || !/per share|\/\s*share/i.test(f.value)) return undefined;
+  const v = saleValue(f);
+  return v > 0 ? v : undefined;
 }
