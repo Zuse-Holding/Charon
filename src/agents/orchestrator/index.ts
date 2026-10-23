@@ -185,7 +185,7 @@ export class ResearchOrchestrator {
     // the user typed always holds.
     const national = !queryAnchor.location && (!!sec || !!siteResult.company.stockListing || !!siteResult.company.chain || isNationalScale(siteResult.company));
     const tieAnchor: CompanyAnchor = national ? { ...anchor, location: undefined } : anchor;
-    const subject: SubjectRecord = { name: companyName, anchor: tieAnchor, domain: hostOf(siteResult.company.website) };
+    const subject: SubjectRecord = { name: companyName, anchor: tieAnchor, domain: hostOf(siteResult.company.website), ticker: siteResult.company.stockListing?.split(/:\s*/)[1] };
     // Every name a registry may file it under (launch fixes 57, 60, 67):
     // the resolved name, the legal entity from its site or the SEC, and for
     // a national brand the short name the press and courts use ("Crumbl").

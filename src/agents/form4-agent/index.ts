@@ -41,13 +41,71 @@ function looksLikeFullPersonName(name: string): boolean {
   return tokens.every((t) => /^[A-Z][a-zA-Z'.-]*$/.test(t));
 }
 
+const OPEN_INSIDER = "http://openinsider.com/screener";
+const TITLES: Record<string, string> = { Dir: "Director", Pres: "President", "10%": "10% Owner", GC: "General Counsel", COB: "Chairman of the Board" };
+const decode = (t: string) => t.replace(/<[^>]+>/g, "").replace(/&nbsp;| /g, " ").replace(/&amp;/g, "&").replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').trim();
+
+/**
+ * OpenInsider's table of a ticker's Form 4 filings (round 11: Limbach's
+ * CFO sales came and went between runs, because each run was a model's
+ * reading of whatever search results came back). Each row gives the
+ * insider, title, trade type, price, shares, total value and the filing.
+ * "Brooks Jayme L." is written "Jayme L. Brooks".
+ */
+export function parseOpenInsider(html: string): Form4Entry[] {
+  const table = html.match(/<table[^>]*class="tinytable"[^>]*>([\s\S]*?)<\/table>/i)?.[1];
+  if (!table) return [];
+  const out: Form4Entry[] = [];
+  for (const row of table.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) ?? []) {
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((m) => decode(m[1]));
+    if (cells.length < 12) continue;
+    const [, , tradeDate, , insider, title, type, price, qty, , , value] = cells;
+    const parts = insider.split(/\s+/).filter(Boolean);
+    if (parts.length < 2) continue;
+    const filing = row.match(/href="(https?:\/\/www\.sec\.gov\/Archives\/[^"]+)"/i)?.[1];
+    out.push({
+      filerName: [...parts.slice(1), parts[0]].join(" "),
+      relationship: title.split(/,\s*/).map((t) => TITLES[t] ?? t).join(", ") || undefined,
+      transactionType: /^S\b/.test(type) ? "Sell" : /^P\b/.test(type) ? "Buy" : type.replace(/^\w\s*-\s*/, "") || "Other",
+      shares: qty.replace(/^[+-]/, "") || undefined,
+      value: value.replace(/^[+-]/, "") || (price ? `${price} per share` : undefined),
+      date: tradeDate || undefined,
+      filingUrl: filing,
+    });
+  }
+  return out;
+}
+
 export class Form4Agent {
   constructor(
     private searcher: SearchProvider,
     private fetcher: FetchProvider
   ) {}
 
-  async run(companyName: string): Promise<{ filings: Form4Entry[]; sources: Source[] }> {
+  /** Two years of a ticker's insider filings, or null when the table can't be read. */
+  private async openInsider(ticker: string): Promise<Form4Entry[] | null> {
+    const url = `${OPEN_INSIDER}?s=${encodeURIComponent(ticker)}&fd=730&xp=1&xs=1&sortcol=0&cnt=100&page=1`;
+    try {
+      const res = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (compatible; MetisAnalytics/1.0)" }, signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) return null;
+      return parseOpenInsider(await res.text());
+    } catch {
+      return null;
+    }
+  }
+
+  /** @param ticker A listed company's ticker ("LMB"): its filings come from a table, not a model's reading. */
+  async run(companyName: string, ticker?: string): Promise<{ filings: Form4Entry[]; sources: Source[] }> {
+    if (ticker && /^[A-Z.]{1,6}$/.test(ticker)) {
+      const rows = await this.openInsider(ticker);
+      if (rows?.length) {
+        console.log(`[form4-agent] "${companyName}" (${ticker}) — ${rows.length} filing(s) from OpenInsider`);
+        return {
+          filings: rows,
+          sources: [{ url: `${OPEN_INSIDER}?s=${encodeURIComponent(ticker)}`, title: `OpenInsider — ${ticker} insider filings`, retrievedAt: new Date().toISOString(), usedFor: ["insider-activity"] }],
+        };
+      }
+    }
     // Resolve a rename/aka override (e.g. "Raytheon" -> "RTX
     // Corporation") before searching. Confirmed in production: without
     // this, the strict same-name grounding below — added specifically

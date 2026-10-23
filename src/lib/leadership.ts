@@ -137,6 +137,59 @@ export function resolveTitleConflicts(entries: LeadershipEntry[], subjectDomain?
   return entries.filter((e) => !former.has(e));
 }
 
+// How the page writes each exclusive title near a name.
+const TITLE_WORDS: Record<string, RegExp> = {
+  CEO: /\b(ceo|chief executive)\b/i, President: /\bpresident\b(?!\s+of\s+(the\s+)?board)/i, Chair: /\bchair/i,
+  CFO: /\b(cfo|chief financial)\b/i, COO: /\b(coo|chief operating)\b/i, CTO: /\b(cto|chief technology)\b/i,
+};
+
+/** The pages give this title within a sentence's reach of the name. */
+export function titleBacked(name: string, label: string, texts: string[]): boolean {
+  const words = TITLE_WORDS[label];
+  if (!words) return true;
+  const n = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+")}\\b`, "i");
+  // The sentence or list item that names the person, not the one beside it.
+  return texts.some((t) => t.split(/(?<=[.;!?])\s+|\n+|\s[|•·]\s/).some((part) => n.test(part) && words.test(part.replace(n, " "))));
+}
+
+/** "Charles Conn, Board Chair." -> "Board Chair": the title written right after the name. */
+function titleAfter(name: string, texts: string[]): string | undefined {
+  const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  const re = new RegExp(`\\b${n}\\s*(?:,|-|–|—|\\|)\\s*([A-Z][\\w&'’-]*(?:\\s+(?:[A-Z][\\w&'’-]*|of|the|and)){0,5})`);
+  for (const t of texts) {
+    const m = t.match(re)?.[1]?.trim();
+    if (m && /\b(chair|board|director|founder|president|officer|partner|trustee|member)\b/i.test(m)) return m.replace(/\s+(of|the|and)$/i, "");
+  }
+  return undefined;
+}
+
+/**
+ * Several people read off the site as holding one exclusive title (round
+ * 11: Charles Conn and Ayana Elizabeth Johnson listed as CEO beside Ryan
+ * Gellert on patagonia.com): each claim must be in the text near that
+ * person's name. An unbacked claim takes the title the page does give near
+ * the name, or the person drops off. A lone holder is never touched.
+ */
+export function settleSiteTitles(entries: LeadershipEntry[], texts: string[]): LeadershipEntry[] {
+  const dropped = new Set<LeadershipEntry>();
+  for (const { label, re } of EXCLUSIVE) {
+    const holders = entries.filter((e) => roles(e.title).some((r) => re.test(r)));
+    if (holders.length < 2) continue;
+    const backed = holders.filter((e) => titleBacked(e.name, label, texts));
+    if (!backed.length || backed.length === holders.length) continue;
+    for (const e of holders) {
+      if (backed.includes(e)) continue;
+      const rest = roles(e.title).filter((r) => !re.test(r));
+      const near = titleNear(e.name, texts) ?? titleAfter(e.name, texts);
+      const replacement = near && !re.test(near) ? near : undefined;
+      if (rest.length) e.title = rest.join(" and ");
+      else if (replacement) e.title = replacement;
+      else dropped.add(e);
+    }
+  }
+  return entries.filter((e) => !dropped.has(e));
+}
+
 const SOLE_FOUNDER = /^(the )?founder$/i;
 
 /**

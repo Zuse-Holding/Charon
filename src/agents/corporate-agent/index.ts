@@ -107,7 +107,7 @@ export class CorporateAgent {
       this.searcher.news ? this.searcher.news(`"${companyName}" raises funding round`, 8) : Promise.resolve([]),
       // Insider activity (Round 2, item 5) — same "who owns/controls this
       // company" question funding/ownership already answers here.
-      this.form4Agent.run(companyName),
+      this.form4Agent.run(companyName, subject.ticker),
     ]);
 
     const seenUrl = new Set<string>();
