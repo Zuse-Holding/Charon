@@ -153,7 +153,12 @@ export function isTotalRaised(text: string, amount: string): boolean {
   const d = amount.match(/\d+(?:\.\d+)?/)?.[0];
   if (!d) return false;
   const n = d.replace(".", "\\.");
-  return new RegExp(`${n}[^.]{0,40}\\b(to date|in total|total(ling)?|overall|since (its )?founding)\\b|\\b(total|altogether|to date)\\b[^.]{0,30}${n}`, "i").test(text);
+  // The total wording has to sit right at the amount: "raises $125M Series
+  // D, bringing total raised to $347M" is a round, and only $347M a total.
+  const unit = "(?:\\s*(?:million|billion|mn|bn|m|b)\\b)?";
+  const after = `${n}${unit}[^.,;$]{0,20}?\\b(to date|in total|overall|since (its )?founding)\\b|${n}${unit}\\s+total\\b`;
+  const before = `\\btotal(?:\\s+(?:funding|raised|investment|capital))?\\s+(?:of|to|at)\\s+\\$?${n}|\\b(in total|altogether|to date),?[^.;$]{0,40}\\$?${n}`;
+  return new RegExp(`${after}|${before}`, "i").test(text);
 }
 
 /** The snippet states this value, as written (year, city, name or figure). */
