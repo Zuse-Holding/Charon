@@ -125,9 +125,18 @@ describe("company candidates", () => {
     ));
     assert.deepEqual(candidates.map((c) => c.subject), [
       "Smile Design Studio · https://smiledesignnorthridge.com",
-      "Smile Design Studio · Bethesda",
+      // A business's own site before a listing with only a city (round 11).
       "Smile Design Studio · smiledesignnyc.com",
+      "Smile Design Studio · Bethesda",
     ]);
+  });
+
+  it("puts the brand's own site ahead of a dealer listing with only a city (Andersen, round 11)", async () => {
+    const { candidates } = await companyCandidates("Andersen Windows & Doors", {}, fakeSearcher(
+      [{ title: "Andersen Windows & Doors", address: "71 Depot St, Gouverneur, NY 13642" }],
+      [{ title: "Andersen Windows & Doors | Andersen Windows", url: "https://www.andersenwindows.com/" }],
+    ));
+    assert.match(candidates[0].subject, /andersenwindows\.com/);
   });
 
   it("offers a person search when a 'company' is a person's name (Doug Shapses UCLA)", async () => {

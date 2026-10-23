@@ -2,6 +2,14 @@ import type { NewsEntry, ResearchBundle } from "../types/research.js";
 import type { CaseRecord } from "../agents/public-filings-agent/index.js";
 import { GENERIC_SEC_DOC, insiderSelling } from "./insiders.js";
 import { mentionsCompany } from "./news-noise.js";
+import { namedAsBusiness } from "./gap-fill.js";
+
+/** The caption names the company as a party: a multi-word name, or a one-word name used as a business. */
+function namesCompanyAsParty(caption: string, name: string): boolean {
+  if (!mentionsCompany(caption, name)) return false;
+  const core = name.replace(/,?\s+(inc\.?|llc|corp\.?|corporation|co\.?|company|ltd\.?)$/i, "").trim();
+  return core.split(/\s+/).length >= 2 || namedAsBusiness(caption, name) || /\b(v\.|versus)\s/i.test(caption);
+}
 
 /**
  * Rule-based risk signals (round 10). The model kept dropping real risks
@@ -85,7 +93,11 @@ export function ruleRisks(bundle: ResearchBundle, names: string[], now = Date.no
   }
 
   // 6. A government enforcement action on record.
-  const charged = (bundle.courtCases ?? []).filter((c) => c.role === "charged" && c.caseType === "Government enforcement" && c.url);
+  // Only an action that names the company as itself, from the last ten
+  // years (round 11: a 2013 DOJ release on drug traffickers in the town of
+  // Patagonia, Arizona, became a Patagonia risk).
+  const charged = (bundle.courtCases ?? []).filter((c) => c.role === "charged" && c.caseType === "Government enforcement" && c.url
+    && recent(c.filed, now, 10) && names.some((nm) => namesCompanyAsParty(c.caption, nm)));
   for (const c of charged.slice(0, 1)) {
     out.push({ text: `Government enforcement action on record: ${c.caption}${c.court ? ` (${c.court}${c.filed ? `, ${c.filed}` : ""})` : ""}.`, urls: [c.url], key: "enforcement" });
   }
@@ -124,7 +136,7 @@ export function mergeRuleRisks(risks: string[], citations: Record<string, string
 // Personal-life coverage of a founder is not a business risk (launch fix 49).
 const TABLOID = /\b(grindr|tiktok(er| star)?|dating|outed|affair|divorce|girlfriend|boyfriend|wedding|celebrity|influencer feud|instagram post)\b/i;
 // A discount is marketing, never a risk.
-const SALE = /\b(\d+\s?% off|below retail|on sale|selling (its|the)[^.]*\b(off|discount)|discount(ed|s)?|deals?)\b/i;
+const SALE = /\b(\d+\s?% off|below retail|on sale|(rare |big |deep )?savings|selling (its|the)[^.]*\b(off|discount)|discount(ed|s)?|deals?|price cuts?)\b/i;
 
 export function isTabloidRisk(text: string): boolean {
   return TABLOID.test(text);
@@ -137,7 +149,7 @@ export function isSaleRisk(text: string): boolean {
 
 // Opportunities that only restate what it offers, praise it, or note an
 // event with no business consequence (round 10: Promise, ACCO, Andersen).
-const FILLER_OPPORTUNITY = /\b(comprehensive offerings?|broad (market )?reach|diverse (service )?(capabilities|offerings)|cater to a broad|by offering both|expand its reach by offering|community (engagement|relations)|brand visibility|positive (public )?feedback|indicates? (ongoing )?leadership development|strategic planning within|demonstrates? (ongoing )?(commitment|engagement)|(\d+\s?%|significant(ly)?)\s?(off|discount)|below retail|discount(ed|s)?\b)/i;
+const FILLER_OPPORTUNITY = /\b(engag\w* (with )?the community|annual (5k|gala|event|fundraiser|walk|run)|brings? thousands together|comprehensive offerings?|broad (market )?reach|diverse (service )?(capabilities|offerings)|cater to a broad|by offering both|expand its reach by offering|community (engagement|relations)|brand visibility|positive (public )?feedback|indicates? (ongoing )?leadership development|strategic planning within|demonstrates? (ongoing )?(commitment|engagement)|(\d+\s?%|significant(ly)?)\s?(off|discount)|below retail|discount(ed|s)?\b)/i;
 
 export function isFillerOpportunity(text: string): boolean {
   return FILLER_OPPORTUNITY.test(text);
@@ -147,4 +159,12 @@ export function isFillerOpportunity(text: string): boolean {
 export function aboutNamesake(text: string, names: string[]): boolean {
   return /\b(region|trips?|tours?|hiking|travel|trek|glaciers?|data centers?)\b/i.test(text)
     && names.some((n) => new RegExp(`\\b(to|in|across|around|of)\\s+${n.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
+}
+
+// A risk names something adverse. "The acquisition of Coventry Square is the
+// most recent property acquisition mentioned" (MJW, round 11) names nothing.
+const ADVERSE = /\b(defendant|lawsuit|suit|case|charge[ds]?|enforcement|violation|penalt|fine[ds]?|settle|investigat|fell|falls?|fall(ing)?|declin|drop|los(s|ses|t|ing)|sold|selling|clos(e|ed|es|ing|ure)|shutter|layoff|bankrupt|default|debt|lien|recall|depend|concentrat|relian|reliance|lean(s)? on|exposure|risk|uncertain|delay|dispute|turnover|resign|depart|exit|down|weak|slow|pressure|squeeze|shortfall|deficit|negative|warn|cut|terminat|lapse|expir|unverified|outdated|no longer|failed|fail)\w*/i;
+
+export function isNonRisk(text: string): boolean {
+  return !ADVERSE.test(text);
 }

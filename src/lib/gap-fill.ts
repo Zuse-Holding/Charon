@@ -34,6 +34,23 @@ export interface GapFillResult {
 const MIN_COMPETITORS = 4;
 const MAX_COMPETITORS = 8;
 const MAX_SNIPPETS = 40;
+const MAX_GAP_COMPETITORS = 4;
+
+/** A company's name, not a lowercase word, a single generic word or a place. */
+export function isPeerName(name: string): boolean {
+  const n = name.trim();
+  if (!/^[A-Z0-9]/.test(n) || n.length < 3) return false;
+  return !/^(community|company|companies|others?|competitors?|alternatives?|startups?|local|national|regional|various|many)$/i.test(n);
+}
+
+/** "Crumbl vs Insomnia Cookies", "Gecko Robotics competitors include ANYbotics". */
+export function comparesDirectly(text: string, peer: string, names: string[], versusOnly = false): boolean {
+  const p = peer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return names.some((nm) => {
+    const n = nm.replace(/,?\s+(inc\.?|llc|corp\.?|co\.?|company)$/i, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\b${n}\\b[^.]{0,20}\\b(vs\\.?|versus|or)\\s+${p}|\\b${p}\\b[^.]{0,20}\\b(vs\\.?|versus)\\s+${n}${versusOnly ? "" : `|\\b${n}['’]?s?\\b[^.]{0,30}\\b(competitors?|rivals?|alternatives?)\\b[^.]{0,80}\\b${p}\\b`}`, "i").test(text);
+  });
+}
 
 const VENTURE_OWNER = /\b(trust|collective|foundation|non-?profit|employee-owned|ESOP|family[- ]owned)\b/i;
 
@@ -233,14 +250,21 @@ export function mergeGaps(bundle: ResearchBundle, x: GapExtraction, snippets: Ga
     }
   }
   if (gaps.includes("competitors")) {
+    let added = 0;
     for (const k of x.competitors) {
-      if (bundle.competitors.length >= MAX_COMPETITORS) break;
+      if (bundle.competitors.length >= MAX_COMPETITORS || added >= MAX_GAP_COMPETITORS) break;
       const s = snip(k.source);
       if (!k.name || !s || !snippetStates(s.text, k.name, "name")) continue;
+      // A real peer is named as one by more than one result, or by a result
+      // that compares the two directly (round 11: MJW got KKR and "Henan
+      // Zhongyuan Expressway", Homeboy "lakeforest", from one listing page each).
+      if (!isPeerName(k.name)) continue;
+      const mentions = snippets.filter((x2) => snippetStates(x2.text, k.name!, "name")).length;
+      if (mentions < 2 && !comparesDirectly(s.text, k.name, names, true)) continue;
       if (names.some((n) => strongNameMatch(k.name!, n) || k.name!.toLowerCase().includes(n.toLowerCase()))) continue;
       if (bundle.competitors.some((y) => y.name.toLowerCase() === k.name!.toLowerCase() || strongNameMatch(y.name, k.name!))) continue;
       bundle.competitors.push({ name: k.name, url: s.url } as CompetitorEntry);
-      cite(s, "competitors"); filled.push(`competitor ${k.name}`);
+      cite(s, "competitors"); filled.push(`competitor ${k.name}`); added++;
     }
   }
   if (gaps.includes("funding")) {
@@ -290,7 +314,7 @@ export async function fillGaps(bundle: ResearchBundle, searcher: SearchProvider,
     const ask = [
       wanted.includes("basics") && `"founded": {"value": "<year>", "source": <n>} and "headquarters": {"value": "<City, ST>", "source": <n>} for ${primary} itself`,
       wanted.includes("executives") && `"executives": [{"name": "...", "title": "...", "source": <n>}] — current CEO, president, chair, founders and chief officers of ${primary} only`,
-      wanted.includes("competitors") && `"competitors": [{"name": "...", "source": <n>}] — companies the results name as ${primary}'s competitors or alternatives (not its customers, partners, investors or parent)`,
+      wanted.includes("competitors") && `"competitors": [{"name": "...", "source": <n>}] — companies the results name as ${primary}'s direct competitors${bundle.company.industry ? ` in ${bundle.company.industry}` : ""}${bundle.company.headquarters && !/\b(national|global)\b/i.test(bundle.company.role ?? "") ? ` (for a local business, ones serving the same area as ${bundle.company.headquarters})` : ""}. Never its customers, partners, investors, lenders, parent, or companies in other industries that a listing page happens to show`,
       wanted.includes("funding") && `"funding": [{"round": "Series B", "amount": "$40M", "date": "2021", "source": <n>}] — rounds ${primary} itself raised`,
     ].filter(Boolean).join("\n");
     const x = await extractAnalysis(

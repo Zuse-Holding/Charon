@@ -2,9 +2,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { insiderSelling, saleValue } from "./insiders.js";
 import { aboutCompany, findGaps, hasCurrentChief, gapQueries, isTotalRaised, mergeGaps, needsFunding, snippetStates, type GapExtraction, type GapSnippet } from "./gap-fill.js";
-import { aboutNamesake, isFillerOpportunity, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "./risk-rules.js";
+import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "./risk-rules.js";
 import { applyProfile, profileFrom, suspiciousFounded } from "./profile-cache.js";
 import { applyCompanyConsistency } from "./consistency.js";
+import { foundedLabel } from "../agents/report-agent/index.js";
 import type { Form4Entry, ResearchBundle } from "../types/research.js";
 
 const base = (over: Partial<ResearchBundle> = {}): ResearchBundle => ({
@@ -83,6 +84,7 @@ describe("round 10: gap-fill pass", () => {
       { n: 2, title: "Leadership", url: "https://b.com", text: "Jake Loosararian, co-founder and CEO of Gecko Robotics, said the Navy deal..." },
       { n: 3, title: "Funding", url: "https://c.com", text: "Gecko Robotics raises $125 million Series D at a $1.25B valuation" },
       { n: 4, title: "Competitors", url: "https://d.com", text: "Gecko Robotics competitors include ANYbotics and Avitas" },
+      { n: 5, title: "Gecko Robotics vs ANYbotics", url: "https://e.com", text: "Gecko Robotics vs ANYbotics: inspection robots compared" },
     ];
     const x: GapExtraction = {
       founded: { value: "2012", source: 1 },
@@ -228,5 +230,44 @@ describe("round 11: funding sanity", () => {
     mergeGaps(b, { funding: [{ round: "Series D", amount: "$125M", date: "2025", source: 1 }], executives: [], competitors: [] } as unknown as GapExtraction,
       [{ n: 1, title: "x", url: "https://a.com", text: "Gecko Robotics raises $125M Series D, bringing total raised to $347M" }], ["funding"], ["Gecko Robotics"]);
     assert.deepEqual(b.funding.map((f) => f.round), ["Series D"]);
+  });
+});
+
+describe("round 11: full run fixes", () => {
+  it("adds a competitor only when two results name it or one compares directly", () => {
+    const bundle = base({ company: { name: "MJW Investments" } });
+    const snippets: GapSnippet[] = [
+      { n: 1, title: "x", url: "https://a.com", text: "MJW Investments top competitors: KKR, The Carlyle Group, Henan Zhongyuan Expressway" },
+      { n: 2, title: "y", url: "https://b.com", text: "MJW Investments competitors include Greystar and CA Ventures" },
+      { n: 3, title: "z", url: "https://c.com", text: "Student housing operators such as Greystar and Landmark Properties" },
+      { n: 4, title: "w", url: "https://d.com", text: "Homeboy alternatives: lakeforest, Community" },
+    ];
+    mergeGaps(bundle, { competitors: [{ name: "KKR", source: 1 }, { name: "Greystar", source: 2 }, { name: "CA Ventures", source: 2 }, { name: "lakeforest", source: 4 }, { name: "Community", source: 4 }],
+      executives: [], funding: [] } as unknown as GapExtraction, snippets, ["competitors"], ["MJW Investments"]);
+    // Greystar is named by two results; CA Ventures and KKR by one listing each.
+    assert.deepEqual(bundle.competitors.map((c) => c.name), ["Greystar"]);
+  });
+
+  it("never turns a 2013 release about a town into an enforcement risk", () => {
+    const bundle = base({ company: { name: "Patagonia" }, courtCases: [
+      { caption: "Four Patagonia Drug Traffickers Sentenced To Serve A ...", court: "U.S. Department of Justice", filed: "Jul 2, 2013", url: "https://justice.gov/usao-az/x", role: "charged", caseType: "Government enforcement" },
+      { caption: "United States v. ACCO Engineered Systems, Inc.", court: "U.S. Department of Justice", filed: "Jul 25, 2026", url: "https://justice.gov/eoir/x", role: "charged", caseType: "Government enforcement" }] });
+    const keys = ruleRisks(bundle, ["Patagonia"], Date.parse("2026-10-23")).filter((r) => r.key === "enforcement");
+    assert.equal(keys.length, 0);
+    const acco = ruleRisks({ ...bundle, company: { name: "ACCO Engineered Systems" } } as ResearchBundle, ["ACCO Engineered Systems"], Date.parse("2026-10-23")).filter((r) => r.key === "enforcement");
+    assert.equal(acco.length, 1);
+  });
+
+  it("drops non-risks, savings items and community-event opportunities", () => {
+    assert.ok(isNonRisk("The acquisition of Coventry Square Apartments on March 2, 2025, is the most recent property acquisition mentioned."));
+    assert.ok(!isNonRisk("Graybar is currently a defendant in three open cases."));
+    assert.ok(isSaleRisk("Patagonia is offering rare savings on its Nano Puff jacket."));
+    assert.ok(isFillerOpportunity("The organization continues to engage the community through its annual 5K event, which brought thousands together."));
+  });
+
+  it("labels where a founding year came from", () => {
+    assert.equal(foundedLabel("https://www.linkedin.com/company/patagonia_2"), "source");
+    assert.equal(foundedLabel("https://bizfileonline.sos.ca.gov/x"), "state record");
+    assert.equal(foundedLabel("https://www.sec.gov/Archives/x"), "10-K");
   });
 });

@@ -118,7 +118,7 @@ export class ReportAgent {
     if (bundle.company.phone) lines.push(`- **Phone:** ${bundle.company.phone}`);
     if (bundle.company.hours) lines.push(`- **Hours:** ${bundle.company.hours}`);
     if (bundle.company.listing) lines.push(`- **Business listing:** [${bundle.company.listing.title}${bundle.company.listing.address ? `, ${bundle.company.listing.address}` : ""}](${bundle.company.listing.url})`);
-    lines.push(`- **Founded:** ${bundle.company.founded ?? "Unknown"}${bundle.company.foundedSource ? ` ([state record](${bundle.company.foundedSource}))` : ""}`);
+    lines.push(`- **Founded:** ${bundle.company.founded ?? "Unknown"}${bundle.company.foundedSource ? ` ([${foundedLabel(bundle.company.foundedSource)}](${bundle.company.foundedSource}))` : ""}`);
     lines.push(
       `- **Headquarters:** ${bundle.company.headquarters
         ? `${bundle.company.headquarters}${bundle.company.headquartersUnverified ? " (location from your search, not verified)" : ""}`
@@ -1033,4 +1033,11 @@ function totalOf(f: Form4Entry): number | undefined {
   if (!f.value || !f.shares || !/per share|\/\s*share/i.test(f.value)) return undefined;
   const v = saleValue(f);
   return v > 0 ? v : undefined;
+}
+
+/** What kind of record a founding year came from (round 11: a LinkedIn page was labeled "state record"). */
+export function foundedLabel(url: string): string {
+  if (/sec\.gov/i.test(url)) return "10-K";
+  if (/\.(gov|us)(\/|$)|sos\.|bizfile|opencorporates|corporations/i.test(url)) return "state record";
+  return "source";
 }

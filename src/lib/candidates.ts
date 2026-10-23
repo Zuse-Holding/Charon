@@ -37,6 +37,8 @@ export interface CandidateResult {
 // aren't one, so they never become a candidate's website.
 const NOT_A_BUSINESS_SITE = /(^|\.)(linkedin|facebook|instagram|twitter|x|youtube|tiktok|yelp|wikipedia|bbb|bloomberg|crunchbase|zoominfo|dnb|opencorporates|bizapedia|manta|mapquest|yellowpages|indeed|glassdoor|reddit|pinterest|google|apple|amazon|tripadvisor|doordash|ubereats|grubhub|healthgrades|zocdoc|vitals)\.[a-z.]+$/i;
 
+const BUSINESS_WORD = /&|\b(windows?|doors?|systems?|industries|investments?|robotics|electric(al)?|engineered|engineering|holdings?|group|company|corp(oration)?|inc|llc|ltd|services?|solutions|supply|construction|foods?|cookies?|bakery|restaurants?|cafe|clinic|dental|health|motors|auto(motive)?|homes?|realty|properties|capital|partners|labs?|technolog(y|ies)|software|studios?|design|center|stores?|shop|market|manufacturing|products|brands?|aba|therapy)\b/i;
+
 // Room for local businesses below the national ones (round 2, Fix 4).
 const MAX_COMPANIES = 10;
 const MAX_PEOPLE = 6;
@@ -104,6 +106,10 @@ async function companyCandidatesFor(name: string, anchor: CompanyAnchor, searche
   ]);
 
   const out: Candidate[] = [];
+  // 0: the brand's own site; 1: a listing with a site; 2: a listing with only
+  // a city (round 11: "Andersen Windows & Doors" matched a dealer in
+  // Gouverneur, NY, listed first, ahead of andersenwindows.com).
+  const rank = new Map<Candidate, number>();
   const seenHosts = new Set<string>();
   const seenPlaces = new Set<string>();
   const anchorSuffix = (website?: string, address?: string) => website ?? address;
@@ -122,17 +128,21 @@ async function companyCandidatesFor(name: string, anchor: CompanyAnchor, searche
     const pinned = anchorSuffix(site, city);
     if (!pinned) continue;
     // A near match is researched under its own name, not the typed one.
-    out.push({
+    const c: Candidate = {
       label: p.title,
       description: [p.address, host].filter(Boolean).join(" · "),
       subject: `${exact ? name : p.title} · ${pinned}`,
       exact,
-    });
+    };
+    out.push(c);
+    rank.set(c, site ? (ownSite(host!, name) ? 0 : 1) : 2);
   }
 
   // A name that reads as a person's ("Doug Shapses UCLA") matches their
   // profile pages too; only a business listing counts as a business then.
-  const personLike = looksLikePersonName(name);
+  // "Andersen Windows & Doors" reads as a person to the name tagger
+  // ("Andersen"); a business word or "&" settles it (round 11).
+  const personLike = !BUSINESS_WORD.test(name) && looksLikePersonName(name);
   for (const r of personLike ? [] : results) {
     const host = hostOf(r.url);
     if (!host || NOT_A_BUSINESS_SITE.test(host) || seenHosts.has(host) || !ownSite(host, name)) continue;
@@ -140,16 +150,21 @@ async function companyCandidatesFor(name: string, anchor: CompanyAnchor, searche
     if (!exact && !nearName(r.title, name)) continue;
     seenHosts.add(host);
     const label = titleHead(r.title) || name;
-    out.push({
+    const c: Candidate = {
       label,
       description: [host, (r.snippet ?? "").slice(0, 120)].filter(Boolean).join(" · "),
       subject: `${exact ? name : label} · ${host}`,
       exact,
-    });
+    };
+    out.push(c);
+    rank.set(c, 0);
   }
 
   // Exact matches first, so a lone exact match is easy to spot.
-  const candidates = [...out.filter((c) => c.exact), ...out.filter((c) => !c.exact)].slice(0, MAX_COMPANIES);
+  // The brand's own site before a local listing of the same name.
+  const ordered = out.map((c, i) => ({ c, i })).sort((a, b) => Number(!!b.c.exact) - Number(!!a.c.exact)
+    || (rank.get(a.c) ?? 1) - (rank.get(b.c) ?? 1) || a.i - b.i).map((x) => x.c);
+  const candidates = ordered.slice(0, MAX_COMPANIES);
   return candidates.length === 0 && personLike
     ? { candidates, suggestType: "person" }
     : { candidates };
