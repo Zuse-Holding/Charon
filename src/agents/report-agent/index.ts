@@ -198,6 +198,10 @@ export class ReportAgent {
     if (bundle.risks && bundle.risks.length > 0) {
       // Each item links to the record it rests on (launch fix 72).
       for (const risk of bundle.risks) lines.push(`- ${risk}${citeLink(bundle.synthesisCitations?.[risk])}`);
+    } else if (bundle.risks) {
+      // The analysis ran and found nothing real (launch fix 78: MJW's top
+      // risk was filler restating its opportunity).
+      lines.push(`_No material risks found in the records reviewed._`);
     } else {
       lines.push(`_Insufficient data for risk analysis on this run._`);
     }
@@ -214,6 +218,12 @@ export class ReportAgent {
     this.pushSectionSources(lines, bundle.sources, ["opportunities"]);
 
     this.pushFundingSection(lines, bundle);
+
+    if (bundle.corporateActions?.length) {
+      lines.push(`## Corporate Actions`);
+      for (const a of bundle.corporateActions) lines.push(`- ${a.kind}: ${a.name}${a.date ? ` (${a.date})` : ""} ([source](${a.url}))`);
+      lines.push(``);
+    }
 
     this.pushSecSection(lines, bundle);
     this.pushFddSection(lines, bundle);

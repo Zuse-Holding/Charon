@@ -111,7 +111,9 @@ const PHRASE_BREAK = /(?<!\b[A-Z])[.!?;:]\s+|[|•·()[\]"“”]|\s[-–—]\s/
  */
 function namedAsProperNoun(part: string, words: string[]): boolean {
   if (words.length < 2 || !/[A-Z]/.test(part)) return true;
-  const raw = part.split(/[^A-Za-z0-9'’&]+/).filter(Boolean);
+  // A bare "&" is no word (launch fix 79: "Andersen Windows & Doors"
+  // never matched itself, so the name found nothing).
+  const raw = part.split(/[^A-Za-z0-9'’&]+/).filter((t) => normalizeWords(t).trim());
   const norm = raw.map((t) => normalizeWords(t).trim());
   for (let i = 0; i + words.length <= norm.length; i++) {
     if (words.every((w, j) => norm[i + j] === w) && words.every((_, j) => /^[A-Z0-9]/.test(raw[i + j]))) return true;
@@ -258,15 +260,20 @@ const COMPANY_FILING_TITLE = /\b(10-K|10-Q|8-K|S-1(\/A)?|S-4|DEF ?14A|20-F|Form 
 const ENFORCEMENT_PATH = /\/(litigation|enforcement|enforce|litreleases|admin|complaints|cases|citations?)(\/|-|$)|\/(opa|usao-[a-z]+|usao)\/pr\//i;
 const ENFORCEMENT_ACTION = /\b(United States|U\.S\.|SEC|FTC|EEOC|EPA|People|State of [A-Z][a-z]+) v\.\s|\b(charg(e|es|ed|ing)|indict(ed|ment)|plead(s|ed)? guilty|pleaded guilty|sentenced|convicted|settle(s|d|ment)?|consent (order|decree|judgment)|complaint against|civil penalt(y|ies)|penalt(y|ies)|fined|agrees? to pay|ordered to pay|to resolve (allegations|claims)|false claims act|litigation release|administrative proceeding|cease[- ]and[- ]desist|cited for|citations? (to|against)|sues|sued|lawsuit against)\b/i;
 
+const OSHA_INSPECTION = /^https?:\/\/(www\.)?osha\.gov\/(ords\/imis\/|pls\/imis\/)?establishment|osha\.gov\/.*inspection_detail/i;
+
 export function isEnforcementAction(r: { title: string; snippet?: string; url: string }, names: string[]): boolean {
   if (!isEnforcementSource(r.url)) return false;
   // Filings by the company belong to Funding or Financials, not risks.
   if (COMPANY_FILING_PATH.test(r.url) || COMPANY_FILING_TITLE.test(r.title)) return false;
   let path = "";
   try { path = new URL(r.url).pathname; } catch { /* no path */ }
+  const named = (text: string) => names.some((n) => !!n && mentionsCompany(text, n) && namesItself(text, n));
+  // An OSHA inspection record naming the establishment is one (launch fix
+  // 78: ACCO lost its three inspections to the stricter check).
+  if (OSHA_INSPECTION.test(r.url)) return named(`${r.title} ${r.snippet ?? ""}`);
   const titleAction = ENFORCEMENT_ACTION.test(r.title);
   if (!titleAction && !(ENFORCEMENT_PATH.test(path) && ENFORCEMENT_ACTION.test(r.snippet ?? ""))) return false;
   // The company must be named as itself (a party), not a namesake or a place.
-  const named = (text: string) => names.some((n) => !!n && mentionsCompany(text, n) && namesItself(text, n));
   return named(r.title) || (titleAction && named(r.snippet ?? ""));
 }

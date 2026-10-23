@@ -25,7 +25,7 @@ const NON_COMPETITOR_ENTITIES = new Set([
   "app store", "play store", "github", "slack", "zoom", "notion",
 ]);
 
-const STATES: Record<string, string> = {
+export const STATES: Record<string, string> = {
   AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
   DE: "Delaware", DC: "Washington DC", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois",
   IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",

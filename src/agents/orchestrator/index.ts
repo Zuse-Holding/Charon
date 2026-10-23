@@ -55,6 +55,7 @@ import { isEnabled } from "../../lib/flags.js";
 import { buildCompanyProvenance, buildPersonProvenance, type BuiltProvenance } from "../../lib/provenance/build.js";
 import { recordSnapshots, type Snapshot } from "../../lib/provenance/snapshots.js";
 import { CoverageRecorder, type ProgressListener } from "../../lib/coverage/recorder.js";
+import { corporateActions } from "../../lib/corporate-actions.js";
 import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
 
 /**
@@ -368,7 +369,10 @@ export class ResearchOrchestrator {
     // Purpose Trust and Holdfast Collective came back from LittleSis).
     if (!bundle.ownership) {
       const found = ownershipFrom([
-        ...(littleSisResult.matches ?? []).filter((m) => m.blurb).map((m) => ({ text: m.blurb!, url: m.url })),
+        ...(orgMatches(littleSisResult.matches, companyName) ?? []).filter((m) => m.blurb).map((m) => ({ text: m.blurb!, url: m.url })),
+        // Its own pages too (launch fix 78: ACCO's employee ownership disappeared).
+        ...(bundle.company.website ? [bundle.company.description ?? "", ...bundle.products.map((p) => `${p.name}. ${p.description ?? ""}`)]
+          .filter(Boolean).map((text) => ({ text, url: bundle.company.website! })) : []),
         ...bundle.news.filter((n) => n.url).map((n) => ({ text: `${n.headline}. ${n.summary ?? ""}`, url: n.url! })),
       ]);
       if (found) {
@@ -377,6 +381,17 @@ export class ResearchOrchestrator {
         if (src) { if (!src.usedFor.includes("funding")) src.usedFor.push("funding"); }
         else bundle.sources.push({ url: found.url, title: "Ownership", retrievedAt: new Date().toISOString(), usedFor: ["funding"] });
       }
+    }
+    // Acquisitions, subsidiaries and brands (launch fix 80).
+    const actions = corporateActions([
+      ...bundle.news.filter((n) => n.url).map((n) => ({ text: `${n.headline}. ${n.summary ?? ""}`, url: n.url!, date: n.date })),
+      ...(bundle.company.website ? [bundle.company.description ?? "", ...bundle.products.map((p) => `${p.name}. ${p.description ?? ""}`)]
+        .filter(Boolean).map((text) => ({ text, url: bundle.company.website! })) : []),
+    ], entityNames);
+    if (actions.length) {
+      bundle.corporateActions = actions;
+      // A company it bought is no longer a competitor.
+      bundle.competitors = bundle.competitors.filter((c) => !actions.some((a) => a.name.toLowerCase() === c.name.toLowerCase()));
     }
     // Fund targets the company's own pages or the news state (launch fix 47).
     const targets = fundTargets([
@@ -761,7 +776,16 @@ export function acquiredBy(texts: string[], name: string): boolean {
 
 /** "Owned by X", "ownership transferred to X": a note and the page that says it. */
 export function ownershipFrom(items: { text: string; url: string }[]): { note: string; url: string } | undefined {
-  const re = /\b(?:(?:is |are )?(?:owned|controlled) by|ownership (?:was |has been )?(?:transferred|given) to|subsidiary of|gave (?:away )?(?:the |his |her )?company to|transferred (?:the company|ownership|its (?:voting )?stock) to)\s+((?:the\s+)?[A-Z][\w&'’.-]*(?:\s+(?:[A-Z][\w&'’.-]*|and|of|the)){0,6})/;
+  // "100% employee-owned", "an ESOP company".
+  for (const it of items) {
+    if (/\b(employee[- ]owned|employee stock ownership plan|ESOP)\b/i.test(it.text)) {
+      return { note: /\b(ESOP|employee stock ownership plan)\b/i.test(it.text) ? "Employee-owned (ESOP)" : "Employee-owned", url: it.url };
+    }
+  }
+  // Lowercase words may sit between "owned by" and the owner (launch fix
+  // 78: "owned by a non profit corporations since 2022, the Patagonia
+  // Purpose Trust and Holdfast Collective").
+  const re = /\b(?:(?:is |are )?(?:owned|controlled) by(?:\s+[a-z][\w-]*|\s+\d{4},?|,){0,10}?|ownership (?:was |has been )?(?:transferred|given) to|subsidiary of|gave (?:away )?(?:the |his |her )?company to|transferred (?:the company|ownership|its (?:voting )?stock) to)\s+((?:the\s+)?[A-Z][\w&'’.-]*(?:\s+(?:[A-Z][\w&'’.-]*|and|of|the)){0,6})/;
   for (const it of items) {
     const m = it.text.match(re);
     if (m) {
@@ -781,14 +805,16 @@ export function enforcementCases(news: NewsEntry[], names: string[]): CaseRecord
     let agency = "Federal agency";
     try { agency = new URL(n.url!).hostname.replace(/^www\./, ""); } catch { /* keep generic */ }
     const role = caseRole(n.headline, names);
+    // An OSHA inspection is a record of one, not a charge.
+    const inspection = /osha\.gov/i.test(agency) && /establishment|inspection/i.test(n.url!);
     return {
       caption: n.headline,
       court: AGENCY_NAMES[agency] ?? agency,
       filed: n.date,
       url: n.url!,
       // "Patagonia v. United States" is its own suit, not a charge.
-      role: role === "unknown" ? "charged" : role,
-      caseType: "Government enforcement",
+      role: inspection ? "unknown" : role === "unknown" ? "charged" : role,
+      caseType: inspection ? "OSHA inspection" : "Government enforcement",
     };
   });
 }
@@ -805,6 +831,7 @@ function orgMatches<T extends { name: string; entityKind?: string }>(matches: T[
 
 const EARLY_ROUND = /\b(pre-?seed|seed|angel|series [a-h])\b/i;
 const MAX_VENTURE_AGE = 25;
+const NON_INVESTOR_OWNER = /\b(trust|collective|foundation|non-?profit|employee-owned|ESOP)\b/i;
 
 /**
  * Entity type before Funding is filled (launch fix 34). A nonprofit's
@@ -821,6 +848,13 @@ export function applyEntityType(bundle: ResearchBundle, franchisor: boolean, now
     bundle.funding = bundle.funding.filter((f) => !EARLY_ROUND.test(f.round ?? "")
       || (Number(f.date?.match(/\b(19|20)\d{2}\b/)?.[0]) || now.getFullYear()) - founded <= MAX_VENTURE_AGE);
     if (bundle.funding.length < before) console.log(`[entity-type] "${bundle.company.name}": founded ${founded}, dropped ${before - bundle.funding.length} venture round(s) too late to be its own`);
+  }
+  // Owned by a trust, a nonprofit or its employees: it takes no investor
+  // rounds, so any found are someone else's (launch fix 78: Patagonia).
+  if (bundle.ownership && NON_INVESTOR_OWNER.test(bundle.ownership)) {
+    const before = bundle.funding.length;
+    bundle.funding = bundle.funding.filter((f) => /^Form D:/.test(f.round ?? ""));
+    if (bundle.funding.length < before) console.log(`[entity-type] "${bundle.company.name}": ${bundle.ownership}, dropped ${before - bundle.funding.length} round(s)`);
   }
   const type = entityTypeOf({ company: bundle.company, sec: bundle.secFilings, nonprofit: bundle.nonprofitFinancials, franchisor, funding: bundle.funding });
   bundle.company.entityType = type;

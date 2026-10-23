@@ -4,6 +4,7 @@ import type { DomainPosture } from "../agents/domain-posture-agent/index.js";
 import type { RelatedGraph } from "../lib/expansion/engine.js";
 import type { ClosureEvidence } from "../lib/closure.js";
 import type { CaseRecord, FddFigures, NpiRecord } from "../agents/public-filings-agent/index.js";
+import type { CorporateAction } from "../lib/corporate-actions.js";
 import type { SecFilings } from "../agents/sec-filings-agent/index.js";
 import type { ContractCeiling } from "../lib/contract-ceilings.js";
 
@@ -344,6 +345,8 @@ export interface ResearchBundle {
   funding: FundingEntry[];
   competitors: CompetitorEntry[];
   ownership?: string;
+  /** Acquisitions, subsidiaries and brands from news and its own pages (launch fix 80). */
+  corporateActions?: CorporateAction[];
   sources: Source[];
   risks?: string[];
   opportunities?: string[];

@@ -17,6 +17,16 @@ import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../en
  * same round listed twice keeps one entry, the dated and larger one; and
  * rounds run newest first.
  */
+/** The text has the company investing in or backing another one, and never raising itself. */
+export function investsIn(text: string, name: string): boolean {
+  const n = name.replace(/,?\s+(inc\.?|llc|corp\.?|co\.?|company)$/i, "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!n) return false;
+  const raises = new RegExp(`\\b${n}(?:['’]s)?\\s+(?:\\w+\\s+){0,2}?(raises|raised|secures|secured|closes|closed|lands|landed|nets)\\b`, "i");
+  if (raises.test(text)) return false;
+  const investor = new RegExp(`\\b${n}(?:['’]s)?\\s+(?:[\\w&,'’-]+\\s+){0,3}?(invests?|invested|backs|backed|leads|led|joins|joined|participat\\w+)\\b|\\b(led by|backed by|investors? (?:such as|like|including|include)|participation (?:of|from)|with participation from)\\s+(?:[\\w&.,'’-]+\\s+){0,6}?${n}\\b|\\b${n}-backed\\b`, "i");
+  return investor.test(text);
+}
+
 export function cleanFunding(entries: FundingEntry[]): FundingEntry[] {
   const dollars = (a?: string) => {
     const m = a?.match(/\$\s?(\d+(?:[.,]\d+)?)\s*(billion|bn|b|million|mm|m|thousand|k)?\b/i);
@@ -107,7 +117,10 @@ export class CorporateAgent {
       .filter((r) => tiedToSubject(`${r.title} ${r.snippet ?? ""}`, r.url, subject))
       // Rounds of the company itself, not of a longer name containing it
       // (launch fix 57: "Patagonia Health" rounds landed on Patagonia).
-      .filter((r) => [subject.name, ...(subject.aliases ?? [])].some((n) => namesItself(`${r.title} ${r.snippet ?? ""}`, n)));
+      .filter((r) => [subject.name, ...(subject.aliases ?? [])].some((n) => namesItself(`${r.title} ${r.snippet ?? ""}`, n)))
+      // A round it invested in is someone else's (launch fix 78: "Patagonia
+      // and H&M invest in Rubi" became Patagonia's own $8M round).
+      .filter((r) => ![subject.name, ...(subject.aliases ?? [])].some((n) => investsIn(`${r.title}. ${r.snippet ?? ""}`, n)));
 
     const sources: Source[] = results.map((r) => ({
       url: r.url,

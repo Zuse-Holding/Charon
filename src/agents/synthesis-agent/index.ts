@@ -2,6 +2,7 @@ import { ResearchBundle, Source } from "../../types/research.js";
 import { extractAnalysis, RisksOpportunitiesSchema } from "../../lib/llm.js";
 import { money } from "../report-agent/index.js";
 import type { CaseRecord } from "../public-filings-agent/index.js";
+import { STATES } from "../competitor-agent/index.js";
 
 /**
  * Risks & Opportunities synthesis.
@@ -85,6 +86,7 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
   }
   for (const p of bundle.products) facts.push({ text: `Offers: ${p.name}${p.description ? ` (${p.description})` : ""}`, url: p.sourceUrl });
   for (const x of bundle.competitors) facts.push({ text: `Competitor: ${x.name}`, url: x.url });
+  for (const a of bundle.corporateActions ?? []) facts.push({ text: `${a.kind === "Acquisition" ? "Acquired" : "Subsidiary or brand"}: ${a.name}${a.date ? ` (${a.date})` : ""}`, url: a.url, when: a.date, kind: "news" });
   const type = c.entityType;
   if (bundle.funding.length === 0 && type !== "nonprofit" && type !== "public") facts.push({ text: "Funding: no public funding records found" });
   if (bundle.ownership) facts.push({ text: `Ownership: ${bundle.ownership}`, url: bundle.sources.find((x) => x.usedFor.includes("funding"))?.url });
@@ -237,6 +239,11 @@ export function isHistoryOnly(cited: number[], facts: Fact[], now = Date.now()):
   });
 }
 
+/** The same set of fact numbers. */
+export function sameFacts(a: number[], b: number[]): boolean {
+  return a.length === b.length && a.every((n) => b.includes(n));
+}
+
 /**
  * An opportunity resting only on competitors is theirs, not this
  * company's (launch fix 77: Promise ABA's only opportunity was a review
@@ -272,6 +279,21 @@ const NOT_NAMES = new Set(["the", "its", "it", "a", "an", "this", "that", "these
   "president", "founder", "board", "risk", "federal", "state", "court", "case", "suit", "lawsuit", "news", "sec", "nlrb", "u.s", "us",
   "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]);
 
+const DISTRICT: Record<string, string> = { N: "Northern", S: "Southern", E: "Eastern", W: "Western", C: "Central", M: "Middle" };
+
+/**
+ * The facts with their abbreviations spelled out too, so a sentence that
+ * writes them out isn't read as adding a detail (launch fix 78: "Western
+ * District of Washington" for "W.D. Washington" dropped ACCO's real risk).
+ */
+export function spelledOut(text: string): string {
+  const extra: string[] = [];
+  for (const m of text.matchAll(/\b([NSEWCM])\.\s?D\./g)) extra.push(`${DISTRICT[m[1]]} District`);
+  for (const m of text.matchAll(/\b([A-Z]{2})\b/g)) if (STATES[m[1]]) extra.push(STATES[m[1]]);
+  if (/\bCir\./.test(text)) extra.push("Circuit");
+  return extra.length ? `${text} ${extra.join(" ")}` : text;
+}
+
 /**
  * A detail in the sentence that none of its cited facts state (launch fix
  * 59: ACCO's risk called a union benefit-trust suit "civil rights" and
@@ -280,7 +302,7 @@ const NOT_NAMES = new Set(["the", "its", "it", "a", "an", "this", "that", "these
  * in what the item cites.
  */
 export function unsupportedDetail(text: string, cited: number[], facts: Fact[], companyName: string): string | undefined {
-  const source = cited.map((n) => facts[n - 1]?.text ?? "").join(" ").toLowerCase();
+  const source = spelledOut(cited.map((n) => facts[n - 1]?.text ?? "").join(" ")).toLowerCase();
   const company = companyName.toLowerCase();
   for (const m of text.matchAll(DETAIL_WORDS)) if (!source.includes(m[0].toLowerCase())) return m[0];
   for (const m of text.matchAll(MONTH_YEAR)) {
@@ -369,6 +391,7 @@ RULES — these are non-negotiable:
 - Never add a detail the cited facts don't state: no case type, court, state, date or dollar figure that isn't in them. If a fact leaves a field out, leave it out too.
 - Leadership facts are current. Never build a risk on titles, turnover or a "dispute" the facts don't state.
 - For a nonprofit, risks and opportunities are about its programs, revenue mix, grants, campaigns, cases and leadership, never investors.
+- Never turn an opportunity around into a risk: a new fund, product or location is not a risk because it is new. If no fact shows a real risk, return an empty "risks" array.
 - If the facts can't support a credible assessment, return empty arrays.`,
     context,
     RisksOpportunitiesSchema
@@ -402,6 +425,11 @@ Most current and serious first: open cases against it, declines in its figures, 
     : undefined;
   const opportunities = resolveCitations(result.opportunities ?? [], facts, bundle.sources, "opportunities",
     (text, cited) => !isHistoryOnly(cited, facts) && !aboutOthersOnly(cited, facts) && checkRisk(text, cited));
+  // A risk resting on exactly the facts an opportunity rests on is the same
+  // item turned around (launch fix 78: MJW's "first fund only debuted in June").
+  const before = risks.length;
+  risks = risks.filter((r) => !opportunities.some((o) => sameFacts(r.facts, o.facts)));
+  if (risks.length < before) console.log(`[synthesis] "${bundle.company.name}": dropped ${before - risks.length} risk(s) that restate an opportunity`);
   return {
     summary: summary && !copiesDescription(summary.text, bundle.company.description) ? summary.text : undefined,
     risks: risks.map((r) => r.text),
