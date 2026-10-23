@@ -1,5 +1,5 @@
 import type { CompanyAnchor } from "../../types/research.js";
-import { mentionsCompany, normalizeWords } from "../news-noise.js";
+import { mentionsCompany, namesItself, normalizeWords } from "../news-noise.js";
 import { cityOf } from "../closure.js";
 
 /**
@@ -12,6 +12,8 @@ export interface SubjectRecord {
   anchor: CompanyAnchor;
   /** Bare domain of the matched website, e.g. "juiceequity.com". */
   domain?: string;
+  /** Short names, for a national brand only ("Crumbl"), launch fix 61. */
+  aliases?: string[];
 }
 
 export function hostOf(url: string | undefined): string | undefined {
@@ -47,10 +49,11 @@ export function tiedToSubject(text: string, url: string | undefined, rec: Subjec
  * settled who the company is, its name or short name is enough; the city
  * is still required when namesakes are known or no site was matched.
  */
-export function newsAboutSubject(text: string, url: string | undefined, rec: SubjectRecord, aliases: string[] = []): boolean {
+export function newsAboutSubject(text: string, url: string | undefined, rec: SubjectRecord, aliases: string[] = rec.aliases ?? []): boolean {
   const host = hostOf(url);
   if (rec.domain && host && (host === rec.domain || host.endsWith(`.${rec.domain}`))) return true;
-  if (![rec.name, ...aliases].some((n) => mentionsCompany(text, n))) return false;
+  // Named as itself, not inside a longer name ("Patagonia Health").
+  if (![rec.name, ...aliases].some((n) => mentionsCompany(text, n) && namesItself(text, n))) return false;
   if (rec.domain && !rec.anchor.unlisted) return true;
   const city = cityOf(rec.anchor.location);
   return !city || normalizeWords(text).includes(normalizeWords(city));

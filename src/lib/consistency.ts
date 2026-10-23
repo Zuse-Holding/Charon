@@ -1,6 +1,6 @@
 import type { PersonResearchBundle, ResearchBundle } from "../types/research.js";
 import { cityOf } from "./closure.js";
-import { brandName, normalizeWords } from "./news-noise.js";
+import { mentionsCompany, normalizeWords } from "./news-noise.js";
 import { newsAboutSubject, tiedToSubject, type SubjectRecord } from "./entities/subject.js";
 import { isCitable } from "./source-quality.js";
 
@@ -64,9 +64,10 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
   const city = cityOf(subject.anchor.location);
   const namesCity = (t: string | undefined) => !city || normalizeWords(t ?? "").includes(normalizeWords(city));
 
-  const alias = brandName(subject.name, subject.domain);
+  // Short names only for a national brand (subject.aliases); enforcement
+  // items found on an agency's site by the company's name stay.
   bundle.news = keep("news not tied to the subject", bundle.news,
-    (n) => newsAboutSubject(`${n.headline} ${n.summary ?? ""}`, n.url, subject, alias ? [alias] : []));
+    (n) => newsAboutSubject(`${n.headline} ${n.summary ?? ""}`, n.url, subject) || (!!n.enforcement && mentionsCompany(`${n.headline} ${n.summary ?? ""}`, subject.name)));
   // A job posting names the company but isn't news about it (launch fix 8:
   // Promise ABA's one "news" hit was a data-analyst listing in Burbank).
   bundle.news = keep("job listings in news", bundle.news,

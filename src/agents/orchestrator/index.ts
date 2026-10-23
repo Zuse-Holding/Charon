@@ -18,13 +18,14 @@ import { ProPublicaNonprofitAgent } from "../propublica-nonprofit-agent/index.js
 import { LittleSisAgent, LittleSisRelationshipEntry } from "../littlesis-agent/index.js";
 import { DomainPostureAgent } from "../domain-posture-agent/index.js";
 import { RelatedEntitiesAgent } from "../related-entities-agent/index.js";
-import { PublicFilingsAgent, fundNames, fundTargets, isHealthcare, nameVariants, rankCases } from "../public-filings-agent/index.js";
+import { PublicFilingsAgent, caseRole, fundNames, fundTargets, isHealthcare, nameVariants, rankCases, type CaseRecord } from "../public-filings-agent/index.js";
 
 const INVESTMENT_FIRM = /\b(invest\w*|capital|equity|fund|sponsor|asset management|real estate investment|private equity|holdings)\b/i;
 import { SecFilingsAgent, type SecFilings } from "../sec-filings-agent/index.js";
 import { applyAppointments, appointmentsFromNews, checkFoundersAgainst, cleanLeadership, foundedBy, personKey } from "../../lib/leadership.js";
 import { entityTypeOf } from "../../lib/entity-type.js";
 import { strongNameMatch } from "../../lib/name-match.js";
+import { brandName } from "../../lib/news-noise.js";
 import { contractCeilings } from "../../lib/contract-ceilings.js";
 import { guardFromEnv } from "../../lib/exclusions/adapters.js";
 import { siteOf } from "../../lib/provenance/findings.js";
@@ -41,6 +42,7 @@ import {
 import {
   CompanyAnchor,
   CreatorResearchBundle,
+  NewsEntry,
   PersonResearchBundle,
   PoliticalResearchBundle,
   ProductResearchBundle,
@@ -173,6 +175,20 @@ export class ResearchOrchestrator {
     const national = !queryAnchor.location && (!!sec || !!siteResult.company.chain || isNationalScale(siteResult.company));
     const tieAnchor: CompanyAnchor = national ? { ...anchor, location: undefined } : anchor;
     const subject: SubjectRecord = { name: companyName, anchor: tieAnchor, domain: hostOf(siteResult.company.website) };
+    // Every name a registry may file it under (launch fixes 57, 60, 67):
+    // the resolved name, the legal entity from its site or the SEC, and for
+    // a national brand the short name the press and courts use ("Crumbl").
+    const alias = national ? brandName(companyName, subject.domain) : undefined;
+    const entityNames = [...new Set([companyName, siteResult.company.legalName, sec?.name, alias].filter((n): n is string => !!n))];
+    if (alias) subject.aliases = [alias];
+    // What the business is, for checking a short-name news match (fix 61).
+    const profileTerms = [
+      ...[siteResult.company.industry, siteResult.company.role].join(" ").split(/[^A-Za-z]+/).filter((w) => w.length >= 6),
+      cityOf(siteResult.company.headquarters ?? anchor.location) ?? "",
+      ...siteResult.leadership.map((l) => l.name.split(/\s+/).pop() ?? ""),
+      ...(siteResult.company.legalName ? [siteResult.company.legalName] : []),
+    ].filter((t) => t && t.length >= 4);
+    console.log(`[entity] "${queryName}" -> ${entityNames.map((n) => `"${n}"`).join(", ")}`);
     // The site couldn't be read and nothing else tied the name to it:
     // nothing found by name alone stands in for it. A listing linking to the
     // site settles who it is, so news and peers still run (Crumbl, fix 25).
@@ -181,7 +197,7 @@ export class ResearchOrchestrator {
     const [newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
         unreadable ? Promise.resolve({ news: [], sources: [] })
-          : cov.run("news", () => this.newsAgent.run(companyName, tieAnchor, subject.domain), { news: [], sources: [] }, (r) => r.news.length),
+          : cov.run("news", () => this.newsAgent.run(companyName, tieAnchor, subject.domain, { aliases: subject.aliases, profileTerms }), { news: [], sources: [] }, (r) => r.news.length),
         unreadable ? Promise.resolve({ competitors: [], sources: [] })
           : cov.run("competitors", () => this.competitorAgent.run(companyName, subject, {
             role: siteResult.company.role,
@@ -197,7 +213,7 @@ export class ResearchOrchestrator {
         cov.run("sec", () => this.corporateAgent.run(companyName, subject), { funding: [], insiderActivity: [], sources: [] },
           (r) => r.funding.length + r.insiderActivity.length + (r.ownership ? 1 : 0)),
         // Free public API, no tier gating — every research run gets this.
-        cov.run("usaspending", () => this.usaSpendingAgent.run(companyName), { awards: [], sources: [] }, (r) => r.awards.length),
+        cov.run("usaspending", () => this.usaSpendingAgent.run(companyName, entityNames), { awards: [], sources: [] }, (r) => r.awards.length),
       ]);
 
     const website = siteResult.company.website;
@@ -247,14 +263,14 @@ export class ResearchOrchestrator {
     // An investment sponsor's funds file under its short name (launch fix 47).
     const sponsor = INVESTMENT_FIRM.test(`${companyName} ${siteResult.company.industry ?? ""} ${siteResult.company.role ?? ""}`);
     const registry = Promise.all([
-      proAccess ? cov.run("courtlistener", () => filings.courtCases(companyName), { cases: [], sources: [] }, (r) => r.cases.length) : Promise.resolve({ cases: [], sources: [] }),
-      proAccess ? cov.run("nlrb", () => filings.nlrbCases(companyName), { cases: [], sources: [] }, (r) => r.cases.length) : Promise.resolve({ cases: [], sources: [] }),
+      proAccess ? cov.run("courtlistener", () => filings.courtCases(companyName, entityNames), { cases: [], sources: [] }, (r) => r.cases.length) : Promise.resolve({ cases: [], sources: [] }),
+      proAccess ? cov.run("nlrb", () => filings.nlrbCases(companyName, entityNames), { cases: [], sources: [] }, (r) => r.cases.length) : Promise.resolve({ cases: [], sources: [] }),
       healthcare ? cov.run("npi", () => filings.npiRecords(companyName, stateCode), { records: [], sources: [] }, (r) => r.records.length) : Promise.resolve({ records: [], sources: [] }),
       siteResult.company.founded ? Promise.resolve({ record: undefined, sources: [] })
-        : cov.run("state-records", () => filings.stateFormation(companyName, recordState), { record: undefined, sources: [] }, (r) => (r.record ? 1 : 0)),
+        : cov.run("state-records", () => filings.stateFormation(siteResult.company.legalName ?? companyName, recordState), { record: undefined, sources: [] }, (r) => (r.record ? 1 : 0)),
       franchisor ? cov.run("fdd", () => filings.fddFigures(companyName), { fdd: undefined, sources: [] }, (r) => (r.fdd ? 1 : 0))
         : Promise.resolve({ fdd: undefined, sources: [] }),
-      proAccess ? cov.run("formd", () => filings.formDFilings([...nameVariants(companyName), ...fundNames(fundTexts, companyName)], sponsor ? companyName.split(/\s+/)[0] : undefined), { funding: [], sources: [] }, (r) => r.funding.length)
+      proAccess ? cov.run("formd", () => filings.formDFilings([...new Set([...entityNames.filter((n) => n !== alias), ...nameVariants(companyName), ...fundNames(fundTexts, companyName)])], sponsor ? companyName.split(/\s+/)[0] : undefined), { funding: [], sources: [] }, (r) => r.funding.length)
         : Promise.resolve({ funding: [], sources: [] }),
     ]);
 
@@ -327,8 +343,12 @@ export class ResearchOrchestrator {
       powerMapConnections: orgMatches(littleSisResult.matches, companyName),
       domainPosture: postureResult.posture,
       relatedEntities: relatedResult.graph,
-      // Most material first (launch fix 21).
-      courtCases: [...courtResult.cases, ...nlrbResult.cases].length ? rankCases([...courtResult.cases, ...nlrbResult.cases]) : undefined,
+      // Most material first (launch fix 21). Government actions from agency
+      // sites join them (launch fix 62).
+      courtCases: (() => {
+        const all = [...courtResult.cases, ...nlrbResult.cases, ...enforcementCases(newsResult.news, entityNames)];
+        return all.length ? rankCases(all) : undefined;
+      })(),
       secFilings: sec,
       fdd: fddResult.fdd,
       npiRecords: npiResult.records.length ? npiResult.records : undefined,
@@ -706,6 +726,31 @@ export function isNationalScale(c: { locations?: string[]; description?: string;
  * the business address as HQ when nothing else gave one, and the executive
  * officers as leadership, cited to the 10-K.
  */
+/**
+ * DOJ, SEC, FTC, EPA, OSHA and DOL items as case records (launch fix 62):
+ * "United States v. ACCO Engineered Systems, Inc." is a suit against it.
+ */
+export function enforcementCases(news: NewsEntry[], names: string[]): CaseRecord[] {
+  return news.filter((n) => n.enforcement && n.url).map((n) => {
+    let agency = "Federal agency";
+    try { agency = new URL(n.url!).hostname.replace(/^www\./, ""); } catch { /* keep generic */ }
+    const role = caseRole(n.headline, names);
+    return {
+      caption: n.headline,
+      court: AGENCY_NAMES[agency] ?? agency,
+      filed: n.date,
+      url: n.url!,
+      role: role === "unknown" || role === "plaintiff" ? "charged" : role,
+      caseType: "Government enforcement",
+    };
+  });
+}
+
+const AGENCY_NAMES: Record<string, string> = {
+  "justice.gov": "U.S. Department of Justice", "sec.gov": "SEC", "ftc.gov": "FTC", "epa.gov": "EPA",
+  "osha.gov": "OSHA", "dol.gov": "U.S. Department of Labor", "eeoc.gov": "EEOC",
+};
+
 function orgMatches<T extends { name: string; entityKind?: string }>(matches: T[], companyName: string): T[] | undefined {
   const kept = matches.filter((m) => m.entityKind !== "Person" && strongNameMatch(m.name, companyName));
   return kept.length ? kept : undefined;

@@ -18,6 +18,7 @@ import {
   fetchPageText,
   htmlToFullText,
 } from "../../lib/providers.js";
+import { typoOf } from "../../lib/name-match.js";
 import { crawlTargets, readSiteRecord, sitemapUrls, type SiteRecord } from "../../lib/entities/site-record.js";
 
 /** A business's own site as read: every page, and what it states. */
@@ -449,7 +450,8 @@ export class WebsiteAgent {
           };
         }
         // A chain store's title carries its location ("Crumbl - Hilton Head").
-        companyName = anchorIn.nameFromSite ? (chain ? siteListing.title.split(/\s[|\-–—·]\s/)[0].trim() : siteListing.title) : queryName;
+        const listed = chain ? siteListing.title.split(/\s[|\-–—·]\s/)[0].trim() : siteListing.title;
+        companyName = anchorIn.nameFromSite || typoOf(queryName, listed) ? listed : queryName;
         const city = listingCity(siteListing.address);
         const state = siteListing.address?.match(/\b([A-Z]{2})\s+\d{5}\b/)?.[1];
         if (!anchorIn.location && city && !chain) anchor = { ...anchorIn, location: [city, state].filter(Boolean).join(", ") };
@@ -460,6 +462,14 @@ export class WebsiteAgent {
     if (site) {
       const read = site;
       if (anchorIn.nameFromSite && read.record.name) companyName = read.record.name;
+      // A typo in the name the user gave ("Pomise ABA"), once the site
+      // settled who it is: every later search uses the site's spelling
+      // (launch fix 60: Crumbl's 19 court records went to zero as "Crmbl").
+      const siteName = read.record.name?.split(/\s[|\-–—·:]\s/)[0].trim();
+      if (!anchorIn.nameFromSite && siteName && typoOf(queryName, siteName)) {
+        console.log(`[website-agent] "${queryName}" resolved to "${siteName}" from its site`);
+        companyName = siteName;
+      }
       // The site's own city anchors every search below, so a same-named
       // business elsewhere can't pass as this one.
       if (!anchorIn.location && read.record.city) {
@@ -536,7 +546,7 @@ export class WebsiteAgent {
       page = null;
     }
 
-    const company: CompanyProfile = { name: companyName };
+    const company: CompanyProfile = { name: companyName, legalName: site?.record.legalName };
     if (anchor.location || anchor.website) company.anchor = anchor;
     if (siteUnreadable) company.siteUnreadable = siteUnreadable;
 

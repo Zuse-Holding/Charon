@@ -1,7 +1,7 @@
 import type { FundingEntry, Source } from "../../types/research.js";
 import type { SearchProvider } from "../../lib/providers.js";
 import { CourtListenerAgent } from "../courtlistener-agent/index.js";
-import { strongNameMatch } from "../../lib/name-match.js";
+import { partyIs, strongNameMatch } from "../../lib/name-match.js";
 import { secJson, secText } from "../../lib/sec-http.js";
 import { mentionsCompany } from "../../lib/news-noise.js";
 import { extractStructured, FddExtractionSchema } from "../../lib/llm.js";
@@ -35,21 +35,37 @@ export interface CaseRecord {
   routine?: boolean;
 }
 
-/** "Blyden v. Graybar Electric Company" -> defendant; "In re Graybar" -> debtor. */
-export function caseRole(caption: string, companyName: string): CaseRecord["role"] {
+/**
+ * "Blyden v. Graybar Electric Company" -> defendant; "In re Graybar" ->
+ * debtor. The company must be a party itself, not a namesake (launch fixes
+ * 57, 58: "PATAGONIA, INC. v. PATAGONIA CANDLES LLC" was read as a suit
+ * against Patagonia because "Patagonia Candles" contains its name).
+ * @param names The company's names: resolved, legal, short.
+ */
+export function caseRole(caption: string, names: string | string[]): CaseRecord["role"] {
+  const list = (Array.isArray(names) ? names : [names]).filter(Boolean);
   const inRe = caption.match(/^in re:?\s+(.+)$/i);
-  if (inRe) return mentionsCompany(inRe[1], companyName) ? "debtor" : "unknown";
+  if (inRe) return partyIs(inRe[1], list) ? "debtor" : "unknown";
   const parts = caption.split(/\s+v(?:s)?\.?\s+/i);
   if (parts.length < 2) return "unknown";
-  if (mentionsCompany(parts.slice(1).join(" v. "), companyName)) return "defendant";
-  if (mentionsCompany(parts[0], companyName)) return "plaintiff";
+  const plaintiff = partyIs(parts[0], list);
+  const defendant = partyIs(parts.slice(1).join(" v. "), list);
+  if (plaintiff && !defendant) return "plaintiff";
+  if (defendant && !plaintiff) return "defendant";
   return "unknown";
+}
+
+/** The company is a party to this caption at all (exact party, not a namesake). */
+export function isParty(caption: string, names: string[]): boolean {
+  const inRe = caption.match(/^in re:?\s+(.+)$/i);
+  if (inRe) return partyIs(inRe[1], names);
+  return caption.split(/\s+v(?:s)?\.?\s+/i).some((side) => partyIs(side, names));
 }
 
 const BANKRUPTCY_COURT = /^[a-z]{2,4}b$/;
 
 /** Role, status and whether it's routine, from a CourtListener docket. */
-export function caseContext(r: { caseName: string; courtId?: string; court?: string; nature?: string; dateTerminated?: string }, companyName: string): Pick<CaseRecord, "role" | "caseType" | "status" | "routine"> {
+export function caseContext(r: { caseName: string; courtId?: string; court?: string; nature?: string; dateTerminated?: string }, companyName: string | string[]): Pick<CaseRecord, "role" | "caseType" | "status" | "routine"> {
   const role = caseRole(r.caseName, companyName);
   const bankruptcy = BANKRUPTCY_COURT.test(r.courtId ?? "") || /bankruptcy/i.test(r.court ?? "");
   return {
@@ -220,9 +236,11 @@ export function parseNppes(data: NppesResponse | null, companyName: string): Npi
 }
 
 /** An NLRB case page: nlrb.gov/case/27-CA-374248. */
-export function nlrbCase(r: { title: string; url: string; snippet?: string }, companyName: string): CaseRecord | undefined {
+export function nlrbCase(r: { title: string; url: string; snippet?: string }, companyName: string, names: string[] = []): CaseRecord | undefined {
   const m = r.url.match(/nlrb\.gov\/case\/(\d{2}-[A-Z]{2}-\d+)/i);
-  if (!m || !mentionsCompany(`${r.title} ${r.snippet ?? ""}`, companyName)) return undefined;
+  // The case page's title is the party: it must be the company itself.
+  const party = r.title.split(/\s[|\-–—]\s/)[0];
+  if (!m || !partyIs(party, [companyName, ...names])) return undefined;
   const filed = `${r.title} ${r.snippet ?? ""}`.match(/Date Filed:?\s*([0-9/]+|[A-Z][a-z]+ \d{1,2}, \d{4})/)?.[1];
   // "CA" cases are charges against an employer; "CB" against a union.
   const kind = m[1].toUpperCase().split("-")[1];
@@ -312,9 +330,12 @@ Omit anything not stated. Never estimate.`,
     };
   }
 
-  async courtCases(companyName: string): Promise<{ cases: CaseRecord[]; sources: Source[] }> {
-    // The name as searched and without its legal suffix, up to 3 pages each.
-    const variants = [...new Set([companyName, bareName(companyName)])];
+  /** @param names Other names it files under: legal name, short name (launch fixes 57, 60, 67). */
+  async courtCases(companyName: string, names: string[] = []): Promise<{ cases: CaseRecord[]; sources: Source[] }> {
+    // The name as searched and without its legal suffix, plus its legal
+    // name, up to 3 pages each.
+    const all = [...new Set([companyName, ...names].filter(Boolean))];
+    const variants = [...new Set([companyName, bareName(companyName), ...names.filter((n) => n.split(/\s+/).length > 1)])].slice(0, 3);
     const seen = new Set<string>();
     const runs = await Promise.all(variants.map((v) => new CourtListenerAgent().run(`"${v}"`, 3)));
     // Every search failing is an error for the coverage table, not "none found".
@@ -322,14 +343,15 @@ Omit anything not stated. Never estimate.`,
     const records = runs
       .flatMap((r) => r.records).filter((r) => !seen.has(r.url) && seen.add(r.url));
     const cases = records
-      .filter((r) => mentionsCompany(r.caseName, companyName))
-      .map((r) => ({ caption: r.caseName, court: r.court, docketNumber: r.docketNumber, filed: r.dateFiled, url: r.url, ...caseContext(r, companyName) }));
+      // A party by its exact name, never a namesake ("Patagonia Seafarms").
+      .filter((r) => isParty(r.caseName, all))
+      .map((r) => ({ caption: r.caseName, court: r.court, docketNumber: r.docketNumber, filed: r.dateFiled, url: r.url, ...caseContext(r, all) }));
     return { cases, sources: cases.map((c) => source(c.url, `CourtListener — ${c.caption}`, "court-records")) };
   }
 
-  async nlrbCases(companyName: string): Promise<{ cases: CaseRecord[]; sources: Source[] }> {
+  async nlrbCases(companyName: string, names: string[] = []): Promise<{ cases: CaseRecord[]; sources: Source[] }> {
     const results = await this.searcher.search(`site:nlrb.gov/case "${companyName}"`, 8);
-    const cases = results.map((r) => nlrbCase(r, companyName)).filter((c): c is CaseRecord => !!c);
+    const cases = results.map((r) => nlrbCase(r, companyName, names)).filter((c): c is CaseRecord => !!c);
     return { cases, sources: cases.map((c) => source(c.url, `NLRB case ${c.docketNumber}`, "court-records")) };
   }
 

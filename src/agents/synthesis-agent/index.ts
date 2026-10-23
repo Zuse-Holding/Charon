@@ -112,9 +112,20 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
   }
   // Cases arrive ranked (cases against the company, open, newest first);
   // routine bankruptcy matters aren't risks (launch fix 21).
+  // Suits the company brought are never risks (launch fix 58: MJW's top
+  // risk was its own suit against SentryWest; Patagonia's its trademark
+  // suit against Patagonia Candles). They're summed up once instead, as
+  // what the company enforces (launch fix 68: ~40 trademark suits).
+  const cases = bundle.courtCases ?? [];
+  const brought = cases.filter((c) => c.role === "plaintiff");
+  if (brought.length >= 3) {
+    const ip = brought.filter((c) => /trademark|patent|copyright|lanham|intellectual/i.test(`${c.caseType ?? ""} ${c.caption}`)).length;
+    facts.push({ text: `Suits it brought (not risks): ${brought.length} as plaintiff${ip ? `, ${ip} over trademarks, patents or copyrights` : ""}`, url: brought[0].url, kind: "trend" });
+  }
+  const against = cases.filter((c) => !c.routine && c.role !== "plaintiff");
   // Related suits read as one pattern, ahead of the cases themselves.
-  for (const cl of caseClusters(bundle.courtCases ?? [])) facts.push({ text: `Case pattern: ${cl.text}`, url: cl.cases[0].url, when: cl.cases[0].filed, kind: "case" });
-  for (const c of (bundle.courtCases ?? []).filter((x) => !x.routine).slice(0, 5)) {
+  for (const cl of caseClusters(against)) facts.push({ text: `Case pattern: ${cl.text}`, url: cl.cases[0].url, when: cl.cases[0].filed, kind: "case" });
+  for (const c of against.slice(0, 6)) {
     const side = c.role === "defendant" ? "company is the defendant" : c.role === "plaintiff" ? "company is the plaintiff"
       : c.role === "charged" ? "charge against the company" : c.role === "debtor" ? "company is the debtor" : "";
     const ctx = [c.court && `${c.court}${c.docketNumber ? ` ${c.docketNumber}` : ""}`, c.filed && `filed ${c.filed}`, side, c.caseType, c.status].filter(Boolean).join(", ");
@@ -238,6 +249,35 @@ export function contradictsCases(text: string, cited: number[], facts: Fact[]): 
   return false;
 }
 
+const DETAIL_WORDS = /\b(civil rights|discrimination|harassment|retaliation|wrongful termination|personal injury|wrongful death|product liability|breach of contract|fraud|antitrust|patent|trademark|copyright|erisa|wage|overtime|class action|securities|environmental|asbestos|qui tam|whistleblower)\b/gi;
+const MONTH_YEAR = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{4})\b/gi;
+const NOT_NAMES = new Set(["the", "its", "it", "a", "an", "this", "that", "these", "their", "company", "inc", "llc", "ceo", "cfo", "coo",
+  "president", "founder", "board", "risk", "federal", "state", "court", "case", "suit", "lawsuit", "news", "sec", "nlrb", "u.s", "us",
+  "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]);
+
+/**
+ * A detail in the sentence that none of its cited facts state (launch fix
+ * 59: ACCO's risk called a union benefit-trust suit "civil rights" and
+ * cited a California case that doesn't exist). Case types, month-and-year
+ * dates, and capitalized names other than the company's must each appear
+ * in what the item cites.
+ */
+export function unsupportedDetail(text: string, cited: number[], facts: Fact[], companyName: string): string | undefined {
+  const source = cited.map((n) => facts[n - 1]?.text ?? "").join(" ").toLowerCase();
+  const company = companyName.toLowerCase();
+  for (const m of text.matchAll(DETAIL_WORDS)) if (!source.includes(m[0].toLowerCase())) return m[0];
+  for (const m of text.matchAll(MONTH_YEAR)) {
+    if (!source.includes(m[2]) || !source.includes(m[1].toLowerCase().slice(0, 3))) return m[0];
+  }
+  const words = text.match(/[A-Za-z][A-Za-z.'’&-]*/g) ?? [];
+  for (const w of words.slice(1)) {
+    const bare = w.replace(/['’]s$/, "").replace(/[.'’-]+$/, "");
+    if (!/^[A-Z]/.test(bare) || NOT_NAMES.has(bare.toLowerCase()) || company.includes(bare.toLowerCase())) continue;
+    if (!source.includes(bare.toLowerCase())) return bare;
+  }
+  return undefined;
+}
+
 // Risks any company "faces" (launch fix 4): ACCO's and MJW's top risk was
 // competing with bigger names. A risk has to be about this business.
 const GENERIC_RISK = /\b(faces?|facing) (direct |stiff |intense |significant )?competition\b|\bcompet\w* (with|against) (larger|bigger|established|well[- ]funded|major|national)\b|\b(larger|bigger|established|well[- ]funded) (competitors|rivals|players)\b|\b(economic|market) (downturns?|conditions|volatility)\b|\bregulatory changes\b/i;
@@ -308,7 +348,8 @@ RULES — these are non-negotiable:
 - A funding round more than 18 months old is history, never a current opportunity.
 - An opportunity is ahead of the business: an expansion under way, a contract vehicle with room left under its ceiling, a new market, a campaign in progress. A past federal award, grant or round is history, never an opportunity, and never call a past grant "scheduled".
 - Connect facts instead of listing them: related cases filed together are one risk; a "Case pattern" or "trend" fact beats several single facts. Say what changed and by how much.
-- State case status and the company's side exactly as the facts give them.
+- State case status and the company's side exactly as the facts give them. A suit the company brought is never a risk.
+- Never add a detail the cited facts don't state: no case type, court, state, date or dollar figure that isn't in them. If a fact leaves a field out, leave it out too.
 - Leadership facts are current. Never build a risk on titles, turnover or a "dispute" the facts don't state.
 - For a nonprofit, risks and opportunities are about its programs, revenue mix, grants, campaigns, cases and leadership, never investors.
 - If the facts can't support a credible assessment, return empty arrays.`,
@@ -317,7 +358,11 @@ RULES — these are non-negotiable:
   );
 
   if (!result) return null;
-  const checkRisk = (text: string, cited: number[]) => !contradictsCases(text, cited, facts);
+  const checkRisk = (text: string, cited: number[]) => {
+    const extra = unsupportedDetail(text, cited, facts, bundle.company.name);
+    if (extra) console.log(`[synthesis] dropped an item for "${extra}", which its facts don't state: ${text.slice(0, 120)}`);
+    return !extra && !contradictsCases(text, cited, facts);
+  };
 
   let risks = resolveCitations((result.risks ?? []).filter((r) => !isGenericRisk(r.text)), facts, bundle.sources, "risks", checkRisk);
   // No risk survived from a rich fact set (launch fix 35: Homeboy's summary
@@ -339,7 +384,7 @@ Most current and serious first: open cases against it, declines in its figures, 
     ? resolveCitations([result.summary], facts, bundle.sources, "overview")[0]
     : undefined;
   const opportunities = resolveCitations(result.opportunities ?? [], facts, bundle.sources, "opportunities",
-    (text, cited) => !isHistoryOnly(cited, facts) && !contradictsCases(text, cited, facts));
+    (text, cited) => !isHistoryOnly(cited, facts) && checkRisk(text, cited));
   return {
     summary: summary && !copiesDescription(summary.text, bundle.company.description) ? summary.text : undefined,
     risks: risks.map((r) => r.text),

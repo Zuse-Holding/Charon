@@ -18,6 +18,18 @@ export interface SiteRecord {
   hours?: string;
   /** Named providers or staff with a credential ("Jessica Lizana", "DDS"). */
   people: { name: string; title: string }[];
+  /** The legal entity in the copyright line ("Patagonia, Inc."), launch fix 57. */
+  legalName?: string;
+}
+
+/**
+ * The legal entity a site's copyright line names: "© 2026 Patagonia, Inc.
+ * All rights reserved." Only names ending in a legal form count.
+ */
+export function legalNameFrom(text: string): string | undefined {
+  const m = text.match(/(?:©|&copy;|\(c\)|copyright)\s*(?:\d{4}(?:\s*[-–]\s*\d{4})?\s*,?\s*)?((?:[A-Z0-9][\w&'’.-]*,?\s+){0,5}?(?:Inc\.?|Incorporated|LLC|L\.L\.C\.|Corp\.?|Corporation|Company|Co\.|Ltd\.?|LP|L\.P\.|LLP|PBC|PLLC|P\.C\.))(?=[\s.,|]|$)/i);
+  const name = m?.[1]?.replace(/\s+/g, " ").trim().replace(/^(the)\s+/i, "");
+  return name && name.length <= 80 && /^[A-Z0-9]/.test(name) ? name : undefined;
 }
 
 // A domain or URL typed into a search field. Emails don't count.
@@ -137,6 +149,7 @@ export function readSiteRecord(html: string): SiteRecord {
 
   const text = htmlToFullText(html);
   record.name ??= metaContent(html, "og:site_name") ?? titleName(html);
+  record.legalName = legalNameFrom(text);
   if (!record.address) {
     const m = text.match(ADDRESS_RE);
     if (m) {

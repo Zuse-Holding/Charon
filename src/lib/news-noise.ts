@@ -178,3 +178,64 @@ export function isLawFirmSolicitation(headline: string, snippet?: string): boole
   const t = `${headline} ${snippet ?? ""}`;
   return SOLICITATION.test(t) || (SOLICITING_FIRMS.test(t) && /\b(investigat\w*|class action|investors?|shareholders?)\b/i.test(t));
 }
+
+// Words that can follow a company's name in a title-case headline without
+// making a longer name: verbs, titles, legal forms.
+const AFTER_NAME = new Set(["inc", "llc", "corp", "co", "company", "ltd", "lp", "plc", "holdings", "group", "ceo", "cfo", "coo", "cto",
+  "president", "founder", "founders", "co-founder", "chair", "chairman", "board", "raises", "raised", "secures", "closes", "lands",
+  "announces", "launches", "names", "appoints", "hires", "taps", "opens", "acquires", "buys", "sells", "sues", "sued", "settles",
+  "files", "wins", "expands", "plans", "to", "and", "in", "at", "for", "of", "on", "with", "is", "has", "says", "said", "reports",
+  "posts", "cuts", "lays", "closing", "closes", "unveils", "debuts", "partners", "agrees", "completes", "receives", "gets", "faces",
+  "stock", "shares", "employees", "workers", "stores", "locations", "jacket", "jackets", "x", "vs", "v", "news", "inc.", "llc."]);
+const BEFORE_NAME = /\b(town|city|county|village|lake|port|university|school|district|church|hotel|bank|state) of\s*$/i;
+
+/**
+ * The text names this organization itself, not a longer name that
+ * contains it (launch fix 57: "Patagonia Health raises Series A" is not
+ * Patagonia; "Town of Patagonia" is not either). At least one mention
+ * must be followed by a lowercase word, punctuation, the end, or a word a
+ * headline puts after a company's name.
+ */
+export function namesItself(text: string, name: string): boolean {
+  const core = name.replace(/,?\s+(inc\.?|llc|corp\.?|corporation|co\.?|company|ltd\.?)$/i, "").trim();
+  if (!core) return false;
+  const esc = core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  for (const m of text.matchAll(new RegExp(`\\b${esc}\\b(['’]s\\b)?`, "gi"))) {
+    const before = text.slice(Math.max(0, (m.index ?? 0) - 30), m.index ?? 0);
+    if (BEFORE_NAME.test(before)) continue;
+    if (m[1]) return true;
+    const rest = text.slice((m.index ?? 0) + m[0].length);
+    const next = rest.match(/^\s*([A-Za-z][\w.'’-]*)/)?.[1];
+    if (!next || /^[^A-Za-z]*$/.test(rest.slice(0, 2).trim()) || /^[a-z]/.test(next) || AFTER_NAME.has(next.toLowerCase())) return true;
+    // "Patagonia, Inc." / "Patagonia:" / "Patagonia —"
+    if (/^\s*[,:;—–(-]/.test(rest)) return true;
+  }
+  return false;
+}
+
+// Shopping and deal content (launch fix 61: Patagonia's "news" was sale
+// articles), and stock-quote pages (Limbach).
+const SHOPPING = /\b(on sale|sale:|deals?\b|discount|\d+% off|coupon|promo code|best .{0,30} to buy|gift guide|black friday|cyber monday|prime day|review:|reviewed|we tested)\b/i;
+const QUOTE_PAGE = /\b(stock (price|quote)|share price|stock forecast|price target|\(NASDAQ:|\(NYSE:)\b/i;
+const QUOTE_HOSTS = ["finance.yahoo.com", "marketbeat.com", "stockanalysis.com", "investing.com", "marketwatch.com", "nasdaq.com",
+  "zacks.com", "stocktitan.net", "simplywall.st", "macrotrends.net", "tipranks.com", "stockinvest.us", "wallmine.com", "companiesmarketcap.com"];
+
+export function isShoppingOrQuote(headline: string, url: string | undefined): boolean {
+  let host = "";
+  try { host = url ? new URL(url).hostname.replace(/^www\./, "").toLowerCase() : ""; } catch { /* no host */ }
+  if (QUOTE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) && QUOTE_PAGE.test(headline)) return true;
+  if (/\/(quote|quotes|stock|stocks|symbol)\//i.test(url ?? "") && !/\/news\//i.test(url ?? "")) return true;
+  return SHOPPING.test(headline);
+}
+
+// Government enforcement sources (launch fix 62).
+const ENFORCEMENT_HOSTS = ["justice.gov", "sec.gov", "ftc.gov", "epa.gov", "osha.gov", "dol.gov", "eeoc.gov", "cfpb.gov", "consumerfinance.gov", "hhs.gov", "oig.hhs.gov", "fda.gov"];
+
+export function isEnforcementSource(url: string | undefined): boolean {
+  try {
+    const host = url ? new URL(url).hostname.replace(/^www\./, "").toLowerCase() : "";
+    return ENFORCEMENT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}

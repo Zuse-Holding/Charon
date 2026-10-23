@@ -1,4 +1,5 @@
 import { anchorSuffix, tiedToSubject, type SubjectRecord } from "../../lib/entities/subject.js";
+import { namesItself } from "../../lib/news-noise.js";
 import {
   CorporateAgentResult,
   FundingEntry,
@@ -32,6 +33,10 @@ export function cleanFunding(entries: FundingEntry[]): FundingEntry[] {
   for (const f of entries) {
     const amount = dollars(f.amount);
     if (amount !== undefined && amount < 50_000) continue;
+    // An amount with no round name and no investors is usually something
+    // else: a facility investment, a contract (launch fix 64: ACCO's
+    // "Round: $36 million" was a new building).
+    if ((!f.round || /^(round|funding|investment)$/i.test(f.round.trim())) && !f.investors?.length) continue;
     const k = key(f) || `${f.amount}-${f.date}`;
     const prev = kept.get(k);
     if (!prev || (time(f.date) > 0 && time(prev.date) === 0) || (dollars(f.amount) ?? 0) > (dollars(prev.amount) ?? 0)) kept.set(k, f);
@@ -99,7 +104,10 @@ export class CorporateAgent {
     const rawResults = [...newsResults, ...recentResults, ...olderResults].filter((r) => !seenUrl.has(r.url) && seenUrl.add(r.url));
     const results = rawResults
       .filter((r) => !isRejectedDomain(r.url, override))
-      .filter((r) => tiedToSubject(`${r.title} ${r.snippet ?? ""}`, r.url, subject));
+      .filter((r) => tiedToSubject(`${r.title} ${r.snippet ?? ""}`, r.url, subject))
+      // Rounds of the company itself, not of a longer name containing it
+      // (launch fix 57: "Patagonia Health" rounds landed on Patagonia).
+      .filter((r) => [subject.name, ...(subject.aliases ?? [])].some((n) => namesItself(`${r.title} ${r.snippet ?? ""}`, n)));
 
     const sources: Source[] = results.map((r) => ({
       url: r.url,

@@ -1,4 +1,5 @@
 import { FederalSpendingEntry, Source, USASpendingAgentResult } from "../../types/research.js";
+import { nameOrDivision } from "../../lib/name-match.js";
 import { findOverride } from "../../entity-validation.js";
 
 /**
@@ -65,10 +66,10 @@ function words(name: string): string {
 export function recipientMatches(recipient: string | null | undefined, needles: string[]): boolean {
   const r = words(recipient ?? "");
   if (!r) return false;
-  return needles.some((needle) => {
-    const n = words(needle);
-    return !!n && (` ${r} `.includes(` ${n} `) || ` ${n} `.includes(` ${r} `));
-  });
+  // The recipient is the company or one of its own units ("Limbach
+  // Facility Services"), never a namesake: "Town of Patagonia" and its
+  // school district aren't Patagonia (launch fix 57).
+  return needles.some((needle) => !!words(needle) && nameOrDivision(recipient ?? "", needle));
 }
 
 interface RecipientAutocomplete {
@@ -159,7 +160,8 @@ export class USASpendingAgent {
     }
   }
 
-  async run(companyName: string): Promise<USASpendingAgentResult> {
+  /** @param names Other names it files under: legal name, short name (launch fixes 57, 67). */
+  async run(companyName: string, names: string[] = []): Promise<USASpendingAgentResult> {
     try {
       // Resolve a rename/aka override before querying — confirmed in
       // production this was exactly the predicted failure mode: Raytheon
@@ -170,9 +172,7 @@ export class USASpendingAgent {
       // search had found something.
       const override = findOverride(companyName);
       const searchName = override?.canonical_name ?? companyName;
-      const acceptedNeedles = override
-        ? [...new Set([companyName, override.canonical_name, ...override.aka])].map((n) => n.toLowerCase())
-        : [companyName.toLowerCase()];
+      const acceptedNeedles = [...new Set([companyName, ...names, ...(override ? [override.canonical_name, ...override.aka] : [])])];
 
       // Matched on the UEI when the name resolves to one (launch fix 17).
       // Falls back to the name if the UEI search returns nothing, so a

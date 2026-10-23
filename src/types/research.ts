@@ -34,6 +34,8 @@ export interface CompanyAnchor {
 
 export interface CompanyProfile {
   name: string;
+  /** The legal entity, from the site's copyright line or a filing (launch fix 57). */
+  legalName?: string;
   description?: string;
   /** Executive summary written from the report's facts (launch fix 4);
    *  shown instead of the description, which is often the site's tagline. */
@@ -131,6 +133,8 @@ export interface NewsEntry {
   articleText?: string;
   /** A plaintiff firm's "investigation" announcement, not a filed suit (launch fix 46). */
   solicitation?: boolean;
+  /** From a government enforcement site: DOJ, SEC, FTC, EPA, OSHA (launch fix 62). */
+  enforcement?: boolean;
 }
 
 export interface FundingEntry {

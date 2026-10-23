@@ -1,9 +1,12 @@
 import { CompanyAnchor, NewsAgentResult, NewsEntry, Source } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
-import { brandName, isLawFirmSolicitation, isPersonalLifeNews, isNewsIndexPage, isNewsNoise, isUsableHeadline, mentionsCompany, newsDate, outletFromUrl } from "../../lib/news-noise.js";
+import { brandName, isEnforcementSource, isLawFirmSolicitation, isPersonalLifeNews, isShoppingOrQuote, namesItself, isNewsIndexPage, isNewsNoise, isUsableHeadline, mentionsCompany, newsDate, outletFromUrl } from "../../lib/news-noise.js";
 
 export { brandName };
+
+// A company event: a short-name headline with one of these is business news.
+const BUSINESS_EVENT = /\b(ceo|president|chief executive|names|appoints|promotes|acquires|acquisition|merger|earnings|revenue|quarter|results|layoffs?|lays off|closes|closing|expands|expansion|contract|lawsuit|sued|settles|ipo|raises|funding|headquarters|employees|stores|locations|franchise\w*)\b/i;
 
 /**
  * News Agent
@@ -21,7 +24,11 @@ export class NewsAgent {
   /** @param anchor City/state the user gave (Fix 1): narrows the search
    *  to that business instead of a better-documented namesake.
    *  @param domain The business's website, for the short name the press uses. */
-  async run(companyName: string, anchor: CompanyAnchor = {}, domain?: string): Promise<NewsAgentResult> {
+  /** @param opts.aliases Short names, only for a national brand (launch fix 61:
+   *   "Promise" alone matched the Dream and Promise Act).
+   *  @param opts.profileTerms Words about the business (industry, city,
+   *   people); a match on a short name alone must include one. */
+  async run(companyName: string, anchor: CompanyAnchor = {}, domain?: string, opts: { aliases?: string[]; profileTerms?: string[] } = {}): Promise<NewsAgentResult> {
     const currentYear = new Date().getFullYear();
     // 7/20 fix — same entity-override reject list website-agent uses, now
     // applied here too, both at the query (-site: exclusion) and as a
@@ -34,8 +41,20 @@ export class NewsAgent {
     // buries articles under the company's own pages, so the news index is
     // searched too, by the short name, and a located search that finds
     // nothing is tried once without the city.
-    const alias = brandName(companyName, domain);
-    const names = [companyName, ...(alias ? [alias] : [])];
+    const alias = opts.aliases?.[0];
+    const terms = (opts.profileTerms ?? []).map((t) => t.toLowerCase()).filter((t) => t.length >= 4);
+    const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
+    // About this company: on its own site, or naming it as itself (not a
+    // longer name that contains it), and when only the short name matches,
+    // also saying something about the business (launch fix 61).
+    const aboutIt = (r: { title: string; snippet?: string; url: string }) => {
+      const text = `${r.title} ${r.snippet ?? ""}`;
+      if (domain && (host(r.url) === domain || host(r.url).endsWith(`.${domain}`))) return true;
+      if (mentionsCompany(text, companyName) && namesItself(text, companyName)) return true;
+      if (!alias || !mentionsCompany(text, alias) || !namesItself(text, alias)) return false;
+      const lower = text.toLowerCase();
+      return terms.some((t) => lower.includes(t)) || (!!domain && lower.includes(domain)) || BUSINESS_EVENT.test(text);
+    };
     const lookup = async (location?: string) => {
       const where = location ? ` ${location}` : "";
       const [web, press] = await Promise.all([
@@ -49,14 +68,24 @@ export class NewsAgent {
         .filter(r => !isRejectedDomain(r.url, override))
         // An item must have a real headline and name this company; a hit
         // that only matched loosely is usually about someone else.
-        .filter(r => isUsableHeadline(r.title) && names.some((n) => mentionsCompany(`${r.title} ${r.snippet ?? ""}`, n)))
-        .filter(r => !isPersonalLifeNews(r.title, r.snippet, r.url));
+        .filter(r => isUsableHeadline(r.title) && aboutIt(r))
+        .filter(r => !isPersonalLifeNews(r.title, r.snippet, r.url) && !isShoppingOrQuote(r.title, r.url));
       console.log(`[news] "${companyName}"${where}: ${web.length} web + ${press.length} news result(s), ${filtered.length} about the company`);
       return filtered;
     };
-    let filtered = await lookup(anchor.location);
+    // Government enforcement (launch fix 62: "United States v. ACCO
+    // Engineered Systems" on justice.gov never reached court records or
+    // risks): its own search, kept apart from the top-five cut.
+    const [found, enforcementRaw] = await Promise.all([
+      lookup(anchor.location),
+      this.searcher.search(`"${companyName}" (site:justice.gov OR site:sec.gov OR site:ftc.gov OR site:epa.gov OR site:osha.gov OR site:dol.gov OR site:eeoc.gov)`, 5),
+    ]);
+    let filtered = found;
     if (filtered.length === 0 && anchor.location) filtered = await lookup();
-    const top = filtered.slice(0, 5);
+    const enforcement = enforcementRaw.filter((r) => isEnforcementSource(r.url) && isUsableHeadline(r.title) && aboutIt(r)
+      && !filtered.some((f) => f.url === r.url)).slice(0, 3);
+    if (enforcement.length) console.log(`[news] "${companyName}": ${enforcement.length} enforcement item(s) from agency sites`);
+    const top = [...filtered.slice(0, 5), ...enforcement];
 
     // Fetch full text for top 2 articles in parallel — gives the LLM
     // real article content instead of snippet fragments
@@ -75,6 +104,7 @@ export class NewsAgent {
       articleText: fetchedTexts[i]?.slice(0, 600) || undefined,
       url: r.url,
       solicitation: isLawFirmSolicitation(r.title, r.snippet) || undefined,
+      enforcement: isEnforcementSource(r.url) || undefined,
     }));
 
     const sources: Source[] = top.map((r) => ({

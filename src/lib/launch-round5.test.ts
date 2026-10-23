@@ -163,7 +163,7 @@ describe("round five: news (fix 36)", () => {
       },
     };
     const fetcher = { fetchText: async () => null };
-    const r = await new NewsAgent(fetcher, searcher).run("Graybar Electric Company", {}, "graybar.com");
+    const r = await new NewsAgent(fetcher, searcher).run("Graybar Electric Company", {}, "graybar.com", { aliases: ["Graybar"], profileTerms: ["electrical"] });
     assert.equal(r.news.length, 1);
     assert.ok(queries.some((q) => q.startsWith('news:"Graybar"')));
   });
