@@ -238,6 +238,16 @@ export function isHistoryOnly(cited: number[], facts: Fact[], now = Date.now()):
 }
 
 /**
+ * An opportunity resting only on competitors is theirs, not this
+ * company's (launch fix 77: Promise ABA's only opportunity was a review
+ * of Autism Spectrum Therapies).
+ */
+export function aboutOthersOnly(cited: number[], facts: Fact[]): boolean {
+  const fs = cited.map((n) => facts[n - 1]).filter(Boolean);
+  return fs.length > 0 && fs.every((f) => f.text.startsWith("Competitor:"));
+}
+
+/**
  * A sentence the case records it cites contradict (launch fix 46: Crumbl's
  * risk said it "filed multiple lawsuits as a defendant" and that all cases
  * were open; several were closed).
@@ -391,7 +401,7 @@ Most current and serious first: open cases against it, declines in its figures, 
     ? resolveCitations([result.summary], facts, bundle.sources, "overview")[0]
     : undefined;
   const opportunities = resolveCitations(result.opportunities ?? [], facts, bundle.sources, "opportunities",
-    (text, cited) => !isHistoryOnly(cited, facts) && checkRisk(text, cited));
+    (text, cited) => !isHistoryOnly(cited, facts) && !aboutOthersOnly(cited, facts) && checkRisk(text, cited));
   return {
     summary: summary && !copiesDescription(summary.text, bundle.company.description) ? summary.text : undefined,
     risks: risks.map((r) => r.text),

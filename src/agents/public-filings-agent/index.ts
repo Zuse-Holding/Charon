@@ -337,11 +337,14 @@ Omit anything not stated. Never estimate.`,
     const all = [...new Set([companyName, ...names].filter(Boolean))];
     const variants = [...new Set([companyName, bareName(companyName), ...names.filter((n) => n.split(/\s+/).length > 1)])].slice(0, 3);
     const seen = new Set<string>();
-    const runs = await Promise.all(variants.map((v) => new CourtListenerAgent().run(`"${v}"`, 3)));
-    // Every search failing is an error for the coverage table, not "none found".
-    if (runs.every((r) => r.failed)) throw new Error("CourtListener didn't answer");
-    const records = runs
-      .flatMap((r) => r.records).filter((r) => !seen.has(r.url) && seen.add(r.url));
+    // One search over the case captions for every variant (launch fix 77:
+    // nine parallel full-text searches hit CourtListener's rate limit and
+    // timed out on 4 of 9 runs). Only parties count below anyway.
+    const query = `caseName:(${variants.map((v) => `"${v.replace(/"/g, "")}"`).join(" OR ")})`;
+    const run = await new CourtListenerAgent().run(query, 3);
+    // A failed search is an error for the coverage table, not "none found".
+    if (run.failed) throw new Error("CourtListener didn't answer");
+    const records = run.records.filter((r) => !seen.has(r.url) && seen.add(r.url));
     const cases = records
       // A party by its exact name, never a namesake ("Patagonia Seafarms").
       .filter((r) => isParty(r.caseName, all))

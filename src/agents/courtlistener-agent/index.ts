@@ -65,6 +65,12 @@ export class CourtListenerAgent {
             const res = await fetch(url, { headers, signal: AbortSignal.timeout(Math.min(30_000, Math.max(1_000, deadline - Date.now()))) });
             if (!res.ok) {
               console.warn(`[courtlistener-agent] "${name}" — HTTP ${res.status} on page ${page + 1}`);
+              // Rate limited: wait as told (at most 10s) and try again.
+              if (res.status === 429) {
+                const wait = Math.min(10_000, (Number(res.headers.get("retry-after")) || 5) * 1000);
+                if (Date.now() + wait < deadline) await new Promise((r) => setTimeout(r, wait));
+                continue;
+              }
               if (res.status < 500) break;
               continue;
             }
