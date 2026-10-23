@@ -60,6 +60,7 @@ import { corporateActions } from "../../lib/corporate-actions.js";
 import { SEC_OFF_REASON, secEnabled } from "../../lib/sec-http.js";
 import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
 import { fillGaps } from "../../lib/gap-fill.js";
+import { composeSummary } from "../../lib/summary.js";
 import { applyProfile, loadProfile, profileFrom, saveProfile, suspiciousFounded } from "../../lib/profile-cache.js";
 import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "../../lib/risk-rules.js";
 
@@ -407,7 +408,16 @@ export class ResearchOrchestrator {
     // Second, targeted search for what's still empty (round 10).
     const gapFill = isEnabled("gap_fill")
       ? await fillGaps(bundle, this.searcher, [...new Set([companyName, ...(alias ? [alias] : []), ...entityNames])], domain)
-      : { filled: [], actionTexts: [] };
+      : { filled: [], actionTexts: [], ownershipTexts: [] };
+    // Who owns it, from the targeted search (ACCO's ESOP came and went).
+    if (!bundle.ownership && gapFill.ownershipTexts?.length) {
+      const found = ownershipFrom(gapFill.ownershipTexts);
+      if (found) {
+        bundle.ownership = found.note;
+        bundle.sources.push({ url: found.url, title: "Ownership", retrievedAt: new Date().toISOString(), usedFor: ["funding"] });
+        console.log(`[gap-fill] "${companyName}": ownership ${found.note}`);
+      }
+    }
     // Acquisitions, subsidiaries and brands (launch fix 80).
     const actions = corporateActions([
       ...gapFill.actionTexts,
@@ -515,6 +525,12 @@ export class ResearchOrchestrator {
           if (src && !src.usedFor.includes("risks")) src.usedFor.push("risks");
         }
       }
+    }
+    // No model summary survived its checks: state the report's own facts
+    // instead of opening on the site's tagline (round 12).
+    if (!bundle.company.thin && (!bundle.company.summary || bundle.company.summary === bundle.company.description)) {
+      const composed = composeSummary(bundle);
+      if (composed) bundle.company.summary = composed;
     }
     if (cacheOn && domain) await saveProfile(profileFrom(bundle, domain, savedProfile));
 

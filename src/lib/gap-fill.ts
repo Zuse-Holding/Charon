@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { CompetitorEntry, FundingEntry, LeadershipEntry, ResearchBundle, Source } from "../types/research.js";
+import type { CompetitorEntry, FundingEntry, LeadershipEntry, NewsEntry, ProductEntry, ResearchBundle, Source } from "../types/research.js";
+import { isPersonalLifeNews, isShoppingOrQuote, isUsableHeadline, outletFromUrl } from "./news-noise.js";
 import type { SearchProvider, SearchResult } from "./providers.js";
 import { extractAnalysis } from "./llm.js";
 import { mentionsCompany } from "./news-noise.js";
@@ -20,12 +21,14 @@ import { strongNameMatch } from "./name-match.js";
  * never replace a sourced one.
  */
 
-export type Gap = "basics" | "executives" | "competitors" | "funding" | "acquisitions";
+export type Gap = "basics" | "executives" | "competitors" | "funding" | "acquisitions" | "products" | "ownership" | "developments";
 
-export interface GapSnippet { n: number; title: string; url: string; text: string; date?: string }
+export interface GapSnippet { n: number; title: string; url: string; text: string; date?: string; gap?: Gap }
 
 export interface GapFillResult {
   filled: string[];
+  /** Results that say who owns the company, for the ownership pass (ACCO's ESOP). */
+  ownershipTexts?: { text: string; url: string }[];
   /** Search results that name the company and say it acquired something,
    *  for the corporate-actions pass. */
   actionTexts: { text: string; url: string; date?: string }[];
@@ -35,6 +38,7 @@ const MIN_COMPETITORS = 4;
 const MAX_COMPETITORS = 8;
 const MAX_SNIPPETS = 40;
 const MAX_GAP_COMPETITORS = 4;
+const OWNERSHIP = /\b(employee[- ]owned|employee stock ownership|ESOP|owned by|subsidiary of|family[- ]owned|privately held by)\b/i;
 
 /** A company's name, not a lowercase word, a single generic word or a place. */
 export function isPeerName(name: string): boolean {
@@ -63,6 +67,9 @@ export function findGaps(bundle: ResearchBundle, domain?: string, now = Date.now
   if (bundle.competitors.length < MIN_COMPETITORS) gaps.push("competitors");
   if (needsFunding(bundle)) gaps.push("funding");
   if (!(bundle.corporateActions?.length)) gaps.push("acquisitions");
+  if (bundle.products.length < 3) gaps.push("products");
+  if (!bundle.ownership && c.entityType !== "public" && c.entityType !== "nonprofit" && !bundle.secFilings) gaps.push("ownership");
+  gaps.push("developments");
   return gaps;
 }
 
@@ -112,6 +119,12 @@ export function gapQueries(name: string, gaps: Gap[]): { gap: Gap; query: string
     if (g === "competitors") out.push({ gap: g, query: `${q} competitors` }, { gap: g, query: `${q} vs alternatives` });
     if (g === "funding") out.push({ gap: g, query: `${q} raises funding round Series` });
     if (g === "acquisitions") out.push({ gap: g, query: `${q} acquires acquisition` });
+    if (g === "products") out.push({ gap: g, query: `${q} products platform` });
+    if (g === "ownership") out.push({ gap: g, query: `${q} employee-owned OR ESOP OR "owned by" OR "family-owned"` });
+    if (g === "developments") {
+      const year = new Date().getFullYear();
+      out.push({ gap: g, query: `${q} announces ${year}` }, { gap: g, query: `${q} names OR appoints OR "steps down" OR investment OR campaign` });
+    }
   }
   return out;
 }
@@ -159,6 +172,7 @@ const GapSchema = z.record(z.string(), z.unknown()).transform((o) => {
     executives: list(o.executives).map((r) => ({ name: str(r.name), title: str(r.title), source: num(r.source) })),
     competitors: list(o.competitors).map((r) => ({ name: str(r.name), source: num(r.source) })),
     funding: list(o.funding).map((r) => ({ round: str(r.round), amount: str(r.amount), date: str(r.date), source: num(r.source) })),
+    products: list(o.products).map((r) => ({ name: str(r.name), description: str(r.description), source: num(r.source) })),
   };
 });
 export type GapExtraction = z.infer<typeof GapSchema>;
@@ -267,6 +281,18 @@ export function mergeGaps(bundle: ResearchBundle, x: GapExtraction, snippets: Ga
       cite(s, "competitors"); filled.push(`competitor ${k.name}`); added++;
     }
   }
+  if (gaps.includes("products")) {
+    let added = 0;
+    for (const pr of x.products ?? []) {
+      if (added >= 6) break;
+      const s = snip(pr.source);
+      if (!pr.name || !s || !snippetStates(s.text, pr.name, "name") || !/^[A-Z0-9]/.test(pr.name) || pr.name.length > 60) continue;
+      if (names.some((n) => pr.name!.toLowerCase() === n.toLowerCase())) continue;
+      if (bundle.products.some((y) => y.name.toLowerCase() === pr.name!.toLowerCase())) continue;
+      bundle.products.push({ name: pr.name, description: pr.description, sourceUrl: s.url } as ProductEntry);
+      cite(s, "products"); filled.push(`product ${pr.name}`); added++;
+    }
+  }
   if (gaps.includes("funding")) {
     for (const f of x.funding) {
       const s = snip(f.source);
@@ -297,16 +323,29 @@ export async function fillGaps(bundle: ResearchBundle, searcher: SearchProvider,
     const batches = await Promise.all(queries.map((q) => searcher.search(q.query, 8).catch(() => [] as SearchResult[])));
     const seen = new Set<string>();
     const snippets: GapSnippet[] = [];
-    for (const r of batches.flat()) {
-      if (!r.url || seen.has(r.url) || !aboutCompany(r, names, domain)) continue;
-      seen.add(r.url);
-      snippets.push({ n: snippets.length + 1, title: r.title, url: r.url, text: `${r.title}. ${r.snippet ?? ""}`, date: r.date });
-      if (snippets.length >= MAX_SNIPPETS) break;
+    batches.forEach((batch, bi) => {
+      for (const r of batch) {
+        if (snippets.length >= MAX_SNIPPETS + 10) break;
+        if (!r.url || seen.has(r.url) || !aboutCompany(r, names, domain)) continue;
+        seen.add(r.url);
+        snippets.push({ n: snippets.length + 1, title: r.title, url: r.url, text: `${r.title}. ${r.snippet ?? ""}`, date: r.date, gap: queries[bi].gap });
+      }
+    });
+    if (gaps.includes("ownership")) {
+      // Only a sentence that names the company and its owner ("a franchise
+      // owned by a local couple" is about one store, not the company).
+      result.ownershipTexts = snippets.filter((s) => s.gap === "ownership").flatMap((s) =>
+        s.text.split(/(?<=[.!?])\s+/).filter((sent) => OWNERSHIP.test(sent) && names.some((n) => mentionsCompany(sent, n)) && !/\bfranchise[ed]?\b|\blocation\b|\bstore\b/i.test(sent))
+          .map((sent) => ({ text: sent, url: s.url })));
+    }
+    if (gaps.includes("developments")) {
+      const added = addDevelopments(bundle, snippets.filter((s) => s.gap === "developments"));
+      if (added.length) result.filled.push(...added.map((h) => `news: ${h}`));
     }
     if (gaps.includes("acquisitions")) {
       result.actionTexts = snippets.filter((s) => /\b(acquir\w*|buys|bought|acquisition)\b/i.test(s.text)).map((s) => ({ text: s.text, url: s.url, date: s.date }));
     }
-    const wanted = gaps.filter((g) => g !== "acquisitions");
+    const wanted = gaps.filter((g) => g !== "acquisitions" && g !== "ownership" && g !== "developments");
     // One line per run, filled or not, so the logs show the pass ran.
     console.log(`[gap-fill] "${primary}": gaps ${gaps.join(", ")}; ${batches.flat().length} results, ${snippets.length} about the company`);
     if (!snippets.length || !wanted.length) return result;
@@ -316,6 +355,7 @@ export async function fillGaps(bundle: ResearchBundle, searcher: SearchProvider,
       wanted.includes("executives") && `"executives": [{"name": "...", "title": "...", "source": <n>}] — current CEO, president, chair, founders and chief officers of ${primary} only`,
       wanted.includes("competitors") && `"competitors": [{"name": "...", "source": <n>}] — companies the results name as ${primary}'s direct competitors${bundle.company.industry ? ` in ${bundle.company.industry}` : ""}${bundle.company.headquarters && !/\b(national|global)\b/i.test(bundle.company.role ?? "") ? ` (for a local business, ones serving the same area as ${bundle.company.headquarters})` : ""}. Never its customers, partners, investors, lenders, parent, or companies in other industries that a listing page happens to show`,
       wanted.includes("funding") && `"funding": [{"round": "Series B", "amount": "$40M", "date": "2021", "source": <n>}] — rounds ${primary} itself raised`,
+      wanted.includes("products") && `"products": [{"name": "...", "description": "<a few words>", "source": <n>}] — ${primary}'s own named products, platforms, robots, software or service lines (not generic categories, not other companies' products)`,
     ].filter(Boolean).join("\n");
     const x = await extractAnalysis(
       `You read numbered search results about "${primary}" and pull out specific facts. Answer with ONE JSON object with these keys:
@@ -327,10 +367,40 @@ RULES:
 - Leave out anything the results don't state. An empty list or a missing key is fine.`,
       context, GapSchema);
     if (!x) { console.log(`[gap-fill] "${primary}": model returned nothing usable`); return result; }
-    result.filled = mergeGaps(bundle, x, snippets, wanted, names);
+    result.filled.push(...mergeGaps(bundle, x, snippets.slice(0, MAX_SNIPPETS + 10), wanted, names));
     console.log(`[gap-fill] "${primary}": ${result.filled.length ? `filled ${result.filled.join("; ")}` : "nothing passed the source checks"}`);
   } catch (err) {
     console.error("[gap-fill] skipped:", err instanceof Error ? err.message : err);
   }
   return result;
+}
+
+const EVENT = /\b(announc\w*|launch\w*|names?|named|appoint\w*|steps? down|succeed\w*|promot\w*|acquir\w*|invest\w*|stake|raises?|raised|campaign|expand\w*|opens?|opening|clos(es|ing|ure)|layoffs?|partners? with|partnership|contract|award\w*|fund)\b/i;
+const MAX_DEVELOPMENTS = 4;
+const TWO_YEARS = 2 * 365 * 86_400_000;
+
+/**
+ * Recent company events from the targeted searches, as news the report and
+ * synthesis read (round 12: Crumbl's founder transition, the TSG investment,
+ * Homeboy's $100M campaign and Limbach's acquisitions never reached the
+ * news list). Only dated or plainly recent items about the company itself.
+ */
+export function addDevelopments(bundle: ResearchBundle, snippets: GapSnippet[], now = Date.now()): string[] {
+  const added: string[] = [];
+  const year = new Date(now).getFullYear();
+  for (const s of snippets) {
+    if (added.length >= MAX_DEVELOPMENTS) break;
+    if (!EVENT.test(s.text) || !isUsableHeadline(s.title) || isShoppingOrQuote(s.title, s.url) || isPersonalLifeNews(s.title, s.text, s.url)) continue;
+    if (bundle.news.some((n) => n.url === s.url || n.headline.toLowerCase() === s.title.toLowerCase())) continue;
+    const t = s.date ? Date.parse(s.date) : NaN;
+    const recentByDate = !isNaN(t) && t >= now - TWO_YEARS;
+    const recentByText = isNaN(t) && new RegExp(`\\b(${year}|${year - 1})\\b`).test(s.text);
+    if (!recentByDate && !recentByText) continue;
+    let host = "";
+    try { host = new URL(s.url).hostname.replace(/^www\./, ""); } catch { /* keep empty */ }
+    const n: NewsEntry = { headline: s.title, summary: s.text.slice(s.title.length + 2, s.title.length + 260).trim() || undefined, url: s.url, date: s.date, outlet: outletFromUrl(s.url) ?? host };
+    bundle.news.push(n);
+    added.push(s.title);
+  }
+  return added;
 }
