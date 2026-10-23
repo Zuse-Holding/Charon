@@ -9,11 +9,13 @@
  *   FEATURE_DOMAIN_POSTURE=on     passive domain posture check (Feature 5)
  *   FEATURE_SELF_EXCLUSION=on     self-exclusion list (Feature 6)
  *   FEATURE_RELATED_ENTITIES=on   related-entities expansion (Feature 4; needs Feature 6 on for users)
+ *   FEATURE_GAP_FILL=on           targeted second search for empty fields (round 10)
+ *   FEATURE_FACT_CACHE=on         saved, sourced company basics reused across runs (round 10; needs company_profiles)
  *
  * Server-side only. The web app reads its own NEXT_PUBLIC_FEATURE_* copy
  * where the UI needs to know (see web/lib/flags.ts).
  */
-export type Flag = "provenance" | "coverage" | "entity_resolution" | "domain_posture" | "self_exclusion" | "related_entities";
+export type Flag = "provenance" | "coverage" | "entity_resolution" | "domain_posture" | "self_exclusion" | "related_entities" | "gap_fill" | "fact_cache";
 
 export function isEnabled(flag: Flag, env: Record<string, string | undefined> = process.env): boolean {
   const value = env[`FEATURE_${flag.toUpperCase()}`]?.trim().toLowerCase();

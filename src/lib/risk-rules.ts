@@ -1,0 +1,150 @@
+import type { NewsEntry, ResearchBundle } from "../types/research.js";
+import type { CaseRecord } from "../agents/public-filings-agent/index.js";
+import { GENERIC_SEC_DOC, insiderSelling } from "./insiders.js";
+import { mentionsCompany } from "./news-noise.js";
+
+/**
+ * Rule-based risk signals (round 10). The model kept dropping real risks
+ * between runs (Homeboy's 78% expense jump, Gecko's Navy concentration,
+ * Limbach's CFO selling) and adding filler. These rules read the data the
+ * report already holds and state the signal directly, with its source; the
+ * model's risks come first, and a rule adds its line only when no model
+ * risk already covers the same record.
+ */
+
+export interface RuleRisk { text: string; urls: string[]; key: string }
+
+const YEAR_MS = 365 * 86_400_000;
+const CLOSURE = /\b(clos(e|es|ed|ing|ures?)|shutter(s|ed|ing)?|shuts? down|layoffs?|lays? off|laid off|bankrupt\w*|chapter 11|recall(s|ed)?|default(s|ed)?|delist\w*)\b/i;
+
+const money = (v: number) => (Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${Math.round(v / 1e3)}K`);
+const pct = (a: number, b: number) => Math.round(((b - a) / Math.abs(a)) * 100);
+const recent = (date: string | undefined, now: number, years = 1) => {
+  const t = date ? Date.parse(date) : NaN;
+  return !isNaN(t) && t >= now - years * YEAR_MS;
+};
+
+export function ruleRisks(bundle: ResearchBundle, names: string[], now = Date.now()): RuleRisk[] {
+  const out: RuleRisk[] = [];
+  const insiderUrl = bundle.sources.find((s) => s.usedFor.includes("insider-activity") && !GENERIC_SEC_DOC.test(s.url))?.url;
+
+  // 1. Insider selling, with the dollar total worked out from the filings.
+  for (const s of insiderSelling(bundle.insiderActivity ?? [])) {
+    if (s.text.startsWith("Insider selling by ")) continue;
+    const url = s.url ?? insiderUrl;
+    out.push({ text: `${s.text.replace(/^Insider selling: /, "")}.`, urls: url ? [url] : [], key: "insider" });
+  }
+
+  // 2. Nonprofit: expenses growing while revenue or contributions fall.
+  const np = bundle.nonprofitFinancials;
+  if (np && np.years.length >= 2) {
+    const ys = [...np.years].sort((a, b) => a.year.localeCompare(b.year));
+    const [a, b] = [ys[0], ys[ys.length - 1]];
+    if (a.expenses && b.expenses && pct(a.expenses, b.expenses) >= 20) {
+      const rev = a.revenue && b.revenue ? pct(a.revenue, b.revenue) : undefined;
+      const con = a.contributions && b.contributions ? pct(a.contributions, b.contributions) : undefined;
+      if ((rev !== undefined && rev < 0) || (con !== undefined && con < 0)) {
+        const parts = [con !== undefined && con < 0 && `contributions and grants fell ${-con}% (${money(a.contributions!)} to ${money(b.contributions!)})`,
+          rev !== undefined && rev < 0 && `total revenue fell ${-rev}%`].filter(Boolean).join(" and ");
+        out.push({ text: `Expenses rose ${pct(a.expenses, b.expenses)}% from ${money(a.expenses)} (${a.year}) to ${money(b.expenses)} (${b.year}) while ${parts}.`, urls: [np.url], key: "990" });
+      }
+    }
+  }
+
+  // 3. Public company: revenue decline or margin compression in its filings.
+  const fin = bundle.secFilings?.financials ?? [];
+  if (fin.length >= 2) {
+    const ys = [...fin].sort((a, b) => a.year.localeCompare(b.year));
+    const [a, b] = [ys[ys.length - 2], ys[ys.length - 1]];
+    const url = bundle.sources.find((s) => s.url.includes("companyfacts"))?.url ?? bundle.secFilings?.tenKUrl;
+    if (a.revenue && b.revenue && pct(a.revenue, b.revenue) <= -5) {
+      out.push({ text: `Revenue fell ${-pct(a.revenue, b.revenue)}% from ${money(a.revenue)} (FY${a.year}) to ${money(b.revenue)} (FY${b.year}).`, urls: url ? [url] : [], key: "sec-revenue" });
+    }
+    if (a.grossMargin !== undefined && b.grossMargin !== undefined && b.grossMargin - a.grossMargin <= -0.01) {
+      out.push({ text: `Gross margin fell from ${(a.grossMargin * 100).toFixed(1)}% (FY${a.year}) to ${(b.grossMargin * 100).toFixed(1)}% (FY${b.year}).`, urls: url ? [url] : [], key: "sec-margin" });
+    }
+  }
+
+  // 4. Closures, layoffs, bankruptcy or recalls in the last year's news.
+  const closing = bundle.news.filter((n: NewsEntry) => n.url && !n.solicitation && recent(n.date, now)
+    && CLOSURE.test(n.headline) && names.some((nm) => mentionsCompany(`${n.headline}. ${n.summary ?? ""}`, nm)));
+  if (closing.length) {
+    const n = closing[0];
+    out.push({ text: `Recent coverage reports ${n.headline.replace(/[.\s]+$/, "")}${n.date ? ` (${n.outlet ? `${n.outlet}, ` : ""}${n.date})` : ""}.`, urls: closing.slice(0, 2).map((x) => x.url!), key: "closure" });
+  }
+
+  // 5. Open suits against it filed in the last three years.
+  const open = (bundle.courtCases ?? []).filter((c: CaseRecord) => !c.routine && (c.role === "defendant" || c.role === "charged")
+    && c.status !== "closed" && c.status !== "status unverified" && recent(c.filed, now, 3) && c.url);
+  if (open.length >= 2) {
+    const top = open[0];
+    out.push({ text: `${open.length} open federal cases against the company were filed since ${open.map((c) => c.filed!).sort()[0].slice(0, 4)}, most recently ${top.caption} (${[top.court, top.filed].filter(Boolean).join(", ")}).`, urls: open.slice(0, 3).map((c) => c.url), key: "open-cases" });
+  } else if (open.length === 1) {
+    const c = open[0];
+    out.push({ text: `Open case against the company: ${c.caption} (${[c.court, c.filed, c.caseType].filter(Boolean).join(", ")}).`, urls: [c.url], key: "open-cases" });
+  }
+
+  // 6. A government enforcement action on record.
+  const charged = (bundle.courtCases ?? []).filter((c) => c.role === "charged" && c.caseType === "Government enforcement" && c.url);
+  for (const c of charged.slice(0, 1)) {
+    out.push({ text: `Government enforcement action on record: ${c.caption}${c.court ? ` (${c.court}${c.filed ? `, ${c.filed}` : ""})` : ""}.`, urls: [c.url], key: "enforcement" });
+  }
+
+  // 7. Dependence on one federal buyer: a contract ceiling far above what's been obligated.
+  for (const k of (bundle.contractCeilings ?? []).filter((k) => k.ceiling >= 50_000_000).slice(0, 1)) {
+    const url = bundle.sources.find((s) => s.usedFor.includes("federal-spending"))?.url ?? k.newsUrl;
+    out.push({ text: `Growth leans on one federal buyer: ${k.agency}'s ${money(k.ceiling)} ceiling has about ${money(k.obligated)} obligated so far, so most of that value depends on future task orders.`, urls: url ? [url] : [], key: "concentration" });
+  }
+  return out.filter((r) => r.urls.length);
+}
+
+/**
+ * Model risks first; each rule risk is added unless a model risk already
+ * cites one of its records or names its key detail. At most `cap` risks.
+ */
+export function mergeRuleRisks(risks: string[], citations: Record<string, string[]>, rules: RuleRisk[], cap = 6): { risks: string[]; citations: Record<string, string[]> } {
+  const out = [...risks];
+  const cites = { ...citations };
+  const citedUrls = new Set(risks.flatMap((r) => cites[r] ?? []));
+  const said = risks.join(" ").toLowerCase();
+  const covered = (r: RuleRisk) => r.urls.some((u) => citedUrls.has(u))
+    || (r.key === "insider" && /\binsider|\bsold\b/.test(said) && said.includes(r.text.split(/\s+/)[1]?.toLowerCase() ?? "~"))
+    || (r.key === "990" && /\bexpenses?\b/.test(said))
+    || (r.key === "closure" && CLOSURE.test(said));
+  for (const r of rules) {
+    if (out.length >= cap) break;
+    if (covered(r)) continue;
+    out.push(r.text);
+    cites[r.text] = r.urls;
+    for (const u of r.urls) citedUrls.add(u);
+  }
+  return { risks: out, citations: cites };
+}
+
+// Personal-life coverage of a founder is not a business risk (launch fix 49).
+const TABLOID = /\b(grindr|tiktok(er| star)?|dating|outed|affair|divorce|girlfriend|boyfriend|wedding|celebrity|influencer feud|instagram post)\b/i;
+// A discount is marketing, never a risk.
+const SALE = /\b(\d+\s?% off|below retail|on sale|selling (its|the)[^.]*\b(off|discount)|discount(ed|s)?|deals?)\b/i;
+
+export function isTabloidRisk(text: string): boolean {
+  return TABLOID.test(text);
+}
+
+/** A risk that's really a product sale or discount (Patagonia, round 10). */
+export function isSaleRisk(text: string): boolean {
+  return SALE.test(text);
+}
+
+// Opportunities that only restate what it offers, praise it, or note an
+// event with no business consequence (round 10: Promise, ACCO, Andersen).
+const FILLER_OPPORTUNITY = /\b(comprehensive offerings?|broad (market )?reach|diverse (service )?(capabilities|offerings)|cater to a broad|by offering both|expand its reach by offering|community (engagement|relations)|brand visibility|positive (public )?feedback|indicates? (ongoing )?leadership development|strategic planning within|demonstrates? (ongoing )?(commitment|engagement)|(\d+\s?%|significant(ly)?)\s?(off|discount)|below retail|discount(ed|s)?\b)/i;
+
+export function isFillerOpportunity(text: string): boolean {
+  return FILLER_OPPORTUNITY.test(text);
+}
+
+/** An opportunity about a place or event that shares the name, not the company (Patagonia region trips). */
+export function aboutNamesake(text: string, names: string[]): boolean {
+  return /\b(region|trips?|tours?|hiking|travel|trek|glaciers?|data centers?)\b/i.test(text)
+    && names.some((n) => new RegExp(`\\b(to|in|across|around|of)\\s+${n.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
+}

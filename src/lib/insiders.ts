@@ -21,6 +21,29 @@ const tidyName = (n: string) => (n === n.toUpperCase() ? n.toLowerCase().replace
 
 export interface InsiderSellingFact { text: string; url?: string; when?: string }
 
+/**
+ * Dollar value of one sale (round 10: Limbach's risk read "sold about $0K"
+ * because the filings gave a per-share price, "$85.4269 per share", which
+ * was summed as if it were the sale's value). A per-share price, or a
+ * figure under $1,000 with a share count beside it, is multiplied out; a
+ * price range uses its midpoint.
+ */
+export function saleValue(e: Pick<Form4Entry, "shares" | "value">): number {
+  const prices = parseMoney(e.value ?? "");
+  if (!prices.length) return 0;
+  const shares = Number((e.shares ?? "").replace(/[^\d.]/g, ""));
+  const perShare = /\bper\s+share\b|\/\s*share\b|\bat\s+\$/i.test(e.value ?? "") || (prices.every((p) => p < 1000) && shares > 0);
+  if (!perShare) return prices[0];
+  if (!(shares > 0)) return 0;
+  const price = prices.length > 1 ? (Math.min(...prices) + Math.max(...prices)) / 2 : prices[0];
+  return shares * price;
+}
+
+export const GENERIC_SEC_DOC = /sec\.gov\/(files|about|rules|forms)\//i;
+
+/** Below this, a total is shown as shares only: it's a parse problem, not a sale size. */
+const MIN_SHOWN_TOTAL = 10_000;
+
 /** Large or repeated selling by one insider, and selling by several at once. */
 export function insiderSelling(entries: Form4Entry[]): InsiderSellingFact[] {
   const sellers = new Map<string, Form4Entry[]>();
@@ -32,7 +55,8 @@ export function insiderSelling(entries: Form4Entry[]): InsiderSellingFact[] {
   const out: InsiderSellingFact[] = [];
   const notable: string[] = [];
   for (const sales of sellers.values()) {
-    const total = sales.reduce((sum, s) => sum + (parseMoney(s.value ?? "")[0] ?? 0), 0);
+    const total = sales.reduce((sum, s) => sum + saleValue(s), 0);
+    const shares = sales.reduce((sum, s) => sum + (Number((s.shares ?? "").replace(/[^\d.]/g, "")) || 0), 0);
     if (sales.length < MIN_SALES && total < MIN_TOTAL) continue;
     const name = tidyName(sales[0].filerName);
     notable.push(name);
@@ -40,8 +64,9 @@ export function insiderSelling(entries: Form4Entry[]): InsiderSellingFact[] {
     const span = dates.length ? ` (${dates[0]}${dates.length > 1 && dates[dates.length - 1] !== dates[0] ? ` to ${dates[dates.length - 1]}` : ""})` : "";
     const rel = sales[0].relationship ? ` (${sales[0].relationship})` : "";
     out.push({
-      text: `Insider selling: ${name}${rel} sold ${total ? `about ${fmt(total)} ` : ""}in ${sales.length} sale${sales.length === 1 ? "" : "s"}${span}`,
-      url: sales.find((s) => s.filingUrl)?.filingUrl,
+      text: `Insider selling: ${name}${rel} sold ${total >= MIN_SHOWN_TOTAL ? `about ${fmt(total)} ` : shares ? `${Math.round(shares).toLocaleString("en-US")} shares ` : ""}in ${sales.length} sale${sales.length === 1 ? "" : "s"}${span}`,
+      // A filing, never SEC's generic Forms 3/4/5 instructions PDF.
+      url: sales.find((s) => s.filingUrl && !GENERIC_SEC_DOC.test(s.filingUrl))?.filingUrl,
       when: dates[dates.length - 1],
     });
   }
