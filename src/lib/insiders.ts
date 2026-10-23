@@ -45,10 +45,13 @@ export const GENERIC_SEC_DOC = /sec\.gov\/(files|about|rules|forms)\//i;
 const MIN_SHOWN_TOTAL = 10_000;
 
 /** Large or repeated selling by one insider, and selling by several at once. */
-export function insiderSelling(entries: Form4Entry[]): InsiderSellingFact[] {
+export function insiderSelling(entries: Form4Entry[], now = Date.now()): InsiderSellingFact[] {
   const sellers = new Map<string, Form4Entry[]>();
   for (const e of entries) {
     if (!SELL.test(e.transactionType ?? "")) continue;
+    // Sales in the last year: a full filing table goes back two (round 11).
+    const t = e.date ? Date.parse(e.date) : NaN;
+    if (!isNaN(t) && now - t > 365 * 86_400_000) continue;
     const key = tidyName(e.filerName).toLowerCase();
     sellers.set(key, [...(sellers.get(key) ?? []), e]);
   }

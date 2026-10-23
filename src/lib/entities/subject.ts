@@ -14,6 +14,8 @@ export interface SubjectRecord {
   domain?: string;
   /** Short names, for a national brand only ("Crumbl"), launch fix 61. */
   aliases?: string[];
+  /** A listed company's ticker ("LMB"), from its site's stock listing. */
+  ticker?: string;
 }
 
 export function hostOf(url: string | undefined): string | undefined {
