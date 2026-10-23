@@ -202,7 +202,9 @@ export function mergeGaps(bundle: ResearchBundle, x: GapExtraction, snippets: Ga
       if (known) {
         // A cofounder the site lists without the top title gets it (Gecko).
         if (CHIEF.test(e.title) && !NOT_CHIEF.test(e.title) && !CHIEF.test(known.title)) {
-          known.title = `${e.title}${known.title ? ` and ${known.title}` : ""}`;
+          // "Co-Founder and CEO" already says cofounder: no "and Cofounder" again.
+          const founderAlready = /founder/i.test(e.title) && /founder/i.test(known.title);
+          known.title = founderAlready || !known.title ? e.title : `${e.title} and ${known.title}`;
           known.sourceUrl = s.url; known.asOf = s.date ?? known.asOf;
           cite(s, "leadership"); filled.push(`${e.name} is ${e.title}`);
         } else if (CHIEF.test(e.title) && norm(e.title).includes(norm(known.title).trim()) && e.title.length > known.title.length) {
@@ -235,7 +237,7 @@ export function mergeGaps(bundle: ResearchBundle, x: GapExtraction, snippets: Ga
       if (bundle.funding.some((g) => (g.round ?? "").toLowerCase() === f.round!.toLowerCase())) continue;
       // The snippet must say this company raised it, not a namesake or an investor.
       if (!names.some((n) => mentionsCompany(s.text, n)) || !/\b(rais\w*|secur\w*|closes?|funding|round|series|seed)\b/i.test(s.text)) continue;
-      bundle.funding.push({ round: f.round, amount: f.amount, date: f.date } as FundingEntry);
+      bundle.funding.push({ round: f.round, amount: f.amount, date: f.date, verified: true } as FundingEntry);
       cite(s, "funding"); filled.push(`${f.round} ${f.amount}`);
     }
   }

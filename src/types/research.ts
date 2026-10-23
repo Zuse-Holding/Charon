@@ -145,6 +145,9 @@ export interface FundingEntry {
   amount?: string;
   date?: string;
   investors?: string[];
+  /** A search result names this company raising this amount (gap-fill,
+   *  round 11): never dropped as out of scale. */
+  verified?: boolean;
 }
 
 export interface WebsiteAgentResult {
