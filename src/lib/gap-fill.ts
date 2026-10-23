@@ -69,9 +69,15 @@ export function hasCurrentChief(leadership: LeadershipEntry[], domain: string | 
 }
 
 /** A company that might have venture rounds and shows none. */
-export function needsFunding(bundle: ResearchBundle): boolean {
+export function needsFunding(bundle: ResearchBundle, now = Date.now()): boolean {
   const c = bundle.company;
-  if (bundle.funding.length) return false;
+  // Rounds on record, but none dated in the last three years: look for the
+  // later ones (round 11: Gecko showed only its 2020 Series B, not C or D).
+  const recentRound = bundle.funding.some((f) => {
+    const y = Number(f.date?.match(/\b(19|20)\d{2}\b/)?.[0]);
+    return !!y && y >= new Date(now).getFullYear() - 3;
+  });
+  if (recentRound) return false;
   if (c.entityType === "nonprofit" || c.entityType === "public" || bundle.secFilings || c.stockListing || bundle.nonprofitFinancials) return false;
   if (bundle.ownership && VENTURE_OWNER.test(bundle.ownership)) return false;
   const year = Number(c.founded?.match(/\b(1[6-9]|20)\d{2}\b/)?.[0]);
@@ -226,6 +232,7 @@ export function mergeGaps(bundle: ResearchBundle, x: GapExtraction, snippets: Ga
     for (const f of x.funding) {
       const s = snip(f.source);
       if (!f.round || !f.amount || !s || !snippetStates(s.text, f.amount, "money")) continue;
+      if (bundle.funding.some((g) => (g.round ?? "").toLowerCase() === f.round!.toLowerCase())) continue;
       // The snippet must say this company raised it, not a namesake or an investor.
       if (!names.some((n) => mentionsCompany(s.text, n)) || !/\b(rais\w*|secur\w*|closes?|funding|round|series|seed)\b/i.test(s.text)) continue;
       bundle.funding.push({ round: f.round, amount: f.amount, date: f.date } as FundingEntry);
@@ -259,6 +266,8 @@ export async function fillGaps(bundle: ResearchBundle, searcher: SearchProvider,
       result.actionTexts = snippets.filter((s) => /\b(acquir\w*|buys|bought|acquisition)\b/i.test(s.text)).map((s) => ({ text: s.text, url: s.url, date: s.date }));
     }
     const wanted = gaps.filter((g) => g !== "acquisitions");
+    // One line per run, filled or not, so the logs show the pass ran.
+    console.log(`[gap-fill] "${primary}": gaps ${gaps.join(", ")}; ${batches.flat().length} results, ${snippets.length} about the company`);
     if (!snippets.length || !wanted.length) return result;
     const context = snippets.map((s) => `[${s.n}] ${s.text} (${s.url})`).join("\n");
     const ask = [
@@ -276,9 +285,9 @@ RULES:
 - Facts about other companies with a similar name, or about a parent, subsidiary or investor, are not ${primary}'s. Leave them out.
 - Leave out anything the results don't state. An empty list or a missing key is fine.`,
       context, GapSchema);
-    if (!x) return result;
+    if (!x) { console.log(`[gap-fill] "${primary}": model returned nothing usable`); return result; }
     result.filled = mergeGaps(bundle, x, snippets, wanted, names);
-    if (result.filled.length) console.log(`[gap-fill] "${primary}": ${result.filled.join("; ")}`);
+    console.log(`[gap-fill] "${primary}": ${result.filled.length ? `filled ${result.filled.join("; ")}` : "nothing passed the source checks"}`);
   } catch (err) {
     console.error("[gap-fill] skipped:", err instanceof Error ? err.message : err);
   }
