@@ -61,7 +61,7 @@ import { SEC_OFF_REASON, secEnabled } from "../../lib/sec-http.js";
 import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
 import { fillGaps } from "../../lib/gap-fill.js";
 import { applyProfile, loadProfile, profileFrom, saveProfile, suspiciousFounded } from "../../lib/profile-cache.js";
-import { aboutNamesake, isFillerOpportunity, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "../../lib/risk-rules.js";
+import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "../../lib/risk-rules.js";
 
 /**
  * Research Orchestrator
@@ -491,7 +491,7 @@ export class ResearchOrchestrator {
     if (synthesis) {
       // Personal-life items and discount sales are never risks; restated
       // offerings, praise and the namesake region are never opportunities (round 10).
-      bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts).filter((r) => !isTabloidRisk(r) && !isSaleRisk(r));
+      bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts).filter((r) => !isTabloidRisk(r) && !isSaleRisk(r) && !isNonRisk(r));
       bundle.opportunities = plausibleAnalysis(synthesis.opportunities, bundle, synthesis.facts).filter((o) => !isFillerOpportunity(o) && !aboutNamesake(o, nameSet));
       console.log(`[synthesis] "${companyName}": ${bundle.risks.length} risk(s), ${bundle.opportunities.length} opportunit(ies) after the consistency check`);
       bundle.synthesisCitations = synthesis.citations;
