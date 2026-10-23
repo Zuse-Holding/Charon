@@ -12,6 +12,18 @@
 
 export const SEC_USER_AGENT = process.env.SEC_USER_AGENT ?? "Metis Analytics support@metisanalytic.com";
 
+/**
+ * SEC lookups are off until SEC_ENABLED=on (Oct 23, 2026: the SEC refuses
+ * the "Metis Analytics" User-Agent on every request, so each report spent
+ * time on lookups that could only fail). Turn it on once that's lifted.
+ */
+export function secEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  const v = env.SEC_ENABLED?.trim().toLowerCase();
+  return v === "on" || v === "true" || v === "1";
+}
+
+export const SEC_OFF_REASON = "SEC filings are temporarily unavailable.";
+
 // 8 a second, under the SEC's 10, shared by every caller in the process.
 const SPACING_MS = 125;
 let nextSlot = 0;
@@ -24,6 +36,7 @@ async function slot(): Promise<void> {
 }
 
 export async function secFetch(url: string, timeoutMs = 20_000, accept = "application/json, text/html, */*"): Promise<Response | null> {
+  if (!secEnabled()) return null;
   await slot();
   try {
     const res = await fetch(url, {
