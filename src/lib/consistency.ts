@@ -33,8 +33,12 @@ const LATE_ROUND = /\bseries\s+[d-z]\b/i;
 // namesake's (Alan Health's $8.9B, Promise ABA's funding).
 const SMALL_COMPANY_CEILING = 100e6;
 
-export function isSmallCompany(bundle: Pick<ResearchBundle, "company"> & Partial<Pick<ResearchBundle, "funding" | "insiderActivity" | "ownership" | "secFilings" | "nonprofitFinancials">>): boolean {
+export function isSmallCompany(bundle: Pick<ResearchBundle, "company"> & Partial<Pick<ResearchBundle, "funding" | "insiderActivity" | "ownership" | "secFilings" | "nonprofitFinancials" | "contractCeilings">>): boolean {
   const c = bundle.company;
+  // A nine-figure federal contract ceiling is not a small local business,
+  // whatever the user typed to find it (round 11: Gecko, matched on its
+  // website, lost its Series D as "out of scale").
+  if ((bundle.contractCeilings ?? []).some((k) => k.ceiling >= 50e6)) return false;
   // An SEC filer with annual reports is not a small local business, whatever
   // the user typed to find it (Graybar, by its website).
   if (bundle.secFilings?.financials.length) return false;
@@ -88,7 +92,7 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
 
   if (isSmallCompany(bundle)) {
     // A fund's target is the fund's size, not the sponsor's (launch fix 47).
-    bundle.funding = keep("funding out of scale", bundle.funding, (f) => /\(target\)$/.test(f.round ?? "") ||
+    bundle.funding = keep("funding out of scale", bundle.funding, (f) => f.verified || /\(target\)$/.test(f.round ?? "") ||
       (!LATE_ROUND.test(f.round ?? "") && parseMoney(f.amount ?? "").every((v) => v < SMALL_COMPANY_CEILING)));
   }
 

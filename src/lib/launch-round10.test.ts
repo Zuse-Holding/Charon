@@ -4,6 +4,7 @@ import { insiderSelling, saleValue } from "./insiders.js";
 import { aboutCompany, findGaps, hasCurrentChief, gapQueries, mergeGaps, needsFunding, snippetStates, type GapExtraction, type GapSnippet } from "./gap-fill.js";
 import { aboutNamesake, isFillerOpportunity, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "./risk-rules.js";
 import { applyProfile, profileFrom, suspiciousFounded } from "./profile-cache.js";
+import { applyCompanyConsistency } from "./consistency.js";
 import type { Form4Entry, ResearchBundle } from "../types/research.js";
 
 const base = (over: Partial<ResearchBundle> = {}): ResearchBundle => ({
@@ -183,5 +184,25 @@ describe("round 10: saved company profile", () => {
     assert.equal(rec?.founded, "1934");
     assert.equal(rec?.founded_source, "https://accoes.com");
     assert.equal(rec?.headquarters, "Pasadena, CA");
+  });
+});
+
+describe("round 11: Gecko canary", () => {
+  it("doesn't repeat cofounder in an upgraded title", () => {
+    const bundle = base({ leadership: [{ name: "Jake Loosararian", title: "Cofounder", sourceUrl: "https://geckorobotics.com/about" }] });
+    mergeGaps(bundle, { executives: [{ name: "Jake Loosararian", title: "Co-Founder and CEO", source: 1 }], competitors: [], funding: [] } as unknown as GapExtraction,
+      [{ n: 1, title: "x", url: "https://linkedin.com/in/jake", text: "Jake Loosararian - Co-Founder and CEO - Gecko Robotics" }], ["executives"], ["Gecko Robotics"]);
+    assert.equal(bundle.leadership[0].title, "Co-Founder and CEO");
+  });
+
+  it("keeps a verified late round for a company matched on its website", () => {
+    const bundle = base({ company: { name: "Gecko Robotics", website: "https://geckorobotics.com", anchor: { website: "https://geckorobotics.com" } },
+      funding: [{ round: "Series D", amount: "$125 million", date: "2025", verified: true }, { round: "Series E", amount: "$900 million" }] });
+    applyCompanyConsistency(bundle, { name: "Gecko Robotics", anchor: { website: "https://geckorobotics.com" }, domain: "geckorobotics.com" });
+    assert.deepEqual(bundle.funding.map((f) => f.round), ["Series D"]);
+    const big = base({ company: { name: "Gecko Robotics", anchor: { website: "https://geckorobotics.com" } },
+      funding: [{ round: "Series E", amount: "$900 million" }], contractCeilings: [{ agency: "DoD", ceiling: 300e6, obligated: 1.6e6 }] as ResearchBundle["contractCeilings"] });
+    applyCompanyConsistency(big, { name: "Gecko Robotics", anchor: { website: "https://geckorobotics.com" }, domain: "geckorobotics.com" });
+    assert.equal(big.funding.length, 1);
   });
 });
