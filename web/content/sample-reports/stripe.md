@@ -16,7 +16,7 @@ _6 of 15 sources searched; 9 require manual check._
 - [results] Company website and web search | Global | web | 9 results, see Leadership | -
 - [results] News search | Global | news | 5 results, see Recent News | -
 - [results] Competitor search | Global | web | 8 results, see Competitors | -
-- [results] SEC EDGAR filings and funding news | US federal | corporate filings | 4 results, see Funding | -
+- [results] Funding news and insider filings (Form 4) | US federal | corporate filings | 4 results, see Funding and Insider Activity | -
 - [no_results] USAspending federal awards | US federal | government contracts | No matches for "Stripe" | -
 - [not_searched] Consolidated Screening List (OFAC and others) | US federal | sanctions | Included with Pro. | [Search by hand](https://sanctionssearch.ofac.treas.gov/)
 - [not_searched] Wayback Machine archive | Global | archives | Included with Pro. | [Search by hand](https://web.archive.org/web/*/stripe.com)

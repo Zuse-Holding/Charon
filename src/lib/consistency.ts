@@ -3,6 +3,7 @@ import { cityOf } from "./closure.js";
 import { mentionsCompany, normalizeWords } from "./news-noise.js";
 import { newsAboutSubject, tiedToSubject, type SubjectRecord } from "./entities/subject.js";
 import { isCitable } from "./source-quality.js";
+import { insiderSelling } from "./insiders.js";
 
 /**
  * Consistency and plausibility pass, run on a company bundle before
@@ -121,6 +122,9 @@ function factFigures(bundle: ResearchBundle): number[] {
     ...(bundle.nonprofitFinancials?.years ?? []).flatMap((y) => [y.revenue, y.expenses, y.assets, y.contributions])
       .filter((v): v is number => v !== undefined).map((v) => `$${v}`),
     ...(bundle.contractCeilings ?? []).flatMap((c) => [`$${c.ceiling}`, `$${c.obligated}`]),
+    // Insider sales and their totals (launch fix 83).
+    ...(bundle.insiderActivity ?? []).map((f) => f.value ?? ""),
+    ...insiderSelling(bundle.insiderActivity ?? []).map((s) => s.text),
     ...(bundle.fdd ? [bundle.fdd.franchisorRevenue, bundle.fdd.franchisorNetIncome, bundle.fdd.averageUnitSales, bundle.fdd.initialInvestment] : []).map((v) => v ?? ""),
   ].join(" ");
   return parseMoney(text);
@@ -143,7 +147,9 @@ const COMMON_CAPS = new Set([
 
 /** Capitalized words and acronyms past the first word: the names an item brings in. */
 function namesIn(item: string): string[] {
-  const words = item.match(/[A-Za-z][A-Za-z0-9&.'’-]*/g) ?? [];
+  // A unit after a figure ("$2.2M", "$1.5B") is no name (launch fix 83:
+  // every abbreviated dollar figure failed this check).
+  const words = [...item.matchAll(/[A-Za-z][A-Za-z0-9&.'’-]*/g)].filter((m) => !/\d/.test(item[(m.index ?? 0) - 1] ?? "")).map((m) => m[0]);
   return words.slice(1)
     .map((w) => w.replace(/['’]s$/, "").replace(/[.'’-]+$/, ""))
     .filter((w) => /^[A-Z]/.test(w) && !COMMON_CAPS.has(w.toLowerCase()));
