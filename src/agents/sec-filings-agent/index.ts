@@ -1,5 +1,6 @@
 import type { Source } from "../../types/research.js";
 import { htmlToFullText } from "../../lib/providers.js";
+import { secJson, secText } from "../../lib/sec-http.js";
 import { EarningsExtractionSchema, extractAnalysis, ProxyExtractionSchema, TenKExtractionSchema } from "../../lib/llm.js";
 import { mentionsCompany } from "../../lib/news-noise.js";
 
@@ -21,8 +22,6 @@ import { mentionsCompany } from "../../lib/news-noise.js";
  * Fails open: anything that can't be read is left out, never guessed.
  */
 
-// SEC asks automated clients to identify themselves.
-const SEC_UA = "Metis Research support@metisanalytic.com";
 
 export interface FiscalYear {
   /** "2025" */
@@ -81,28 +80,6 @@ export interface SecFilings {
   proxyUrl?: string;
 }
 
-async function secJson<T>(url: string): Promise<T | null> {
-  try {
-    const res = await fetch(url, { headers: { "user-agent": SEC_UA, accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
-    if (!res.ok) {
-      console.warn(`[sec-filings] ${new URL(url).pathname} returned ${res.status}`);
-      return null;
-    }
-    return (await res.json()) as T;
-  } catch (err) {
-    console.warn(`[sec-filings] ${url.split("?")[0]} failed:`, err instanceof Error ? err.message : err);
-    return null;
-  }
-}
-
-async function secText(url: string): Promise<string | null> {
-  try {
-    const res = await fetch(url, { headers: { "user-agent": SEC_UA }, signal: AbortSignal.timeout(30_000) });
-    return res.ok ? await res.text() : null;
-  } catch {
-    return null;
-  }
-}
 
 // Under the coverage recorder's 90s, with room to spare.
 const SEC_BUDGET_MS = 80_000;
@@ -369,15 +346,19 @@ export class SecFilingsAgent {
     const viaSearch = cikFromSearch(search?.hits?.hits ?? [], companyName);
     const viaBrowse = browse ? cikFromBrowse(browse, companyName) : undefined;
     const viaTickers = tickers ? cikFromTickers(Object.values(tickers), companyName) : undefined;
-    const cik = viaSearch ?? viaBrowse ?? viaTickers;
+    // The ticker list is an exact name-to-CIK table, so it goes first.
+    const cik = viaTickers ?? viaSearch ?? viaBrowse;
     console.log(`[sec-filings] "${companyName}": CIK by full-text ${search ? (viaSearch ?? "none") : "failed"}, by company search ${browse ? (viaBrowse ?? "none") : "failed"}, by ticker list ${tickers ? (viaTickers ?? "none") : "failed"}`);
+    // Every lookup refused or failed: an error for the coverage table, never
+    // "no filings" (launch fix 54).
+    if (!search && !browse && !tickers) throw new Error("SEC EDGAR refused or failed every lookup");
     if (!cik) return { sources: [] };
 
     const [sub, facts] = await Promise.all([
       secJson<Submissions>(`https://data.sec.gov/submissions/CIK${pad(cik)}.json`),
       secJson<CompanyFacts>(`https://data.sec.gov/api/xbrl/companyfacts/CIK${pad(cik)}.json`),
     ]);
-    if (!sub) return { sources: [] };
+    if (!sub) throw new Error(`SEC submissions for CIK ${cik} couldn't be read`);
 
     const biz = sub.addresses?.business;
     const filings: SecFilings = {

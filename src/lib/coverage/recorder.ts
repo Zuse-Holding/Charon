@@ -79,7 +79,11 @@ function installFailureWatcher(): void {
     const watched = ctx !== undefined && hostMatches(host, ctx.hosts);
     try {
       const res = await original(input, init);
-      if (watched && (res.status >= 500 || res.status === 429)) ctx!.failures.push(`${host} returned ${res.status}`);
+      // A refused request is an error too (launch fix 54: the SEC's 403s
+      // read as "No matches for Limbach Holdings").
+      if (watched && (res.status >= 500 || res.status === 429 || res.status === 401 || res.status === 403 || res.status === 407)) {
+        ctx!.failures.push(`${host} returned ${res.status}${res.status === 403 ? " (blocked)" : ""}`);
+      }
       return res;
     } catch (err) {
       if (watched) ctx!.failures.push(`${host}: ${err instanceof Error ? err.message : "request failed"}`);

@@ -27,6 +27,8 @@ interface CostContext {
   searchCalls: number;
   /** extractStructured() calls that failed on every provider (Fix 6). */
   llmFailures: number;
+  /** Why model calls failed this run (launch fix 53), for an accurate message. */
+  llmProblems: Set<LlmProblem>;
   /** Skip the source cache: the user asked for fresh sources (Fix 3). */
   refresh: boolean;
 }
@@ -46,15 +48,15 @@ const storage = new AsyncLocalStorage<CostContext>();
 export async function withCostTracking<T>(
   fn: () => Promise<T>,
   options: { refresh?: boolean } = {}
-): Promise<{ result: T; totalCostUsd: number | null; modelCostUsd: number; calls: LlmCallUsage[]; searchCalls: number; llmFailures: number }> {
-  const ctx: CostContext = { calls: [], searchCalls: 0, llmFailures: 0, refresh: options.refresh ?? false };
+): Promise<{ result: T; totalCostUsd: number | null; modelCostUsd: number; calls: LlmCallUsage[]; searchCalls: number; llmFailures: number; llmProblems: LlmProblem[] }> {
+  const ctx: CostContext = { calls: [], searchCalls: 0, llmFailures: 0, llmProblems: new Set(), refresh: options.refresh ?? false };
   const result = await storage.run(ctx, fn);
   const modelCost = ctx.calls.reduce(
     (sum, c) => sum + costForCall(c.model, c.promptTokens, c.completionTokens),
     0
   );
   const totalCostUsd = ctx.calls.length === 0 && ctx.searchCalls === 0 ? null : modelCost + ctx.searchCalls * SEARCH_COST_USD;
-  return { result, totalCostUsd, modelCostUsd: modelCost, calls: ctx.calls, searchCalls: ctx.searchCalls, llmFailures: ctx.llmFailures };
+  return { result, totalCostUsd, modelCostUsd: modelCost, calls: ctx.calls, searchCalls: ctx.searchCalls, llmFailures: ctx.llmFailures, llmProblems: [...ctx.llmProblems] };
 }
 
 /** One real Serper request (cache hits don't count). */
@@ -67,6 +69,26 @@ export function recordSearchCall(): void {
 export function recordLlmFailure(): void {
   const ctx = storage.getStore();
   if (ctx) ctx.llmFailures++;
+}
+
+/** config: a provider rejected its key; credits: out of balance; daily: a
+ *  daily quota is spent; rate: per-minute limits; other: bad answers or outages. */
+export type LlmProblem = "config" | "credits" | "daily" | "rate" | "other";
+
+export function recordLlmProblem(problem: LlmProblem): void {
+  storage.getStore()?.llmProblems.add(problem);
+}
+
+/**
+ * What to tell the user when part of a report couldn't be written (launch
+ * fix 53): "the report model is busy" was shown for a rejected API key.
+ */
+export function llmProblemMessage(problems: LlmProblem[]): string {
+  if (problems.includes("config")) return "The report model rejected our API key (a configuration error on our side, which we've logged).";
+  if (problems.includes("credits")) return "The report model's account is out of credit (on our side, which we've logged).";
+  if (problems.includes("daily")) return "The report model hit its daily usage limit.";
+  if (problems.includes("rate")) return "The report model is rate-limited right now; a re-run in a minute or two should complete it.";
+  return "The report model returned answers that couldn't be used.";
 }
 
 /** True when this run should bypass the source cache. */

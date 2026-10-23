@@ -2,6 +2,7 @@ import type { FundingEntry, Source } from "../../types/research.js";
 import type { SearchProvider } from "../../lib/providers.js";
 import { CourtListenerAgent } from "../courtlistener-agent/index.js";
 import { strongNameMatch } from "../../lib/name-match.js";
+import { secJson, secText } from "../../lib/sec-http.js";
 import { mentionsCompany } from "../../lib/news-noise.js";
 import { extractStructured, FddExtractionSchema } from "../../lib/llm.js";
 
@@ -97,7 +98,6 @@ export interface FormationRecord {
 // The NPPES API is public and keyless.
 const NPPES = "https://npiregistry.cms.hhs.gov/api/";
 // SEC asks automated clients to identify themselves.
-const SEC_UA = "Metis Research support@metisanalytic.com";
 
 const HEALTHCARE = /\b(health|healthcare|medical|clinic|therapy|therap\w+|aba|behavior(al)? analysis|dental|dentist|pharmacy|hospital|physician|nursing|hospice|home care|chiropract\w*|optometr\w*|psychiatr\w*|psycholog\w*|counseling|rehab\w*|autism)\b/i;
 
@@ -358,8 +358,10 @@ Omit anything not stated. Never estimate.`,
       const starts = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s.*\\b(fund|lp|l\\.p\\.)\\b`, "i");
       queries.push({ q: `"${prefix}" fund`, accepts: (d) => starts.test(d.replace(/\s*\(CIK[^)]*\)/i, "")) });
     }
+    let answered = 0;
     for (const { q, accepts } of queries) {
-      const data = await getJson<EftsResponse>(`https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(q)}&forms=D`, { "user-agent": SEC_UA });
+      const data = await secJson<EftsResponse>(`https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(q)}&forms=D`);
+      if (data) answered++;
       const name = q.replace(/"/g, "");
       for (const hit of (data?.hits?.hits ?? []).slice(0, 3)) {
         const s = hit._source;
@@ -369,7 +371,7 @@ Omit anything not stated. Never estimate.`,
         if (!(s?.display_names ?? []).some(accepts)) continue;
         seen.add(adsh);
         const folder = `https://www.sec.gov/Archives/edgar/data/${cik}/${adsh.replace(/-/g, "")}`;
-        const xml = await getText(`${folder}/primary_doc.xml`, { "user-agent": SEC_UA });
+        const xml = await secText(`${folder}/primary_doc.xml`);
         const d = xml ? parseFormD(xml) : {};
         const issuer = d.issuer ?? s?.display_names?.[0]?.replace(/\s*\(CIK.*$/, "") ?? name;
         funding.push({
@@ -380,6 +382,8 @@ Omit anything not stated. Never estimate.`,
         sources.push(source(`${folder}/`, `SEC Form D — ${issuer}${s?.file_date ? ` (${s.file_date})` : ""}`, "funding"));
       }
     }
+    // No query answered: an error, never "no Form D filings" (launch fix 54).
+    if (answered === 0 && queries.length) throw new Error("SEC full-text search refused or failed every query");
     return { funding, sources };
   }
 }

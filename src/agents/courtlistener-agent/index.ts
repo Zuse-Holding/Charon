@@ -55,12 +55,14 @@ export class CourtListenerAgent {
       // try, so a slow page 2 keeps page 1's results; the first page is
       // retried once; and paging stops at a 60s budget, inside the 90s the
       // coverage recorder allows.
-      const deadline = Date.now() + 60_000;
+      // Launch fix 56: pages 2 and 3 still timed out at 20s; each page now
+      // gets up to 30s and a retry, inside a 75s budget.
+      const deadline = Date.now() + 75_000;
       for (let page = 0; url && page < pages && Date.now() < deadline; page++) {
         let data: CourtListenerSearchResponse | undefined;
-        for (let attempt = 0; attempt < (page === 0 ? 2 : 1) && !data; attempt++) {
+        for (let attempt = 0; attempt < 2 && !data && Date.now() < deadline; attempt++) {
           try {
-            const res = await fetch(url, { headers, signal: AbortSignal.timeout(Math.min(20_000, Math.max(1_000, deadline - Date.now()))) });
+            const res = await fetch(url, { headers, signal: AbortSignal.timeout(Math.min(30_000, Math.max(1_000, deadline - Date.now()))) });
             if (!res.ok) {
               console.warn(`[courtlistener-agent] "${name}" — HTTP ${res.status} on page ${page + 1}`);
               if (res.status < 500) break;

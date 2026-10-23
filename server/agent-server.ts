@@ -29,7 +29,8 @@ import { upsertStatewideExecutives } from "../src/database/statewide-executives.
 import { DirectFetchProvider, SerperSearchProvider } from "../src/lib/providers.js";
 import { isLocationOnly, parseCompanyQuery, parsePersonQuery } from "../src/lib/nlp.js";
 import { companyCandidates, personCandidates } from "../src/lib/candidates.js";
-import { withCostTracking, writeWithCostSplit } from "../src/lib/cost-tracking.js";
+import { llmProblemMessage, withCostTracking, writeWithCostSplit } from "../src/lib/cost-tracking.js";
+import { logProviderConfig } from "../src/lib/llm.js";
 import { checkSpend } from "../src/lib/spend-alerts.js";
 import { persistProvenance } from "../src/lib/provenance/store.js";
 import type { Snapshot } from "../src/lib/provenance/snapshots.js";
@@ -253,17 +254,29 @@ function getTierConfig(tier: Tier | "expired"): TierConfig {
   return TIER_CONFIG[tier] ?? TIER_CONFIG.free;
 }
 
+/** A status line at the top of a report: in its Status section, or a new one before the summary. */
+function markPartial(report: string, line: string): string {
+  if (report.includes("\n## Status\n")) return report.replace("\n## Status\n", `\n## Status\n${line}\n`);
+  const at = report.indexOf("\n## ");
+  return at === -1 ? `## Status\n${line}\n\n${report}` : `${report.slice(0, at)}\n## Status\n${line}\n${report.slice(at)}`;
+}
+
 /** The account's current work window: quick profiles and Deep Dives
  *  share one window, opened by whichever runs first. */
 async function getUsageWindow(userId: string): Promise<UsageWindow> {
   const since = new Date(Date.now() - WINDOW_LOOKBACK_MS).toISOString();
   const times = async (table: "research_runs" | "deep_dives") => {
-    const { data, error } = await supabase.from(table).select("generated_at").eq("user_id", userId).gte("generated_at", since);
+    // Failed and partial reports don't count toward a plan (launch fix 53).
+    const { data, error } = table === "research_runs"
+      ? await supabase.from(table).select("generated_at, status, partial:bundle->>partial").eq("user_id", userId).gte("generated_at", since)
+      : await supabase.from(table).select("generated_at").eq("user_id", userId).gte("generated_at", since);
     if (error) {
       console.error(`[usage-window] ${table} fetch error:`, JSON.stringify(error));
       return [];
     }
-    return (data ?? []).map((r) => new Date(r.generated_at as string));
+    return (data ?? [])
+      .filter((r) => (r as { status?: string }).status !== "failed" && String((r as { partial?: unknown }).partial) !== "true")
+      .map((r) => new Date((r as { generated_at: string }).generated_at));
   };
   const [research, deepDives] = await Promise.all([times("research_runs"), times("deep_dives")]);
   return currentWindow(research, deepDives);
@@ -810,8 +823,8 @@ app.post("/research", async (req, res) => {
 
   try {
     let bundle: unknown;
-    let report: string;
-    let outPath: string;
+    let report = "";
+    let outPath = "";
     // Charon-only (see `deep` below) — LittleSis relationships to write
     // as real Knowledge Graph edges once the run completes. Only company/
     // person research call LittleSis at all.
@@ -828,7 +841,7 @@ app.post("/research", async (req, res) => {
     // instead of threading an accumulator through every agent signature.
     // refresh: the user's "Run again" asks for fresh sources; a new search
     // reuses cached ones so the same company gives the same facts (Fix 3).
-    const { totalCostUsd, modelCostUsd, searchCalls, llmFailures } = await withCostTracking(async () => {
+    const { totalCostUsd, modelCostUsd, searchCalls, llmFailures, llmProblems } = await withCostTracking(async () => {
       if (egg && egg.type === type) {
         report = egg.markdown;
         bundle = { query: subject, generatedAt: new Date().toISOString() };
@@ -880,10 +893,16 @@ app.post("/research", async (req, res) => {
     }, { refresh: req.body.refresh === true });
     console.log(`[research] "${subject}": ${searchCalls} search credit(s), cost $${(totalCostUsd ?? 0).toFixed(4)}`);
 
-    // Never ship a report with a section the model couldn't write (Fix 6):
-    // the providers already retried with backoff, so ask the user to retry.
-    if (llmFailures > 0) {
-      throw new Error("The report model is busy right now, so part of this report couldn't be written. Try again in a minute.");
+    // A section the model couldn't write is never silently patched (Fix 6),
+    // but the finished parts are kept (launch fix 53): the report says up
+    // top what's missing and why, and the run doesn't count toward the
+    // plan (getUsageWindow skips partial runs).
+    const partial = llmFailures > 0;
+    if (partial) {
+      const why = llmProblemMessage(llmProblems);
+      console.error(`[research] "${subject}": ${llmFailures} model call(s) failed (${llmProblems.join(", ") || "unknown"}); saving a partial report`);
+      report = markPartial(report, `**Incomplete report.** ${why} Some sections are missing or thin. Re-run it to complete; this run doesn't count toward your plan.`);
+      bundle = { ...(bundle as object), partial: true };
     }
 
     if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
@@ -1776,4 +1795,7 @@ app.get("/health", (_, res) => res.json({ ok: true, timestamp: new Date().toISOS
 
 registerExclusionRoutes(app, { supabase, authCheck, getUserTier, checkHourlyBucket, frontendUrl: ALLOWED_ORIGIN });
 
-app.listen(PORT, () => { console.log(`SELINE Agent Server running on port ${PORT}`); });
+app.listen(PORT, () => {
+  console.log(`SELINE Agent Server running on port ${PORT}`);
+  logProviderConfig();
+});

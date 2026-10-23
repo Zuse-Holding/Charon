@@ -1,6 +1,6 @@
 import { z } from "zod";
 import Groq from "groq-sdk";
-import { recordLlmFailure, recordLlmUsage } from "./cost-tracking.js";
+import { recordLlmFailure, recordLlmUsage, recordLlmProblem } from "./cost-tracking.js";
 
 /**
  * Unified LLM extraction layer.
@@ -35,6 +35,20 @@ const LLM_PROVIDER = process.env.LLM_PROVIDER ??
 // actually reachable on Groq's self-serve tier now.
 const GROQ_MODEL   = process.env.GROQ_MODEL   ?? "openai/gpt-oss-20b";
 const OLLAMA_URL   = process.env.OLLAMA_URL   ?? "http://localhost:11434";
+const OLLAMA_CONFIGURED = !!process.env.OLLAMA_URL || process.env.NODE_ENV !== "production";
+
+/**
+ * Which providers this process can use, logged once at startup (launch
+ * fix 53). Only the first characters of each key, never the key.
+ */
+export function logProviderConfig(): void {
+  const peek = (v?: string) => (v ? `set (${v.slice(0, 6)}…, ${v.length} chars)` : "missing");
+  console.log(`[llm] OPENROUTER_API_KEY ${peek(process.env.OPENROUTER_API_KEY)}; OPENROUTER_API_KEY_2 ${peek(process.env.OPENROUTER_API_KEY_2)}; GROQ_API_KEY ${peek(process.env.GROQ_API_KEY)}; Ollama ${OLLAMA_CONFIGURED ? OLLAMA_URL : "off"}`);
+  if (!process.env.COURTLISTENER_API_TOKEN) console.warn("[config] COURTLISTENER_API_TOKEN missing: court searches run anonymously, with tighter limits");
+  if (process.env.OPENROUTER_API_KEY && !process.env.OPENROUTER_API_KEY.startsWith("sk-or-")) {
+    console.error("[llm] OPENROUTER_API_KEY doesn't look like an OpenRouter key (they start with sk-or-)");
+  }
+}
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.1:8b";
 
 // --- Cache ---
@@ -105,6 +119,9 @@ function releaseGroqSlot(): void {
 let ollamaAvailable: boolean | null = null;
 export async function isOllamaAvailable(): Promise<boolean> {
   if (ollamaAvailable === true) return true;
+  // Production has no local Ollama (launch fix 53: unreachable on
+  // Railway); only an OLLAMA_URL set on purpose is tried there.
+  if (!OLLAMA_CONFIGURED) return false;
   try {
     const res = await fetch(`${OLLAMA_URL}/api/tags`, {
       signal: AbortSignal.timeout(5000),
@@ -227,6 +244,7 @@ async function extractViaGroq<T>(
       const isDailyLimit = message.includes("tokens per day") || message.includes("(TPD)");
 
       if (isDailyLimit || (waitMs !== null && waitMs > 60_000)) {
+        recordLlmProblem("daily");
         console.error(`[llm:groq] Daily token limit reached — skipping retries, falling through to next provider`);
         return null;
       }
@@ -242,6 +260,8 @@ async function extractViaGroq<T>(
       if (recovered !== null) return recovered;
     }
 
+    if (message.includes("429")) recordLlmProblem("rate");
+    else if (/\b(401|403)\b|invalid api key/i.test(message)) recordLlmProblem("config");
     console.error(`[llm:groq] Error: ${message.slice(0, 300)}`);
     return null;
   }
@@ -313,6 +333,37 @@ const DEFAULT_OPENROUTER_MODELS = [
   "google/gemini-2.5-flash-lite",
 ];
 
+/**
+ * One OpenRouter request, retried with backoff on a rate limit, a server
+ * error or a dropped connection (launch fix 53): 1.5s, then 4s.
+ */
+async function openRouterPost(key: string, body: object): Promise<Response> {
+  const delays = [1_500, 4_000];
+  for (let i = 0; ; i++) {
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://metisanalytic.com",
+          "X-Title": "Metis Intelligence",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if ((res.status === 429 || res.status >= 500) && i < delays.length) {
+        await new Promise((r) => setTimeout(r, delays[i]));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      if (i >= delays.length) throw err;
+      await new Promise((r) => setTimeout(r, delays[i]));
+    }
+  }
+}
+
 async function extractViaOpenRouter<T>(
   systemPrompt: string,
   userContent: string,
@@ -327,39 +378,36 @@ async function extractViaOpenRouter<T>(
     openRouterKeyIndex++;
 
     try {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${key}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://metisanalytic.com",
-          "X-Title": "Metis Intelligence",
-        },
-        body: JSON.stringify({
-          models,
-          messages: [
-            {
-              role: "system",
-              content: `${systemPrompt}\n\nIMPORTANT: Respond with ONLY valid JSON matching the requested schema. No markdown, no backticks, no explanation.`,
-            },
-            { role: "user", content: userContent },
-          ],
-          temperature: 0,
-          // Room for a full company extraction (every leader, location and
-          // service line from a crawled site): at 1,024 the JSON was cut off
-          // mid-object and the report failed as "model busy".
-          max_tokens: 4096,
-          response_format: { type: "json_object" },
-        }),
+      const res = await openRouterPost(key, {
+        models,
+        messages: [
+          {
+            role: "system",
+            content: `${systemPrompt}\n\nIMPORTANT: Respond with ONLY valid JSON matching the requested schema. No markdown, no backticks, no explanation.`,
+          },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0,
+        // Room for a full company extraction (every leader, location and
+        // service line from a crawled site): at 1,024 the JSON was cut off
+        // mid-object and the report failed as "model busy".
+        max_tokens: 4096,
+        response_format: { type: "json_object" },
       });
 
       if (res.status === 429) {
+        recordLlmProblem("rate");
         console.error(`[llm:openrouter] Key ${attempt + 1}/${keys.length} rate limited${attempt < keys.length - 1 ? " — trying next key" : ""}`);
         continue;
       }
 
       if (!res.ok) {
-        console.error(`[llm:openrouter] HTTP ${res.status}`);
+        // A rejected key is a configuration error, not a busy model.
+        if (res.status === 401 || res.status === 403) recordLlmProblem("config");
+        else if (res.status === 402) recordLlmProblem("credits");
+        else recordLlmProblem("other");
+        console.error(`[llm:openrouter] HTTP ${res.status}${res.status === 401 ? " (key rejected: check OPENROUTER_API_KEY)" : res.status === 402 ? " (out of credit)" : ""}`);
+        if (res.status === 401 || res.status === 402 || res.status === 403) continue;
         return null;
       }
 
