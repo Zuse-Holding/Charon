@@ -109,15 +109,15 @@ function Dashboard() {
   }, []);
 
   useEffect(() => {
-    loadRuns()
-      .then((data) => {
+    // A search still running opens on its progress, not the last report.
+    Promise.all([loadRuns(), checkPendingRun().catch(() => false)])
+      .then(([data, running]) => {
         // selectRun flips `loading` on synchronously, so the report panel
         // hands off from the initial ghost straight to the report ghost.
-        if (data.length > 0) selectRun(data[0]);
+        if (!running && data.length > 0) selectRun(data[0]);
       })
       .catch(() => {})
       .finally(() => setInitialLoading(false));
-    checkPendingRun();
   }, [loadRuns, checkPendingRun]);
 
   // While a run is pending (whether triggered here, in another tab, or
@@ -132,8 +132,7 @@ function Dashboard() {
       const stillPending = await checkPendingRun();
       if (!stillPending) {
         setPending(null);
-        const data = await loadRuns();
-        if (data.length > 0) await selectRun(data[0]);
+        await finishPending();
       }
     }, 2000);
     return () => {
@@ -161,6 +160,23 @@ function Dashboard() {
     .catch(() => setIsWatching(false));
 }, [selected]);
 
+  /** Back to the running search's progress view. */
+  function showPending() {
+    selectedRef.current = null;
+    setSelected(null);
+    setReport("");
+  }
+
+  /** A search finished: open it, unless another report was picked meanwhile. */
+  async function finishPending(match?: (r: Run) => boolean) {
+    const watching = selectedRef.current === null;
+    const data = await loadRuns();
+    if (!watching) return;
+    const created = match ? data.find(match) : undefined;
+    if (created) await selectRun(created);
+    else if (data.length > 0) await selectRun(data[0]);
+  }
+
   async function selectRun(run: Run) {
     selectedRef.current = run;
     setSelected(run);
@@ -182,8 +198,7 @@ function Dashboard() {
 
   async function runSuggestion(subject: string, type: "company" | "person" | "product") {
     setPending({ subject, type });
-    setSelected(null);
-    setReport("");
+    showPending();
     try {
       await fetch("/api/research", {
         method: "POST",
@@ -192,10 +207,7 @@ function Dashboard() {
       });
       setPending(null);
       await new Promise(r => setTimeout(r, 1500));
-      const data = await loadRuns();
-      const created = data.find(r => r.subject === subject && r.type === type);
-      if (created) await selectRun(created);
-      else if (data.length > 0) await selectRun(data[0]);
+      await finishPending((r) => r.subject === subject && r.type === type);
     } catch {
       setPending(null);
     }
@@ -249,14 +261,12 @@ function Dashboard() {
         <Topbar
           onResearchStart={(subject, type) => {
             setPending({ subject, type });
-            setSelected(null);
-            setReport("");
+            showPending();
           }}
           onResearchComplete={async () => {
             setPending(null);
             await new Promise(r => setTimeout(r, 1500));
-            const data = await loadRuns();
-            if (data.length > 0) await selectRun(data[0]);
+            await finishPending();
           }}
         />
 
@@ -281,7 +291,10 @@ function Dashboard() {
                 <EmptyState size="compact" icon="◎" title="No research yet" description="Run your first query above." when={null} />
               )}
               {pending && (
-                <div className={`${styles.feedItem} ${styles.feedItemPending}`}>
+                <div
+                  className={`${styles.feedItem} ${styles.feedItemPending} ${!selected ? styles.selected : ""}`}
+                  onClick={showPending}
+                >
                   <div className={styles.itemHeader}>
                     <span className={styles.pendingDot} />
                     <span className={styles.itemName}>{pending.subject}</span>
@@ -314,7 +327,9 @@ function Dashboard() {
 
           {/* REPORT PANEL */}
           <div className={styles.reportPanel}>
-            {pending ? (
+            {/* A running search shows its progress until another report is
+                picked; clicking the running item in the feed brings it back. */}
+            {pending && !selected ? (
               <div className={styles.reportBody} style={{ paddingTop: 32 }}>
                 <ResearchSkeleton subject={pending.subject} type={pending.type} progress={progress} />
               </div>
