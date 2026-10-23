@@ -1,11 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { insiderSelling, saleValue } from "./insiders.js";
-import { aboutCompany, findGaps, hasCurrentChief, gapQueries, isTotalRaised, mergeGaps, needsFunding, snippetStates, type GapExtraction, type GapSnippet } from "./gap-fill.js";
+import { addDevelopments, aboutCompany, findGaps, hasCurrentChief, gapQueries, isTotalRaised, mergeGaps, needsFunding, snippetStates, type GapExtraction, type GapSnippet } from "./gap-fill.js";
 import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "./risk-rules.js";
 import { applyProfile, profileFrom, suspiciousFounded } from "./profile-cache.js";
 import { applyCompanyConsistency } from "./consistency.js";
 import { foundedLabel } from "../agents/report-agent/index.js";
+import { composeSummary, whatItDoes } from "./summary.js";
 import type { Form4Entry, ResearchBundle } from "../types/research.js";
 
 const base = (over: Partial<ResearchBundle> = {}): ResearchBundle => ({
@@ -45,7 +46,7 @@ describe("round 10: insider sale values", () => {
 describe("round 10: gap-fill pass", () => {
   it("finds the empty fields and builds targeted queries", () => {
     const gaps = findGaps(base());
-    assert.deepEqual(gaps, ["basics", "executives", "competitors", "funding", "acquisitions"]);
+    assert.deepEqual(gaps, ["basics", "executives", "competitors", "funding", "acquisitions", "products", "ownership", "developments"]);
     const q = gapQueries("Gecko Robotics", ["executives", "funding"]).map((x) => x.query);
     assert.ok(q.includes(`"Gecko Robotics" CEO`));
     assert.ok(q.some((x) => /raises funding round Series/.test(x)));
@@ -92,6 +93,7 @@ describe("round 10: gap-fill pass", () => {
       executives: [{ name: "Jake Loosararian", title: "CEO", source: 2 }, { name: "Made Up Person", title: "President", source: 2 }],
       competitors: [{ name: "ANYbotics", source: 4 }, { name: "Gecko Robotics", source: 4 }, { name: "Boston Dynamics", source: 4 }],
       funding: [{ round: "Series D", amount: "$125M", date: "2025", source: 3 }, { round: "Series E", amount: "$900M", date: undefined, source: 3 }],
+      products: [],
     };
     const filled = mergeGaps(bundle, x, snippets, ["basics", "executives", "competitors", "funding"], ["Gecko Robotics"]);
     assert.equal(bundle.company.founded, "2013", "a sourced year is never replaced");
@@ -269,5 +271,40 @@ describe("round 11: full run fixes", () => {
     assert.equal(foundedLabel("https://www.linkedin.com/company/patagonia_2"), "source");
     assert.equal(foundedLabel("https://bizfileonline.sos.ca.gov/x"), "state record");
     assert.equal(foundedLabel("https://www.sec.gov/Archives/x"), "10-K");
+  });
+});
+
+describe("round 12: more gaps and a factual summary", () => {
+  it("adds recent company events from the targeted search as news", () => {
+    const bundle = base({ company: { name: "Crumbl" } });
+    const added = addDevelopments(bundle, [
+      { n: 1, title: "Crumbl co-founder Jason McGowan steps down as CEO", url: "https://a.com/x", text: "Crumbl co-founder Jason McGowan steps down as CEO. In May 2026...", date: "May 12, 2026" },
+      { n: 2, title: "Crumbl announces minority investment from TSG Consumer Partners", url: "https://b.com/y", text: "Crumbl announces minority investment from TSG Consumer Partners", date: "Feb 2, 2025" },
+      { n: 3, title: "Crumbl opened in 2017", url: "https://c.com/z", text: "Crumbl opened its first store in Logan in 2017", date: "Jan 1, 2019" },
+      { n: 4, title: "Crumbl cookies 50% off this week", url: "https://d.com/w", text: "deal", date: "Oct 20, 2026" },
+    ], Date.parse("2026-10-23"));
+    assert.deepEqual(added, ["Crumbl co-founder Jason McGowan steps down as CEO", "Crumbl announces minority investment from TSG Consumer Partners"]);
+    assert.equal(bundle.news.length, 2);
+  });
+
+  it("asks for products, ownership and recent events", () => {
+    const q = gapQueries("ACCO Engineered Systems", ["products", "ownership", "developments"]).map((x) => x.query);
+    assert.ok(q.some((x) => /products platform/.test(x)));
+    assert.ok(q.some((x) => /ESOP/.test(x)));
+    assert.ok(q.some((x) => /steps down/.test(x)));
+  });
+
+  it("writes a summary from the facts when the model's didn't survive", () => {
+    const bundle = base({ company: { name: "Gecko Robotics", description: "Provides AI and robotic tools to monitor critical infrastructure.", founded: "2013", headquarters: "Pittsburgh, PA" },
+      leadership: [{ name: "Jake Loosararian", title: "Co-Founder and CEO" }, { name: "Troy Demmer", title: "Cofounder" }],
+      funding: [{ round: "Series D", amount: "$125M", date: "2025" }, { round: "Series C", amount: "$173M" }],
+      news: [{ headline: "Gecko Robotics secures $300M contract with the U.S. Navy", date: "Oct 20, 2026", url: "https://x.com" }] });
+    const s = composeSummary(bundle, Date.parse("2026-10-23"))!;
+    assert.match(s, /^Gecko Robotics provides AI and robotic tools/);
+    assert.match(s, /Founded in 2013 and based in Pittsburgh, PA\./);
+    assert.match(s, /Led by Jake Loosararian \(Co-Founder and CEO\)\./);
+    assert.match(s, /Series D \(\$125M, 2025\)/);
+    assert.match(s, /Most recent coverage: "Gecko Robotics secures \$300M contract with the U\.S\. Navy" \(Oct 20, 2026\)\./);
+    assert.equal(whatItDoes("MJW Investments", "A real estate investment firm."), "MJW Investments is a real estate investment firm.");
   });
 });
