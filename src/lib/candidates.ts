@@ -87,6 +87,16 @@ async function searchName(searcher: CandidateSearcher, name: string, context: st
 }
 
 export async function companyCandidates(name: string, anchor: CompanyAnchor, searcher: CandidateSearcher): Promise<CandidateResult> {
+  const found = await companyCandidatesFor(name, anchor, searcher);
+  // "&" is read differently by search engines and listings (launch fix
+  // 79): with nothing found, try once more with "and" in its place.
+  if (found.candidates.length === 0 && name.includes("&")) {
+    return companyCandidatesFor(name.replace(/\s*&\s*/g, " and "), anchor, searcher);
+  }
+  return found;
+}
+
+async function companyCandidatesFor(name: string, anchor: CompanyAnchor, searcher: CandidateSearcher): Promise<CandidateResult> {
   const loc = anchor.location ? ` ${anchor.location}` : "";
   const [places, results] = await Promise.all([
     searcher.places(`${name}${loc}`),

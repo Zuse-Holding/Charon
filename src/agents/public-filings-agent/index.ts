@@ -1,7 +1,7 @@
 import type { FundingEntry, Source } from "../../types/research.js";
 import type { SearchProvider } from "../../lib/providers.js";
 import { CourtListenerAgent } from "../courtlistener-agent/index.js";
-import { partyIs, strongNameMatch } from "../../lib/name-match.js";
+import { distinctiveWords, partyIs, strongNameMatch } from "../../lib/name-match.js";
 import { secJson, secText } from "../../lib/sec-http.js";
 import { mentionsCompany } from "../../lib/news-noise.js";
 import { extractStructured, FddExtractionSchema } from "../../lib/llm.js";
@@ -29,7 +29,9 @@ export interface CaseRecord {
   role?: "plaintiff" | "defendant" | "debtor" | "charged" | "unknown";
   /** Nature of suit or cause, as the docket gives it. */
   caseType?: string;
-  status?: "open" | "closed";
+  /** "status unverified": no end date, but filed over three years ago
+   *  (launch fix 82: a 2019 "open" case became Andersen's top risk). */
+  status?: "open" | "closed" | "status unverified";
   /** A bankruptcy case in which the company isn't the debtor: usually a
    *  routine collection or preference matter, not a risk. */
   routine?: boolean;
@@ -63,15 +65,31 @@ export function isParty(caption: string, names: string[]): boolean {
 }
 
 const BANKRUPTCY_COURT = /^[a-z]{2,4}b$/;
+const STALE_OPEN_MS = 3 * 365 * 86_400_000;
+
+/**
+ * A caption side that is one bare word ("Andersen") names no company
+ * (launch fix 82: S.D. Tex. and C.D. Cal. dockets titled just "Andersen").
+ */
+export function namedParty(caption: string, names: string[]): boolean {
+  const inRe = caption.match(/^in re:?\s+(.+)$/i);
+  const sides = inRe ? [inRe[1]] : caption.split(/\s+v(?:s)?\.?\s+/i);
+  // Unless that word is the whole name ("Patagonia v. United States").
+  const whole = bareName(names[0] ?? "").toLowerCase();
+  const bare = (side: string) => /^\s*[\w&.'’-]+\s*(,?\s*et al\.?)?\s*$/i.test(side) && side.replace(/,?\s*et al\.?/i, "").trim().toLowerCase() !== whole;
+  return sides.some((side) => !bare(side) && partyIs(side, names));
+}
 
 /** Role, status and whether it's routine, from a CourtListener docket. */
-export function caseContext(r: { caseName: string; courtId?: string; court?: string; nature?: string; dateTerminated?: string }, companyName: string | string[]): Pick<CaseRecord, "role" | "caseType" | "status" | "routine"> {
+export function caseContext(r: { caseName: string; courtId?: string; court?: string; nature?: string; dateTerminated?: string; dateFiled?: string }, companyName: string | string[], now = Date.now()): Pick<CaseRecord, "role" | "caseType" | "status" | "routine"> {
   const role = caseRole(r.caseName, companyName);
   const bankruptcy = BANKRUPTCY_COURT.test(r.courtId ?? "") || /bankruptcy/i.test(r.court ?? "");
+  const filed = r.dateFiled ? Date.parse(r.dateFiled) : NaN;
+  const stale = !isNaN(filed) && now - filed > STALE_OPEN_MS;
   return {
     role,
     caseType: r.nature || (bankruptcy ? "Bankruptcy" : undefined),
-    status: r.dateTerminated ? "closed" : "open",
+    status: r.dateTerminated ? "closed" : stale ? "status unverified" : "open",
     routine: bankruptcy && role !== "debtor" ? true : undefined,
   };
 }
@@ -335,7 +353,10 @@ Omit anything not stated. Never estimate.`,
     // The name as searched and without its legal suffix, plus its legal
     // name, up to 3 pages each.
     const all = [...new Set([companyName, ...names].filter(Boolean))];
-    const variants = [...new Set([companyName, bareName(companyName), ...names.filter((n) => n.split(/\s+/).length > 1)])].slice(0, 3);
+    // The distinctive core too, so subsidiaries match (launch fix 67:
+    // "Limbach Company LLC" for Limbach Holdings); parties are checked below.
+    const core = distinctiveWords(companyName).join(" ");
+    const variants = [...new Set([companyName, bareName(companyName), ...(core.length >= 4 ? [core] : []), ...names.filter((n) => n.split(/\s+/).length > 1)])].slice(0, 5);
     const seen = new Set<string>();
     // One search over the case captions for every variant (launch fix 77:
     // nine parallel full-text searches hit CourtListener's rate limit and
@@ -347,7 +368,7 @@ Omit anything not stated. Never estimate.`,
     const records = run.records.filter((r) => !seen.has(r.url) && seen.add(r.url));
     const cases = records
       // A party by its exact name, never a namesake ("Patagonia Seafarms").
-      .filter((r) => isParty(r.caseName, all))
+      .filter((r) => namedParty(r.caseName, all))
       .map((r) => ({ caption: r.caseName, court: r.court, docketNumber: r.docketNumber, filed: r.dateFiled, url: r.url, ...caseContext(r, all) }));
     return { cases, sources: cases.map((c) => source(c.url, `CourtListener — ${c.caption}`, "court-records")) };
   }

@@ -276,12 +276,30 @@ export function seniority(title: string): number {
 export function rankLeadership(entries: LeadershipEntry[]): LeadershipEntry[] {
   const ranked = entries.map((e, i) => ({ e, i, r: seniority(e.title) })).sort((a, b) => a.r - b.r || a.i - b.i);
   const executives = ranked.filter((x) => x.r <= 3).length;
-  return ranked.filter((x) => executives < 3 || x.r <= 4).map((x) => x.e);
+  // A field manager is never leadership beside an executive (launch fix
+  // 78: Graybar still listed district managers).
+  return ranked.filter((x) => (executives < 3 || x.r <= 4) && !(executives > 0 && FIELD_MANAGER.test(x.e.title))).map((x) => x.e);
+}
+
+const FIELD_MANAGER = /\b(district|branch|area|territory|store|location|zone|regional sales|account|sales) manager\b/i;
+
+// Words a headline or menu puts where a name should be (launch fix 82:
+// "New Senior Vice / President" was listed as a person).
+const NOT_NAME_WORD = /^(new|senior|vice|president|chief|officer|executive|director|manager|head|team|our|the|and|of|board|leadership|about|contact|meet|named|appoints|announces|welcomes|promoted|company|group|inc|llc)$/i;
+const NAME_PARTICLE = /^(de|da|del|della|di|du|van|von|der|den|la|le|bin|al|st\.?)$/i;
+
+/** A person's name: two to five words, each capitalized (or a particle like "van"), no title words, digits or slashes. */
+export function isPersonName(name: string): boolean {
+  const clean = name.replace(/^dr\.?\s+/i, "").replace(/,.*$/, "").trim();
+  if (/[\d/|@:;]/.test(clean)) return false;
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 5) return false;
+  return words.every((w) => !NOT_NAME_WORD.test(w.replace(/[.,]$/, "")) && (/^[A-ZÀ-ɏ]/.test(w) || NAME_PARTICLE.test(w)));
 }
 
 export function cleanLeadership(entries: LeadershipEntry[], subjectDomain?: string): LeadershipEntry[] {
   for (const e of entries) e.title = tidyTitle(e.title);
-  const deduped = dedupeLeadership(entries, subjectDomain);
+  const deduped = dedupeLeadership(entries.filter((e) => isPersonName(e.name)), subjectDomain);
   return rankLeadership(markDirectoryOnly(resolveFounderClaims(resolveTitleConflicts(deduped, subjectDomain), subjectDomain), subjectDomain));
 }
 
