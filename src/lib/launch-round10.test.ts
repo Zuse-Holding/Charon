@@ -54,6 +54,9 @@ describe("round 10: gap-fill pass", () => {
     assert.equal(needsFunding(base({ company: { name: "Homeboy", entityType: "nonprofit" } })), false);
     assert.equal(needsFunding(base({ company: { name: "Patagonia" }, ownership: "Owned by the Patagonia Purpose Trust and Holdfast Collective" })), false);
     assert.equal(needsFunding(base({ company: { name: "Gecko Robotics", founded: "2013" } })), true);
+    // Only an old round on record: look for later ones (round 11, Gecko).
+    assert.equal(needsFunding(base({ company: { name: "Gecko Robotics", founded: "2013" }, funding: [{ round: "Series B", amount: "$40 million" }] }), Date.parse("2026-10-23")), true);
+    assert.equal(needsFunding(base({ company: { name: "Gecko Robotics", founded: "2013" }, funding: [{ round: "Series D", amount: "$125M", date: "2025" }] }), Date.parse("2026-10-23")), false);
   });
 
   it("keeps only results that name the company or come from its site", () => {
