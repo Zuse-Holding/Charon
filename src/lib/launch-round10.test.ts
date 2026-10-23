@@ -206,3 +206,15 @@ describe("round 11: Gecko canary", () => {
     assert.equal(big.funding.length, 1);
   });
 });
+
+describe("round 11: funding sanity", () => {
+  it("drops a nine-figure seed round and a total raised read as a round", () => {
+    const bundle = base({ company: { name: "Gecko Robotics" }, funding: [{ round: "Seed", amount: "$354M" }, { round: "Series D", amount: "$125 million", verified: true }] });
+    applyCompanyConsistency(bundle, { name: "Gecko Robotics", anchor: {}, domain: "geckorobotics.com" });
+    assert.deepEqual(bundle.funding.map((f) => f.round), ["Series D"]);
+    const b2 = base({ company: { name: "Gecko Robotics", founded: "2013" } });
+    mergeGaps(b2, { funding: [{ round: "Series C", amount: "$354M", source: 1 }], executives: [], competitors: [] } as unknown as GapExtraction,
+      [{ n: 1, title: "x", url: "https://a.com", text: "Gecko Robotics has raised $354M to date across its funding rounds." }], ["funding"], ["Gecko Robotics"]);
+    assert.equal(b2.funding.length, 0);
+  });
+});
