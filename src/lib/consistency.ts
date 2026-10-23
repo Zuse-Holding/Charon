@@ -32,6 +32,7 @@ const LATE_ROUND = /\bseries\s+[d-z]\b/i;
 // round or a late-stage series is out of scale and almost always a
 // namesake's (Alan Health's $8.9B, Promise ABA's funding).
 const SMALL_COMPANY_CEILING = 100e6;
+const EARLY_ROUND_CEILING = 20e6;
 
 export function isSmallCompany(bundle: Pick<ResearchBundle, "company"> & Partial<Pick<ResearchBundle, "funding" | "insiderActivity" | "ownership" | "secFilings" | "nonprofitFinancials" | "contractCeilings">>): boolean {
   const c = bundle.company;
@@ -89,6 +90,11 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
     bundle.powerMapConnections = keep("power-map entries not naming the city", bundle.powerMapConnections, (p) => namesCity(p.blurb));
     if (bundle.powerMapConnections.length === 0) bundle.powerMapConnections = undefined;
   }
+
+  // A seed or angel round of $20M or more is a total raised read as a
+  // round (round 11: Gecko's "Seed: $354M" was its funding to date).
+  bundle.funding = keep("seed rounds out of scale", bundle.funding, (f) =>
+    !/\b(pre-?seed|seed|angel)\b/i.test(f.round ?? "") || parseMoney(f.amount ?? "").every((v) => v < EARLY_ROUND_CEILING));
 
   if (isSmallCompany(bundle)) {
     // A fund's target is the fund's size, not the sponsor's (launch fix 47).

@@ -148,6 +148,14 @@ export type GapExtraction = z.infer<typeof GapSchema>;
 
 const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9$.\s]/g, " ").replace(/\s+/g, " ");
 
+/** The snippet gives this amount as a total raised, not one round. */
+export function isTotalRaised(text: string, amount: string): boolean {
+  const d = amount.match(/\d+(?:\.\d+)?/)?.[0];
+  if (!d) return false;
+  const n = d.replace(".", "\\.");
+  return new RegExp(`${n}[^.]{0,40}\\b(to date|in total|total(ling)?|overall|since (its )?founding)\\b|\\b(total|altogether|to date)\\b[^.]{0,30}${n}`, "i").test(text);
+}
+
 /** The snippet states this value, as written (year, city, name or figure). */
 export function snippetStates(snippet: string, value: string, kind: "year" | "place" | "name" | "money"): boolean {
   const s = norm(snippet);
@@ -235,6 +243,8 @@ export function mergeGaps(bundle: ResearchBundle, x: GapExtraction, snippets: Ga
       const s = snip(f.source);
       if (!f.round || !f.amount || !s || !snippetStates(s.text, f.amount, "money")) continue;
       if (bundle.funding.some((g) => (g.round ?? "").toLowerCase() === f.round!.toLowerCase())) continue;
+      // "Raised $354M to date" is a total, not a round.
+      if (isTotalRaised(s.text, f.amount!)) continue;
       // The snippet must say this company raised it, not a namesake or an investor.
       if (!names.some((n) => mentionsCompany(s.text, n)) || !/\b(rais\w*|secur\w*|closes?|funding|round|series|seed)\b/i.test(s.text)) continue;
       bundle.funding.push({ round: f.round, amount: f.amount, date: f.date, verified: true } as FundingEntry);
