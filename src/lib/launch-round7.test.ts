@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { secFetch, SEC_USER_AGENT } from "./sec-http.js";
+import { secEnabled, secFetch, SEC_USER_AGENT } from "./sec-http.js";
 import { llmProblemMessage } from "./cost-tracking.js";
 import { CoverageRecorder } from "./coverage/recorder.js";
 import { nameOrDivision, partyIs, typoOf } from "./name-match.js";
@@ -25,7 +25,19 @@ const withFetch = async (impl: (url: string, init?: RequestInit) => Response | P
 };
 
 describe("round seven: infrastructure (fixes 52-54)", () => {
-  it("every SEC request declares the User-Agent and accepts gzip", async () => {
+  it("SEC lookups stay off until SEC_ENABLED=on", async () => {
+    assert.equal(secEnabled({}), false);
+    assert.equal(secEnabled({ SEC_ENABLED: "on" }), true);
+    let called = false;
+    await withFetch(() => { called = true; return Response.json({}); }, async () => {
+      assert.equal(await secFetch("https://www.sec.gov/files/company_tickers.json"), null);
+    });
+    assert.equal(called, false);
+  });
+
+  it("every SEC request declares the User-Agent and accepts gzip", async (t) => {
+    process.env.SEC_ENABLED = "on";
+    t.after(() => { delete process.env.SEC_ENABLED; });
     let headers: Record<string, string> = {};
     await withFetch((_url, init) => { headers = init?.headers as Record<string, string>; return Response.json({}); }, async () => {
       await secFetch("https://www.sec.gov/files/company_tickers.json");

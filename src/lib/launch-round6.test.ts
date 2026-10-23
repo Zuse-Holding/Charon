@@ -198,7 +198,9 @@ describe("round six: funding (fix 47)", () => {
     assert.deepEqual(t.map((x) => [x.round, x.amount]), [["MJW Student Housing Fund (target)", "$100 million"]]);
   });
 
-  it("searches Form D by the sponsor's short name", async () => {
+  it("searches Form D by the sponsor's short name", async (t) => {
+    process.env.SEC_ENABLED = "on";
+    t.after(() => { delete process.env.SEC_ENABLED; });
     const asked: string[] = [];
     await withFetch((url) => {
       asked.push(url);

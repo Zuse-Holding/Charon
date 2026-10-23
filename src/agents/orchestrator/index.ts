@@ -56,6 +56,7 @@ import { buildCompanyProvenance, buildPersonProvenance, type BuiltProvenance } f
 import { recordSnapshots, type Snapshot } from "../../lib/provenance/snapshots.js";
 import { CoverageRecorder, type ProgressListener } from "../../lib/coverage/recorder.js";
 import { corporateActions } from "../../lib/corporate-actions.js";
+import { SEC_OFF_REASON, secEnabled } from "../../lib/sec-http.js";
 import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
 
 /**
@@ -158,7 +159,11 @@ export class ResearchOrchestrator {
     // SEC filings (launch fix 19) need only the name, so they run alongside
     // the website step; a website-only search waits for the site's name.
     const secEmpty = { filings: undefined, sources: [] } as Awaited<ReturnType<SecFilingsAgent["run"]>>;
-    const runSec = (name: string) => cov.run("edgar", () => new SecFilingsAgent().run(name), secEmpty, (r) => (r.filings ? 1 : 0));
+    const secOn = secEnabled();
+    if (!secOn) for (const id of ["edgar", "formd"]) cov.skip(id, SEC_OFF_REASON);
+    const runSec = (name: string) => secOn
+      ? cov.run("edgar", () => new SecFilingsAgent().run(name), secEmpty, (r) => (r.filings ? 1 : 0))
+      : Promise.resolve(secEmpty);
     const secEarly = queryAnchor.nameFromSite ? undefined : runSec(queryName);
     const siteResult = await cov.run("website", () => this.websiteAgent.run(queryName, queryAnchor),
       { company: { name: queryName }, leadership: [], products: [], sources: [] },
@@ -271,7 +276,7 @@ export class ResearchOrchestrator {
         : cov.run("state-records", () => filings.stateFormation(siteResult.company.legalName ?? companyName, recordState), { record: undefined, sources: [] }, (r) => (r.record ? 1 : 0)),
       franchisor ? cov.run("fdd", () => filings.fddFigures(companyName), { fdd: undefined, sources: [] }, (r) => (r.fdd ? 1 : 0))
         : Promise.resolve({ fdd: undefined, sources: [] }),
-      proAccess ? cov.run("formd", () => filings.formDFilings([...new Set([...entityNames.filter((n) => n !== alias), ...nameVariants(companyName), ...fundNames(fundTexts, companyName)])], sponsor ? companyName.split(/\s+/)[0] : undefined), { funding: [], sources: [] }, (r) => r.funding.length)
+      proAccess && secOn ? cov.run("formd", () => filings.formDFilings([...new Set([...entityNames.filter((n) => n !== alias), ...nameVariants(companyName), ...fundNames(fundTexts, companyName)])], sponsor ? companyName.split(/\s+/)[0] : undefined), { funding: [], sources: [] }, (r) => r.funding.length)
         : Promise.resolve({ funding: [], sources: [] }),
     ]);
 
