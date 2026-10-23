@@ -1,6 +1,7 @@
 import type { LeadershipEntry } from "../types/research.js";
 import { normalizeWords } from "./news-noise.js";
 import { sourceScore, sourceTier } from "./source-quality.js";
+import { typoOf } from "./name-match.js";
 
 /**
  * Leadership clean-up after extraction (launch fixes 6, 7 and 9). Pure
@@ -45,7 +46,10 @@ export function samePerson(a: string, b: string): boolean {
   const ka = personKey(a.includes(",") && !CREDENTIAL_ONLY.test(a.split(",").slice(1).join(",")) ? a.split(",").reverse().join(" ") : a).split(" ");
   const kb = personKey(b.includes(",") && !CREDENTIAL_ONLY.test(b.split(",").slice(1).join(",")) ? b.split(",").reverse().join(" ") : b).split(" ");
   if (ka.length < 2 || kb.length < 2) return ka.join(" ") === kb.join(" ");
-  const match = (x: string[], y: string[]) => x[x.length - 1] === y[y.length - 1] && x[0].slice(0, 3) === y[0].slice(0, 3);
+  // Last names one letter apart in six are one spelling slip ("Agadganian"
+  // and "Agadjanian"), with the same start to the first name.
+  const lastSame = (a: string, b: string) => a === b || (a.length >= 6 && b.length >= 6 && a[0] === b[0] && typoOf(a, b));
+  const match = (x: string[], y: string[]) => lastSame(x[x.length - 1], y[y.length - 1]) && x[0].slice(0, 3) === y[0].slice(0, 3);
   return match(ka, kb) || match(ka, [...kb].reverse());
 }
 
@@ -59,7 +63,11 @@ export function dedupeLeadership(entries: LeadershipEntry[], subjectDomain?: str
       out.push({ ...e });
       continue;
     }
-    prev.title = mergeTitles(prev.title, e.title);
+    // Another organization's site lists the roles a person holds there
+    // (launch fix 66: MJW's Mark Weinstein got titles from dignitymoves.org):
+    // only the company's own pages, filings and the press add titles.
+    const tier = e.sourceUrl ? sourceTier(e.sourceUrl, subjectDomain) : "primary";
+    if (tier === "primary" || tier === "press" || tier === "reference" || tier === "directory") prev.title = mergeTitles(prev.title, e.title);
     if (!prev.bio && e.bio) prev.bio = e.bio;
     const score = (u?: string) => (u ? sourceScore(u, subjectDomain) : -1);
     if (score(e.sourceUrl) > score(prev.sourceUrl)) {
@@ -249,10 +257,32 @@ export function applyAppointments(entries: LeadershipEntry[], appointments: Lead
   return entries;
 }
 
+/** Rank of a title: 0 the top seat, 5 below management. */
+export function seniority(title: string): number {
+  const t = title.toLowerCase();
+  if (/\b(chief executive|ceo|co-ceo|president|chair|founder|owner|managing partner|executive director)\b/.test(t) && !/\bvice president\b|\bvp\b/.test(t)) return 0;
+  if (/\bchief\b|\bc[fotimrs]o\b|general counsel/.test(t)) return 1;
+  if (/\b(evp|svp|executive vice president|senior vice president)\b/.test(t)) return 2;
+  if (/\b(vice president|vp|partner|principal)\b/.test(t)) return 3;
+  if (/\b(director|head of)\b/.test(t)) return 4;
+  return 5;
+}
+
+/**
+ * Executives first, by seniority (launch fix 66: Graybar showed district
+ * managers instead of its officers); once three executives are listed,
+ * managers and staff below director drop off.
+ */
+export function rankLeadership(entries: LeadershipEntry[]): LeadershipEntry[] {
+  const ranked = entries.map((e, i) => ({ e, i, r: seniority(e.title) })).sort((a, b) => a.r - b.r || a.i - b.i);
+  const executives = ranked.filter((x) => x.r <= 3).length;
+  return ranked.filter((x) => executives < 3 || x.r <= 4).map((x) => x.e);
+}
+
 export function cleanLeadership(entries: LeadershipEntry[], subjectDomain?: string): LeadershipEntry[] {
   for (const e of entries) e.title = tidyTitle(e.title);
   const deduped = dedupeLeadership(entries, subjectDomain);
-  return markDirectoryOnly(resolveFounderClaims(resolveTitleConflicts(deduped, subjectDomain), subjectDomain), subjectDomain);
+  return rankLeadership(markDirectoryOnly(resolveFounderClaims(resolveTitleConflicts(deduped, subjectDomain), subjectDomain), subjectDomain));
 }
 
 const TITLE = "(?:co-?ceo|co-?chief executive officer|co-?founder(?:\\s+(?:and|&)\\s+(?:ceo|president|cto|chief [a-z]+ officer))?|founder|chief [a-z]+ officer|ceo|cto|coo|cfo|president|chair(?:man|woman)?|managing (?:director|partner)|vice president(?: of [a-z ]{3,30})?|head of [a-z ]{3,30}|general counsel)";

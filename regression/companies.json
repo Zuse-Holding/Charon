@@ -1,0 +1,32 @@
+{
+  "_comment": "Launch fix 74: the scorecard companies. Each check is a case-insensitive regex the report must match. mustKeep items that fail are flagged as regressions.",
+  "companies": [
+    { "name": "Promise ABA", "website": "promiseaba.com",
+      "mustFind": { "2017 formation": "Founded:\\*\\* 2017", "Lilia Agadganian": "Agadganian", "Lilit Gevoglanian": "Gevoglanian", "Valencia location": "Valencia", "adult services": "adult", "NPI record": "npiregistry|NPI", "local ABA peers": "## Competitors\\n- " },
+      "mustKeep": { "missing DMARC": "DMARC", "staff roster": "## Leadership\\n- " } },
+    { "name": "ACCO Engineered Systems", "website": "accoes.com",
+      "mustFind": { "founded 1934": "1934", "HQ Pasadena": "Pasadena", "Darway president": "Darway[^\\n]*President", "Marrs CEO": "Marrs[^\\n]*CEO", "ESOP": "ESOP|employee-owned", "NLRB case": "nlrb\\.gov/case", "Noresco suit": "Noresco", "DOJ action": "United States v\\. ACCO" },
+      "mustKeep": { "federal contracts": "## Federal Spending", "Wayback history": "Web Archive History", "Colorado expansion": "Colorado" } },
+    { "name": "MJW Investments", "website": "mjwinvestments.com",
+      "mustFind": { "HQ Santa Monica": "Santa Monica", "$500M fund": "\\$500", "Coventry Square": "Coventry", "acquisition criteria": "criteria", "Form D": "Form D", "student-housing peers": "## Competitors\\n- " },
+      "mustKeep": { "$100M fund target": "\\$100\\s?(M|million)", "Brian Benson": "Benson", "Mark Davidson": "Davidson" } },
+    { "name": "Graybar Electric Company", "website": "graybar.com",
+      "mustFind": { "$12.88B sales": "\\$12\\.88B", "asbestos caseload": "asbestos", "CEO Mazzarella": "Mazzarella", "board independence": "independen", "founded 1869": "1869", "peer Wesco": "Wesco", "peer Sonepar": "Sonepar" },
+      "mustKeep": { "Blyden suit": "Blyden", "NLRB cases": "nlrb\\.gov/case", "SSA contract": "Social Security", "systems in use": "Systems in use", "DMARC reject": "p=reject" } },
+    { "name": "Gecko Robotics", "website": "geckorobotics.com",
+      "mustFind": { "Series D $125M": "Series D", "Series C extension": "extension", "CEO title": "Loosararian[^\\n]*CEO", "President title": "Demmer[^\\n]*President", "robots in products": "## Products\\n- ", "ceiling vs obligated": "ceiling announced" },
+      "mustKeep": { "federal awards": "## Federal Spending", "systems in use": "Systems in use", "DMARC reject": "p=reject" } },
+    { "name": "Crumbl", "website": "crumblcookies.com",
+      "mustFind": { "HQ Lindon": "Lindon", "closures": "clos", "FDD figures": "Franchise Disclosure", "Warner suit": "Warner", "dessert peers": "Insomnia|Nothing Bundt|Great American Cookies|Mrs\\. Fields|Levain" },
+      "mustKeep": { "court records": "## Court and Agency Records" } },
+    { "name": "Homeboy Industries", "website": "homeboyindustries.org",
+      "mustFind": { "2024 990": "2024 Form 990", "co-CEO Delgado": "Delgado", "co-CEO Torres": "Torres", "no VC rounds": "^(?![\\s\\S]*Series [A-H]:)", "$100M campaign": "\\$100" },
+      "mustKeep": { "products": "## Products\\n- ", "summary": "## Executive Summary\\n[^_]" } },
+    { "name": "Limbach Holdings", "website": "limbachinc.com",
+      "mustFind": { "$646.8M revenue": "\\$646\\.8M", "Q2 2026 margin": "Q2 2026", "1901 acquisition": "1901", "MEP peers": "EMCOR|Comfort Systems|IES" },
+      "mustKeep": { "systems in use": "Systems in use", "DMARC quarantine": "p=quarantine" } },
+    { "name": "Patagonia", "website": "patagonia.com",
+      "mustFind": { "legal name": "Patagonia, Inc\\.", "ownership": "Holdfast|Purpose Trust", "peers": "Columbia|Arc'teryx|Fj.llr.ven", "no town awards": "^(?![\\s\\S]*Town of Patagonia)", "no namesake rounds": "^(?![\\s\\S]*Series A: \\$30)" },
+      "mustKeep": { "Court of International Trade": "International Trade" } }
+  ]
+}

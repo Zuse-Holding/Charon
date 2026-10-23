@@ -97,6 +97,13 @@ export interface FetchProvider {
 // sdsdentistry.com) answer any user agent containing it with a 403, which
 // cost the report the one site the user gave it.
 const USER_AGENT = "Mozilla/5.0 (compatible; MetisResearch/1.0; +https://metisanalytic.com)";
+// A plain browser request, for a company's own public pages only.
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Upgrade-Insecure-Requests": "1",
+};
 
 // Interstitials hosts serve instead of the page (SiteGround's "One moment,
 // please...", Cloudflare's "Just a moment...").
@@ -142,27 +149,36 @@ export class DirectFetchProvider implements FetchProvider {
     const direct = await this.fetchDirect(url);
     if (!fallback || direct.html || direct.reason === "the address doesn't exist" || direct.reason === "the address isn't a web page"
       || isUnfetchable(url) || /^https?:\/\/web\.archive\.org\//.test(url)) return direct;
+    // Launch fix 63 (MJW's 403, Crumbl unreachable): firewalls that refuse
+    // a bot-labeled client often serve a plain browser request, so the
+    // company's own site is asked once more as a browser would; then a
+    // render service if one is set; then the archive, given longer to answer.
+    if (/HTTP (401|403|406|429)|bot check/.test(direct.reason ?? "")) {
+      const browser = await this.fetchDirect(url, { headers: BROWSER_HEADERS, timeoutMs: 12_000 });
+      if (browser.html) return browser;
+    }
     const template = process.env.RENDER_URL_TEMPLATE;
     if (template) {
-      const rendered = await this.fetchDirect(template.replace("{url}", encodeURIComponent(url)));
+      const rendered = await this.fetchDirect(template.replace("{url}", encodeURIComponent(url)), { timeoutMs: 30_000 });
       if (rendered.html) return { html: rendered.html, via: "rendered" };
     }
     const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const archived = await this.fetchDirect(`https://web.archive.org/web/${stamp}id_/${url}`);
+    const archived = await this.fetchDirect(`https://web.archive.org/web/${stamp}id_/${url}`, { timeoutMs: 25_000 });
     if (archived.html) return { html: archived.html, via: "archived" };
+    console.log(`[fetch] ${url}: ${direct.reason}; browser retry, ${template ? "render, " : ""}archive all failed`);
     return direct;
   }
 
-  private async fetchDirect(url: string): Promise<FetchedPage> {
+  private async fetchDirect(url: string, opts: { headers?: Record<string, string>; timeoutMs?: number } = {}): Promise<FetchedPage> {
     if (isUnfetchable(url)) return { html: null, reason: "the site doesn't allow automated reading" };
     const cached = pageCache.get(url);
     if (cached !== undefined) return { html: cached };
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? this.timeoutMs);
     try {
       const res = await fetch(url, {
         signal: controller.signal,
-        headers: {
+        headers: opts.headers ?? {
           "User-Agent": USER_AGENT,
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "en-US,en;q=0.5",

@@ -10,6 +10,7 @@
   "scripts": {
     "diagnose": "tsx src/diagnose-ollama.ts",
     "research": "tsx src/cli.ts research",
+    "regression": "tsx run-regression.mjs",
     "research-person": "tsx src/cli.ts research-person",
     "research-product": "tsx src/cli.ts research-product",
     "research-political": "tsx src/cli.ts research-political",

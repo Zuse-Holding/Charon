@@ -58,11 +58,13 @@ const DIVISION = new Set(["facility", "facilities", "services", "service", "comp
  * registries that file under subsidiaries (USAspending, court parties).
  */
 export function nameOrDivision(candidate: string, subject: string): boolean {
-  if (strongNameMatch(candidate, subject)) return true;
   const b = distinctiveWords(subject);
+  const own = tokens(subject);
   const all = tokens(candidate);
   if (!b.length || !b.every((y) => all.some((x) => same(x, y)))) return false;
-  return all.every((x) => b.some((y) => same(x, y)) || DIVISION.has(x) || GENERIC.has(x));
+  // Every other word is the subject's own or an operating-unit word:
+  // "Patagonia Investments" is another firm, "MJW Investments LLC" isn't.
+  return all.every((x) => own.some((y) => same(x, y)) || DIVISION.has(x));
 }
 
 /** The parties on one side of a caption: "Patagonia, Inc. and Patagonia Works" -> two names. */

@@ -355,6 +355,29 @@ export class ResearchOrchestrator {
       nonprofitFinancials: nonprofitResult.financials,
     };
     if (sec) applySecFilings(bundle, sec);
+    // A company it bought is not a competitor (launch fix 65: Graybar listed
+    // Metro Electric Supply, acquired in 2021, in the same report).
+    const ownTexts = [bundle.company.description ?? "", sec?.description ?? "", ...bundle.news.map((n) => `${n.headline}. ${n.summary ?? ""}`),
+      ...bundle.products.map((p) => `${p.name}. ${p.description ?? ""}`)];
+    const bought = bundle.competitors.filter((c) => acquiredBy(ownTexts, c.name));
+    if (bought.length) {
+      console.log(`[competitors] "${companyName}": dropped ${bought.map((c) => c.name).join(", ")} (acquired)`);
+      bundle.competitors = bundle.competitors.filter((c) => !bought.includes(c));
+    }
+    // Ownership already collected but never shown (launch fix 68: Patagonia's
+    // Purpose Trust and Holdfast Collective came back from LittleSis).
+    if (!bundle.ownership) {
+      const found = ownershipFrom([
+        ...(littleSisResult.matches ?? []).filter((m) => m.blurb).map((m) => ({ text: m.blurb!, url: m.url })),
+        ...bundle.news.filter((n) => n.url).map((n) => ({ text: `${n.headline}. ${n.summary ?? ""}`, url: n.url! })),
+      ]);
+      if (found) {
+        bundle.ownership = found.note;
+        const src = bundle.sources.find((x) => x.url === found.url);
+        if (src) { if (!src.usedFor.includes("funding")) src.usedFor.push("funding"); }
+        else bundle.sources.push({ url: found.url, title: "Ownership", retrievedAt: new Date().toISOString(), usedFor: ["funding"] });
+      }
+    }
     // Fund targets the company's own pages or the news state (launch fix 47).
     const targets = fundTargets([
       ...siteResult.products.map((p) => ({ text: `${p.name}. ${p.description ?? ""}`, url: p.sourceUrl })),
@@ -726,6 +749,28 @@ export function isNationalScale(c: { locations?: string[]; description?: string;
  * the business address as HQ when nothing else gave one, and the executive
  * officers as leadership, cited to the 10-K.
  */
+/** The texts say the company acquired this one. */
+export function acquiredBy(texts: string[], name: string): boolean {
+  const core = name.replace(/,?\s+(inc\.?|llc|corp\.?|co\.?|company)$/i, "").trim();
+  if (core.length < 3) return false;
+  const n = core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`\\b(acquir\\w*|bought|purchas\\w*|merged with)\\b[^.]{0,80}\\b${n}\\b|\\b${n}\\b[^.]{0,60}\\b(was |has been )?(acquired|bought|purchased)\\b`, "i");
+  return texts.some((t) => re.test(t));
+}
+
+/** "Owned by X", "ownership transferred to X": a note and the page that says it. */
+export function ownershipFrom(items: { text: string; url: string }[]): { note: string; url: string } | undefined {
+  const re = /\b(?:(?:is |are )?(?:owned|controlled) by|ownership (?:was |has been )?(?:transferred|given) to|subsidiary of|gave (?:away )?(?:the |his |her )?company to|transferred (?:the company|ownership|its (?:voting )?stock) to)\s+((?:the\s+)?[A-Z][\w&'’.-]*(?:\s+(?:[A-Z][\w&'’.-]*|and|of|the)){0,6})/;
+  for (const it of items) {
+    const m = it.text.match(re);
+    if (m) {
+      const owners = m[1].replace(/[.,;:]+$/, "").replace(/\s+(and|of|the)$/i, "").trim();
+      return { note: `Owned by ${owners}`, url: it.url };
+    }
+  }
+  return undefined;
+}
+
 /**
  * DOJ, SEC, FTC, EPA, OSHA and DOL items as case records (launch fix 62):
  * "United States v. ACCO Engineered Systems, Inc." is a suit against it.

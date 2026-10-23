@@ -123,6 +123,14 @@ export class ReportAgent {
         : "Unknown"}`
     );
     if (bundle.company.incorporated) lines.push(`- **Incorporated:** ${bundle.company.incorporated}`);
+    // Sources that disagree on the HQ are both shown (launch fix 69: MJW's
+    // listing said 12100 Wilshire Blvd, LinkedIn said Santa Monica).
+    const listedCity = bundle.company.listing?.address?.match(/,\s*([A-Za-z .'-]+),\s*[A-Z]{2}\b/)?.[1]?.trim();
+    const hqCity = bundle.company.headquarters?.split(",")[0]?.trim();
+    if (listedCity && hqCity && listedCity.toLowerCase() !== hqCity.toLowerCase()) {
+      lines.push(`- _Sources disagree on the headquarters: the business listing gives ${bundle.company.listing!.address}; other sources give ${bundle.company.headquarters}._`);
+    }
+    if (bundle.company.legalName && bundle.company.legalName !== bundle.company.name) lines.push(`- **Legal name:** ${bundle.company.legalName} (from its site)`);
     lines.push(`- **Industry:** ${bundle.company.industry ?? "Unknown"}`);
     if (bundle.company.locations?.length) lines.push(`- **Locations:** ${bundle.company.locations.join(" · ")}`);
     lines.push(``);
@@ -188,9 +196,8 @@ export class ReportAgent {
     // left with no source is dropped (pushSectionSources).
     lines.push(`## Risks`);
     if (bundle.risks && bundle.risks.length > 0) {
-      for (const risk of bundle.risks) {
-        lines.push(`- ${risk}`);
-      }
+      // Each item links to the record it rests on (launch fix 72).
+      for (const risk of bundle.risks) lines.push(`- ${risk}${citeLink(bundle.synthesisCitations?.[risk])}`);
     } else {
       lines.push(`_Insufficient data for risk analysis on this run._`);
     }
@@ -199,9 +206,7 @@ export class ReportAgent {
 
     lines.push(`## Opportunities`);
     if (bundle.opportunities && bundle.opportunities.length > 0) {
-      for (const opp of bundle.opportunities) {
-        lines.push(`- ${opp}`);
-      }
+      for (const opp of bundle.opportunities) lines.push(`- ${opp}${citeLink(bundle.synthesisCitations?.[opp])}`);
     } else {
       lines.push(`_Insufficient data for opportunity analysis on this run._`);
     }
@@ -980,6 +985,10 @@ export class ReportAgent {
  * says nothing about the subject and stays.
  */
 /** $12,880,000,000 -> "$12.88B". */
+function citeLink(urls: string[] | undefined): string {
+  return urls?.length ? ` (${urls.slice(0, 2).map((u, i) => `[source${urls.length > 1 ? ` ${i + 1}` : ""}](${u})`).join(", ")})` : "";
+}
+
 function fundingLine(f: { round?: string; amount?: string; date?: string; investors?: string[] }): string {
   return `- ${f.round ?? "Round"}: ${f.amount ?? "Undisclosed"}${f.date ? ` (${f.date})` : ""}${f.investors?.length ? ` — ${f.investors.join(", ")}` : ""}`;
 }

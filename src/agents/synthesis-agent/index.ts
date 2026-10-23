@@ -87,6 +87,7 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
   for (const x of bundle.competitors) facts.push({ text: `Competitor: ${x.name}`, url: x.url });
   const type = c.entityType;
   if (bundle.funding.length === 0 && type !== "nonprofit" && type !== "public") facts.push({ text: "Funding: no public funding records found" });
+  if (bundle.ownership) facts.push({ text: `Ownership: ${bundle.ownership}`, url: bundle.sources.find((x) => x.usedFor.includes("funding"))?.url });
   if (type === "nonprofit") facts.push({ text: "Organization: a nonprofit; it has no investors or funding rounds" });
   const np = bundle.nonprofitFinancials;
   for (const y of np?.years ?? []) {
@@ -137,8 +138,10 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
   }
   const fdd = bundle.fdd;
   if (fdd) {
-    const parts = [fdd.franchisorRevenue && `franchisor revenue ${fdd.franchisorRevenue}`, fdd.averageUnitSales && `average store sales ${fdd.averageUnitSales}`,
-      fdd.unitCount && `${fdd.unitCount} stores`].filter(Boolean);
+    // Every FDD figure, not just three (launch fix 68).
+    const parts = [fdd.franchisorRevenue && `franchisor revenue ${fdd.franchisorRevenue}`, fdd.franchisorNetIncome && `franchisor net income ${fdd.franchisorNetIncome}`,
+      fdd.averageUnitSales && `average store sales ${fdd.averageUnitSales}`, fdd.unitCount && `${fdd.unitCount} stores`,
+      fdd.franchiseFee && `franchise fee ${fdd.franchiseFee}`, fdd.royalty && `royalty ${fdd.royalty}`, fdd.initialInvestment && `initial investment ${fdd.initialInvestment}`].filter(Boolean);
     if (parts.length) facts.push({ text: `Franchise disclosure${fdd.year ? ` (${fdd.year})` : ""}: ${parts.join(", ")}`, url: fdd.urls[0] });
   }
   const sec = bundle.secFilings;
@@ -226,8 +229,12 @@ const parsedWhen = (w?: string) => {
  */
 export function isHistoryOnly(cited: number[], facts: Fact[], now = Date.now()): boolean {
   const fs = cited.map((n) => facts[n - 1]).filter(Boolean);
-  return fs.length > 0 && fs.every((f) => (f.kind === "award" || f.kind === "funding" || f.kind === "case")
-    && (parsedWhen(f.when) ?? 0) < now - YEAR_MS);
+  // News over a year old counts too (Graybar's 2021 acquisitions).
+  return fs.length > 0 && fs.every((f) => {
+    const t = parsedWhen(f.when);
+    if (f.kind === "news") return t !== undefined && t < now - YEAR_MS;
+    return (f.kind === "award" || f.kind === "funding" || f.kind === "case") && (t ?? 0) < now - YEAR_MS;
+  });
 }
 
 /**
