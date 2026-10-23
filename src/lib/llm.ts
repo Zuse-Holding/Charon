@@ -944,7 +944,7 @@ function toOppositionResearchArray(v: unknown): { topic: string; finding: string
 
 // --- Form 4 / insider trading extraction (Round 2, item 5) ---
 
-function toForm4Array(v: unknown): { filerName: string; relationship?: string; transactionType?: string; shares?: string; value?: string; date?: string; filingUrl?: string }[] {
+function toForm4Array(v: unknown): { filerName: string; relationship?: string; transactionType?: string; shares?: string; value?: string; date?: string; filingUrl?: string; source?: number }[] {
   if (!v) return [];
   const items = Array.isArray(v) ? v : [v];
   return items.flatMap((item) => {
@@ -960,6 +960,7 @@ function toForm4Array(v: unknown): { filerName: string; relationship?: string; t
       value: toStringOrUndefined(o.value ?? o.amount),
       date: toStringOrUndefined(o.date ?? o.filingDate ?? o.filing_date),
       filingUrl: toStringOrUndefined(o.filingUrl ?? o.filing_url ?? o.url),
+      source: Number.isInteger(Number(o.source)) && Number(o.source) > 0 ? Number(o.source) : undefined,
     }];
   });
 }

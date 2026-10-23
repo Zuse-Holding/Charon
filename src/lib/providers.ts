@@ -14,6 +14,9 @@
 // degrades gracefully (reports which sections lack data).
 
 import { isRefreshRun, recordSearchCall } from "./cost-tracking.js";
+import { secText } from "./sec-http.js";
+
+const isSecHost = (url: string) => { try { return /(^|\.)sec\.gov$/i.test(new URL(url).hostname); } catch { return false; } };
 
 /**
  * Source cache (Fix 3): reruns within the window read the same search
@@ -422,7 +425,10 @@ export async function fetchPageText(
   fetcher: FetchProvider,
   maxChars = 4000
 ): Promise<string | null> {
-  const html = await fetcher.fetchText(url);
+  // sec.gov pages go through the SEC client, which declares who's asking
+  // and is off while SEC_ENABLED isn't on (launch fix 84: a plain fetch of
+  // a search result on sec.gov marked a web-search source "Error: 403").
+  const html = isSecHost(url) ? await secText(url) : await fetcher.fetchText(url);
   if (!html) return null;
   const text = htmlToText(html);
   if (text.length < MIN_USEFUL_TEXT_LENGTH) return null;

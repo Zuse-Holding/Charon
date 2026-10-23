@@ -62,6 +62,12 @@ export function nameOrDivision(candidate: string, subject: string): boolean {
   const own = tokens(subject);
   const all = tokens(candidate);
   if (!b.length || !b.every((y) => all.some((x) => same(x, y)))) return false;
+  // The bare core with a legal form ("Homeboy Corporation") is another
+  // entity when the subject's name goes on ("Homeboy Industries"), except
+  // for a holding company, whose operating company is "X, Inc." (launch fix 84).
+  const descriptors = own.filter((y) => !b.includes(y));
+  if (all.length === b.length && descriptors.length && !descriptors.some((d) => /^(holdings?|group|companies|company)$/.test(d))
+    && /\b(corporation|corp|inc|incorporated|llc|ltd|co)\b\.?/i.test(candidate)) return false;
   // Every other word is the subject's own or an operating-unit word:
   // "Patagonia Investments" is another firm, "MJW Investments LLC" isn't.
   return all.every((x) => own.some((y) => same(x, y)) || DIVISION.has(x));

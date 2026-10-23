@@ -273,12 +273,13 @@ export function seniority(title: string): number {
  * managers instead of its officers); once three executives are listed,
  * managers and staff below director drop off.
  */
-export function rankLeadership(entries: LeadershipEntry[]): LeadershipEntry[] {
+/** @param national A national company: field managers never count as its leadership (launch fix 84: Graybar). */
+export function rankLeadership(entries: LeadershipEntry[], national = false): LeadershipEntry[] {
   const ranked = entries.map((e, i) => ({ e, i, r: seniority(e.title) })).sort((a, b) => a.r - b.r || a.i - b.i);
   const executives = ranked.filter((x) => x.r <= 3).length;
   // A field manager is never leadership beside an executive (launch fix
   // 78: Graybar still listed district managers).
-  return ranked.filter((x) => (executives < 3 || x.r <= 4) && !(executives > 0 && FIELD_MANAGER.test(x.e.title))).map((x) => x.e);
+  return ranked.filter((x) => (executives < 3 || x.r <= 4) && !((national || executives > 0) && FIELD_MANAGER.test(x.e.title))).map((x) => x.e);
 }
 
 const FIELD_MANAGER = /\b(district|branch|area|territory|store|location|zone|regional sales|account|sales) manager\b/i;
@@ -297,10 +298,10 @@ export function isPersonName(name: string): boolean {
   return words.every((w) => !NOT_NAME_WORD.test(w.replace(/[.,]$/, "")) && (/^[A-ZÀ-ɏ]/.test(w) || NAME_PARTICLE.test(w)));
 }
 
-export function cleanLeadership(entries: LeadershipEntry[], subjectDomain?: string): LeadershipEntry[] {
+export function cleanLeadership(entries: LeadershipEntry[], subjectDomain?: string, national = false): LeadershipEntry[] {
   for (const e of entries) e.title = tidyTitle(e.title);
   const deduped = dedupeLeadership(entries.filter((e) => isPersonName(e.name)), subjectDomain);
-  return rankLeadership(markDirectoryOnly(resolveFounderClaims(resolveTitleConflicts(deduped, subjectDomain), subjectDomain), subjectDomain));
+  return rankLeadership(markDirectoryOnly(resolveFounderClaims(resolveTitleConflicts(deduped, subjectDomain), subjectDomain), subjectDomain), national);
 }
 
 const TITLE = "(?:co-?ceo|co-?chief executive officer|co-?founder(?:\\s+(?:and|&)\\s+(?:ceo|president|cto|chief [a-z]+ officer))?|founder|chief [a-z]+ officer|ceo|cto|coo|cfo|president|chair(?:man|woman)?|managing (?:director|partner)|vice president(?: of [a-z ]{3,30})?|head of [a-z ]{3,30}|general counsel)";
