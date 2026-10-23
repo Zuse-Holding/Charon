@@ -239,3 +239,24 @@ export function isEnforcementSource(url: string | undefined): boolean {
     return false;
   }
 }
+
+// A government page is an enforcement action only when it is one (launch
+// fix 76: Graybar's own 10-K, Gecko's Form D, DOJ conference videos and EPA
+// research on the Patagonia region were all labeled "enforcement charges").
+const COMPANY_FILING_PATH = /\/(Archives\/edgar|cgi-bin\/browse-edgar|edgar)\//i;
+const COMPANY_FILING_TITLE = /\b(10-K|10-Q|8-K|S-1(\/A)?|S-4|DEF ?14A|20-F|Form D|annual report|quarterly report|prospectus|proxy statement|registration statement)\b/i;
+const ENFORCEMENT_PATH = /\/(litigation|enforcement|enforce|litreleases|admin|complaints|cases|citations?)(\/|-|$)|\/(opa|usao-[a-z]+|usao)\/pr\//i;
+const ENFORCEMENT_ACTION = /\b(United States|U\.S\.|SEC|FTC|EEOC|EPA|People|State of [A-Z][a-z]+) v\.\s|\b(charg(e|es|ed|ing)|indict(ed|ment)|plead(s|ed)? guilty|pleaded guilty|sentenced|convicted|settle(s|d|ment)?|consent (order|decree|judgment)|complaint against|civil penalt(y|ies)|penalt(y|ies)|fined|agrees? to pay|ordered to pay|to resolve (allegations|claims)|false claims act|litigation release|administrative proceeding|cease[- ]and[- ]desist|cited for|citations? (to|against)|sues|sued|lawsuit against)\b/i;
+
+export function isEnforcementAction(r: { title: string; snippet?: string; url: string }, names: string[]): boolean {
+  if (!isEnforcementSource(r.url)) return false;
+  // Filings by the company belong to Funding or Financials, not risks.
+  if (COMPANY_FILING_PATH.test(r.url) || COMPANY_FILING_TITLE.test(r.title)) return false;
+  let path = "";
+  try { path = new URL(r.url).pathname; } catch { /* no path */ }
+  const titleAction = ENFORCEMENT_ACTION.test(r.title);
+  if (!titleAction && !(ENFORCEMENT_PATH.test(path) && ENFORCEMENT_ACTION.test(r.snippet ?? ""))) return false;
+  // The company must be named as itself (a party), not a namesake or a place.
+  const named = (text: string) => names.some((n) => !!n && mentionsCompany(text, n) && namesItself(text, n));
+  return named(r.title) || (titleAction && named(r.snippet ?? ""));
+}

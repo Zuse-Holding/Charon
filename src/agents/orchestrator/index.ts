@@ -785,7 +785,8 @@ export function enforcementCases(news: NewsEntry[], names: string[]): CaseRecord
       court: AGENCY_NAMES[agency] ?? agency,
       filed: n.date,
       url: n.url!,
-      role: role === "unknown" || role === "plaintiff" ? "charged" : role,
+      // "Patagonia v. United States" is its own suit, not a charge.
+      role: role === "unknown" ? "charged" : role,
       caseType: "Government enforcement",
     };
   });

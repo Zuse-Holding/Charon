@@ -85,8 +85,13 @@ export function pageYears(html: string): NonprofitYear[] {
  * The organization this report is about, of the search's matches: its name
  * is the company's, and its state the HQ's when both are known.
  */
+// A company's foundation or fund is a separate entity (launch fix 77:
+// the Graybar Foundation's 990-PFs were shown as Graybar's funding).
+const CHARITY_VEHICLE = /\b(foundation|fund|trust|charitable|endowment|charities)\b/i;
+
 export function subjectOrganization(orgs: NonprofitFilingEntry[], name: string, state?: string): NonprofitFilingEntry | undefined {
-  const named = orgs.filter((o) => strongNameMatch(o.name, name));
+  const vehicle = (n: string) => n.match(CHARITY_VEHICLE)?.[1].toLowerCase();
+  const named = orgs.filter((o) => strongNameMatch(o.name, name) && (!vehicle(o.name) || vehicle(o.name) === vehicle(name)));
   return named.find((o) => !state || !o.state || o.state === state) ?? (state ? undefined : named[0]);
 }
 

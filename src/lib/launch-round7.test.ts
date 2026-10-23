@@ -6,10 +6,11 @@ import { CoverageRecorder } from "./coverage/recorder.js";
 import { nameOrDivision, partyIs, typoOf } from "./name-match.js";
 import { caseRole, isParty } from "../agents/public-filings-agent/index.js";
 import { recipientMatches } from "../agents/usaspending-agent/index.js";
-import { isEnforcementSource, isShoppingOrQuote, namesItself } from "./news-noise.js";
+import { isEnforcementAction, isEnforcementSource, isShoppingOrQuote, namesItself } from "./news-noise.js";
 import { legalNameFrom } from "./entities/site-record.js";
 import { NewsAgent } from "../agents/news-agent/index.js";
 import { acquiredBy, enforcementCases, ownershipFrom } from "../agents/orchestrator/index.js";
+import { subjectOrganization } from "../agents/propublica-nonprofit-agent/index.js";
 import { lockedFacts, unsupportedDetail, type Fact } from "../agents/synthesis-agent/index.js";
 import { cleanFunding } from "../agents/corporate-agent/index.js";
 import { rankLeadership, samePerson, dedupeLeadership } from "./leadership.js";
@@ -107,6 +108,39 @@ describe("round seven: news (fixes 61, 62)", () => {
     const cases = enforcementCases([{ headline: "United States v. ACCO Engineered Systems, Inc.", url: "https://www.justice.gov/usao/pr/acco", date: "Jul 25, 2026", enforcement: true }], ["ACCO Engineered Systems"]);
     assert.equal(cases[0].role, "defendant");
     assert.equal(cases[0].court, "U.S. Department of Justice");
+  });
+
+  it("only actions naming the company count as enforcement (fix 76)", () => {
+    const yes = (title: string, url: string, names: string[], snippet?: string) => isEnforcementAction({ title, url, snippet }, names);
+    assert.equal(yes("United States v. ACCO Engineered Systems, Inc.", "https://www.justice.gov/usao-cdca/pr/acco", ["ACCO Engineered Systems"]), true);
+    assert.equal(yes("Contractor Agrees to Pay $2 Million to Resolve False Claims Act Allegations", "https://www.justice.gov/opa/pr/x", ["ACCO Engineered Systems"],
+      "ACCO Engineered Systems, Inc. agreed to pay..."), true);
+    // Graybar's own filings, Gecko's Form D, Limbach's 10-K and press release exhibit.
+    assert.equal(yes("Graybar Electric Company, Inc. 10-K 2024", "https://www.sec.gov/Archives/edgar/data/205402/x.htm", ["Graybar Electric Company"]), false);
+    assert.equal(yes("Graybar Electric Company Annual Report", "https://www.sec.gov/files/graybar.pdf", ["Graybar Electric Company"]), false);
+    assert.equal(yes("Gecko Robotics, Inc. - Form D", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany", ["Gecko Robotics"]), false);
+    assert.equal(yes("Limbach Holdings Completes Acquisition", "https://www.sec.gov/Archives/edgar/data/1606163/ex99.htm", ["Limbach Holdings"]), false);
+    // Homeboy: a DOJ video and a trip readout.
+    assert.equal(yes("Father Greg Boyle of Homeboy Industries speaks at reentry conference", "https://www.justice.gov/video/x", ["Homeboy Industries"]), false);
+    assert.equal(yes("Readout of Deputy Attorney General's visit to Homeboy Industries", "https://www.justice.gov/opa/pr/readout", ["Homeboy Industries"]), false);
+    // Patagonia: EPA research about the region, and a namesake's settlement.
+    assert.equal(yes("Diatom records from Patagonia glacial lakes", "https://cfpub.epa.gov/si/x", ["Patagonia"]), false);
+    assert.equal(yes("Patagonia Seafarms settles EPA Clean Water Act violations", "https://www.epa.gov/enforcement/x", ["Patagonia"]), false);
+    // MJW: an old SEC PDF that is not an action against it.
+    assert.equal(yes("MJW Investments comment letter", "https://www.sec.gov/rules/comments/2004/mjw.pdf", ["MJW Investments"]), false);
+    assert.equal(yes("SEC Charges MJW Investments with fraud", "https://www.sec.gov/litigation/litreleases/2026/lr1.htm", ["MJW Investments"]), true);
+  });
+
+  it("a company's foundation is not the company (fix 77)", () => {
+    const orgs = [{ ein: "1", name: "Graybar Foundation", url: "u1" }, { ein: "2", name: "Homeboy Industries", url: "u2" }];
+    assert.equal(subjectOrganization(orgs, "Graybar"), undefined);
+    assert.equal(subjectOrganization(orgs, "Homeboy Industries")?.ein, "2");
+    assert.equal(subjectOrganization([{ ein: "3", name: "Gates Foundation", url: "u3" }], "Gates Foundation")?.ein, "3");
+  });
+
+  it("the company's own suit against the government is not a charge", () => {
+    const cases = enforcementCases([{ headline: "Patagonia, Inc. v. United States", url: "https://www.justice.gov/civil/x", date: "2025", enforcement: true }], ["Patagonia"]);
+    assert.equal(cases[0].role, "plaintiff");
   });
 });
 
