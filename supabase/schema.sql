@@ -765,3 +765,26 @@ CREATE INDEX IF NOT EXISTS idx_acquisition_spend_spent_on ON acquisition_spend (
 
 ALTER TABLE acquisition_spend ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON acquisition_spend FROM anon, authenticated;
+
+-- ============================================================
+-- Saved company profiles (round 10, FEATURE_FACT_CACHE)
+-- Sourced basics per website domain, reused across runs so the founding
+-- year, HQ and ownership stop changing from one report to the next.
+-- Written and read by the agent server only (service role).
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS company_profiles (
+  domain            TEXT        PRIMARY KEY CHECK (length(domain) BETWEEN 3 AND 253),
+  legal_name        TEXT,
+  founded           TEXT        CHECK (founded IS NULL OR founded ~ '^[0-9]{4}$'),
+  founded_source    TEXT,
+  headquarters      TEXT,
+  ownership         TEXT,
+  ownership_source  TEXT,
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (founded IS NULL OR founded_source IS NOT NULL),
+  CHECK (ownership IS NULL OR ownership_source IS NOT NULL)
+);
+
+ALTER TABLE company_profiles ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON company_profiles FROM anon, authenticated;

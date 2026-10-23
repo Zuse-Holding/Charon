@@ -59,6 +59,9 @@ import { CoverageRecorder, type ProgressListener } from "../../lib/coverage/reco
 import { corporateActions } from "../../lib/corporate-actions.js";
 import { SEC_OFF_REASON, secEnabled } from "../../lib/sec-http.js";
 import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
+import { fillGaps } from "../../lib/gap-fill.js";
+import { applyProfile, loadProfile, profileFrom, saveProfile, suspiciousFounded } from "../../lib/profile-cache.js";
+import { aboutNamesake, isFillerOpportunity, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "../../lib/risk-rules.js";
 
 /**
  * Research Orchestrator
@@ -362,6 +365,19 @@ export class ResearchOrchestrator {
       nonprofitFinancials: nonprofitResult.financials,
     };
     if (sec) applySecFilings(bundle, sec);
+    // A founding year after its own domain was registered is a misread
+    // (round 10: Limbach "2019"); drop it so the saved profile or the
+    // gap-fill pass supplies the real one.
+    if (suspiciousFounded(bundle)) {
+      console.log(`[founded] "${companyName}": ${bundle.company.founded} is after the domain's registration; dropped`);
+      bundle.company.founded = undefined;
+      bundle.company.foundedSource = undefined;
+    }
+    // Saved, sourced basics from earlier runs (round 10).
+    const cacheOn = isEnabled("fact_cache") && !!domain;
+    const savedProfile = cacheOn ? await loadProfile(domain) : undefined;
+    const fromCache = applyProfile(bundle, savedProfile);
+    if (fromCache.length) console.log(`[profile-cache] "${companyName}": ${fromCache.join("; ")}`);
     // A company it bought is not a competitor (launch fix 65: Graybar listed
     // Metro Electric Supply, acquired in 2021, in the same report).
     const ownTexts = [bundle.company.description ?? "", sec?.description ?? "", ...bundle.news.map((n) => `${n.headline}. ${n.summary ?? ""}`),
@@ -388,8 +404,13 @@ export class ResearchOrchestrator {
         else bundle.sources.push({ url: found.url, title: "Ownership", retrievedAt: new Date().toISOString(), usedFor: ["funding"] });
       }
     }
+    // Second, targeted search for what's still empty (round 10).
+    const gapFill = isEnabled("gap_fill")
+      ? await fillGaps(bundle, this.searcher, [...new Set([companyName, ...(alias ? [alias] : []), ...entityNames])], domain)
+      : { filled: [], actionTexts: [] };
     // Acquisitions, subsidiaries and brands (launch fix 80).
     const actions = corporateActions([
+      ...gapFill.actionTexts,
       ...bundle.news.filter((n) => n.url).map((n) => ({ text: `${n.headline}. ${n.summary ?? ""}`, url: n.url!, date: n.date })),
       ...(bundle.company.website ? [bundle.company.description ?? "", ...bundle.products.map((p) => `${p.name}. ${p.description ?? ""}`)]
         .filter(Boolean).map((text) => ({ text, url: bundle.company.website! })) : []),
@@ -466,15 +487,36 @@ export class ResearchOrchestrator {
     // the bundle is assembled since it needs the full picture as input.
     // A thin report has nothing tied to the business to analyse.
     const synthesis = bundle.company.thin ? null : await synthesizeRisksOpportunities(bundle);
+    const nameSet = [...new Set([companyName, ...entityNames])];
     if (synthesis) {
-      bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts);
-      bundle.opportunities = plausibleAnalysis(synthesis.opportunities, bundle, synthesis.facts);
+      // Personal-life items and discount sales are never risks; restated
+      // offerings, praise and the namesake region are never opportunities (round 10).
+      bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts).filter((r) => !isTabloidRisk(r) && !isSaleRisk(r));
+      bundle.opportunities = plausibleAnalysis(synthesis.opportunities, bundle, synthesis.facts).filter((o) => !isFillerOpportunity(o) && !aboutNamesake(o, nameSet));
       console.log(`[synthesis] "${companyName}": ${bundle.risks.length} risk(s), ${bundle.opportunities.length} opportunit(ies) after the consistency check`);
       bundle.synthesisCitations = synthesis.citations;
       // Same drift checks as the analysis: nothing the facts don't state.
       const [summary] = synthesis.summary ? plausibleAnalysis([synthesis.summary], bundle, synthesis.facts) : [];
       if (summary) bundle.company.summary = summary;
     }
+    // Signals in the data that the model left out (round 10): insider
+    // selling, a 990 squeeze, falling revenue or margin, closures, open
+    // suits, enforcement, one-buyer concentration.
+    if (!bundle.company.thin) {
+      const rules = ruleRisks(bundle, nameSet);
+      const merged = mergeRuleRisks(bundle.risks ?? [], bundle.synthesisCitations ?? {}, rules);
+      const added = merged.risks.length - (bundle.risks?.length ?? 0);
+      if (added > 0) {
+        console.log(`[risk-rules] "${companyName}": added ${added} risk(s) from the data`);
+        bundle.risks = merged.risks;
+        bundle.synthesisCitations = merged.citations;
+        for (const u of Object.values(merged.citations).flat()) {
+          const src = bundle.sources.find((x) => x.url === u);
+          if (src && !src.usedFor.includes("risks")) src.usedFor.push("risks");
+        }
+      }
+    }
+    if (cacheOn && domain) await saveProfile(profileFrom(bundle, domain, savedProfile));
 
     return {
       bundle,

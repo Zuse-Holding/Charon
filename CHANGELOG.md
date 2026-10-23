@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Round 10: must-find push
+- **Gap-fill pass** (`FEATURE_GAP_FILL=on`, agent server): after the bundle is built, Metis checks what's still empty (founded or HQ, a current CEO/president, fewer than 4 competitors, funding for a company that could have venture rounds, acquisitions) and runs one or two targeted searches per gap, then one model call to read them. Every value must appear, as written, in the search result it cites, and that result must name the company (one-word names like "Patagonia" also need a business cue or the domain). Values only fill empty fields; a listed cofounder can gain the CEO title, and a stale shorter title can be replaced by a current fuller one. Adds up to 8 Serper calls and 1 model call per report. Code: `src/lib/gap-fill.ts`.
+- **Saved company profile** (`FEATURE_FACT_CACHE=on`, agent server; run the `company_profiles` block at the end of `supabase/schema.sql` first): sourced founded year, HQ, legal name and ownership are saved per domain and reused, so they stop changing between runs. A filed (10-K) year still wins. A founding year more than two years after the company's own domain was registered is treated as a misread (Limbach "2019"). Code: `src/lib/profile-cache.ts`.
+- **Rule-based risks** (always on): insider selling, a 990 squeeze (expenses up while revenue or contributions fall), falling revenue or gross margin in SEC filings, closures/layoffs/bankruptcy news in the last year, open suits against the company filed in the last three years, government enforcement on record, and a large federal contract ceiling with little obligated. Each is added only when no model risk already cites the same record; at most 6 risks. Code: `src/lib/risk-rules.ts`.
+- **Filters** (always on): personal-life items (Grindr/TikTok story) and discount sales are never risks; restated offerings, praise, "promotion indicates leadership development" and trips to the Patagonia region are never opportunities.
+- **Insider sale values** (always on): per-share prices are multiplied by shares (a range uses its midpoint), so Limbach's CFO risk states about $1.6M instead of "$0K"; SEC's generic Forms 3/4/5 PDF is never cited as the filing.
+
 ### Self-exclusion: phone entries only when SMS is set up
 - The Phone option appears, and the server accepts phone entries, only while `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_VERIFY_SERVICE_SID` are all set. Without them, self-exclusion runs with email and name plus date of birth, and turning Twilio on later adds Phone with no code change.
 
