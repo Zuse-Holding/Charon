@@ -1,7 +1,7 @@
 import { CompanyAnchor, NewsAgentResult, NewsEntry, Source } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
-import { brandName, isEnforcementSource, isLawFirmSolicitation, isPersonalLifeNews, isShoppingOrQuote, namesItself, isNewsIndexPage, isNewsNoise, isUsableHeadline, mentionsCompany, newsDate, outletFromUrl } from "../../lib/news-noise.js";
+import { brandName, isEnforcementAction, isEnforcementSource, isLawFirmSolicitation, isPersonalLifeNews, isShoppingOrQuote, namesItself, isNewsIndexPage, isNewsNoise, isUsableHeadline, mentionsCompany, newsDate, outletFromUrl } from "../../lib/news-noise.js";
 
 export { brandName };
 
@@ -55,6 +55,7 @@ export class NewsAgent {
       const lower = text.toLowerCase();
       return terms.some((t) => lower.includes(t)) || (!!domain && lower.includes(domain)) || BUSINESS_EVENT.test(text);
     };
+    const partyNames = [companyName, ...(alias ? [alias] : [])];
     const lookup = async (location?: string) => {
       const where = location ? ` ${location}` : "";
       const [web, press] = await Promise.all([
@@ -69,6 +70,9 @@ export class NewsAgent {
         // An item must have a real headline and name this company; a hit
         // that only matched loosely is usually about someone else.
         .filter(r => isUsableHeadline(r.title) && aboutIt(r))
+        // An agency page that isn't an action against this company (its own
+        // filings, speeches, research) is dropped (launch fix 76).
+        .filter(r => !isEnforcementSource(r.url) || isEnforcementAction(r, partyNames))
         .filter(r => !isPersonalLifeNews(r.title, r.snippet, r.url) && !isShoppingOrQuote(r.title, r.url));
       console.log(`[news] "${companyName}"${where}: ${web.length} web + ${press.length} news result(s), ${filtered.length} about the company`);
       return filtered;
@@ -82,7 +86,7 @@ export class NewsAgent {
     ]);
     let filtered = found;
     if (filtered.length === 0 && anchor.location) filtered = await lookup();
-    const enforcement = enforcementRaw.filter((r) => isEnforcementSource(r.url) && isUsableHeadline(r.title) && aboutIt(r)
+    const enforcement = enforcementRaw.filter((r) => isEnforcementAction(r, partyNames) && isUsableHeadline(r.title) && aboutIt(r)
       && !filtered.some((f) => f.url === r.url)).slice(0, 3);
     if (enforcement.length) console.log(`[news] "${companyName}": ${enforcement.length} enforcement item(s) from agency sites`);
     const top = [...filtered.slice(0, 5), ...enforcement];
@@ -104,7 +108,7 @@ export class NewsAgent {
       articleText: fetchedTexts[i]?.slice(0, 600) || undefined,
       url: r.url,
       solicitation: isLawFirmSolicitation(r.title, r.snippet) || undefined,
-      enforcement: isEnforcementSource(r.url) || undefined,
+      enforcement: isEnforcementAction(r, partyNames) || undefined,
     }));
 
     const sources: Source[] = top.map((r) => ({
