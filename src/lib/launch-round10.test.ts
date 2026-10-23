@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { insiderSelling, saleValue } from "./insiders.js";
-import { aboutCompany, findGaps, hasCurrentChief, gapQueries, mergeGaps, needsFunding, snippetStates, type GapExtraction, type GapSnippet } from "./gap-fill.js";
+import { aboutCompany, findGaps, hasCurrentChief, gapQueries, isTotalRaised, mergeGaps, needsFunding, snippetStates, type GapExtraction, type GapSnippet } from "./gap-fill.js";
 import { aboutNamesake, isFillerOpportunity, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "./risk-rules.js";
 import { applyProfile, profileFrom, suspiciousFounded } from "./profile-cache.js";
 import { applyCompanyConsistency } from "./consistency.js";
@@ -216,5 +216,17 @@ describe("round 11: funding sanity", () => {
     mergeGaps(b2, { funding: [{ round: "Series C", amount: "$354M", source: 1 }], executives: [], competitors: [] } as unknown as GapExtraction,
       [{ n: 1, title: "x", url: "https://a.com", text: "Gecko Robotics has raised $354M to date across its funding rounds." }], ["funding"], ["Gecko Robotics"]);
     assert.equal(b2.funding.length, 0);
+  });
+
+  it("keeps a round whose headline also gives the running total", () => {
+    assert.equal(isTotalRaised("Gecko Robotics raises $125M Series D, bringing total raised to $347M", "$125M"), false);
+    assert.equal(isTotalRaised("Gecko Robotics raises $125M Series D, bringing total raised to $347M", "$347M"), true);
+    assert.equal(isTotalRaised("Gecko Robotics raised $125 million in a Series D round, bringing its total funding to $347 million.", "$125 million"), false);
+    assert.equal(isTotalRaised("In total, Gecko Robotics has raised $354 million.", "$354 million"), true);
+    assert.equal(isTotalRaised("Gecko Robotics has raised $354M to date from investors including Founders Fund.", "$354M"), true);
+    const b = base({ company: { name: "Gecko Robotics" }, funding: [] });
+    mergeGaps(b, { funding: [{ round: "Series D", amount: "$125M", date: "2025", source: 1 }], executives: [], competitors: [] } as unknown as GapExtraction,
+      [{ n: 1, title: "x", url: "https://a.com", text: "Gecko Robotics raises $125M Series D, bringing total raised to $347M" }], ["funding"], ["Gecko Robotics"]);
+    assert.deepEqual(b.funding.map((f) => f.round), ["Series D"]);
   });
 });
