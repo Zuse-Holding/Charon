@@ -34,7 +34,29 @@ const AGENCIES: { label: string; news: RegExp; spending: RegExp }[] = [
 
 const CONTRACT_WORDS = /\b(contract|award|ceiling|idiq|agreement|task order|deal)\b/i;
 
+/**
+ * One announcement is one contract vehicle (launch fix 48: Gecko's $300M
+ * showed under both GSA and DoD): agencies matched to the same news item
+ * and ceiling merge, and each award counts once toward what's obligated.
+ */
 export function contractCeilings(awards: FederalSpendingEntry[], news: NewsEntry[]): ContractCeiling[] {
+  const raw = ceilingsByAgency(awards, news);
+  const merged = new Map<string, { labels: string[]; ceiling: number; newsUrl?: string; newsDate?: string }>();
+  for (const c of raw) {
+    const key = `${c.ceiling}|${c.newsUrl ?? ""}`;
+    const m = merged.get(key);
+    if (m) m.labels.push(c.agency);
+    else merged.set(key, { labels: [c.agency], ceiling: c.ceiling, newsUrl: c.newsUrl, newsDate: c.newsDate });
+  }
+  return [...merged.values()].map((m) => {
+    const res = AGENCIES.filter((a) => m.labels.includes(a.label)).map((a) => a.spending);
+    const obligated = awards.filter((w) => res.some((re) => re.test(w.awardingAgency ?? "")))
+      .reduce((sum, w) => sum + (parseMoney(w.amount ?? "")[0] ?? 0), 0);
+    return { agency: m.labels.join(" / "), ceiling: m.ceiling, obligated, newsUrl: m.newsUrl, newsDate: m.newsDate };
+  });
+}
+
+function ceilingsByAgency(awards: FederalSpendingEntry[], news: NewsEntry[]): ContractCeiling[] {
   const out: ContractCeiling[] = [];
   for (const a of AGENCIES) {
     const obligated = awards

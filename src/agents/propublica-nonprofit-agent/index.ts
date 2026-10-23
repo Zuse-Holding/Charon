@@ -1,5 +1,6 @@
 import { NonprofitFilingEntry, NonprofitFinancials, NonprofitYear, Source } from "../../types/research.js";
-import { mentionsCompany } from "../../lib/news-noise.js";
+import { strongNameMatch } from "../../lib/name-match.js";
+import { htmlToFullText } from "../../lib/providers.js";
 
 /**
  * ProPublica Nonprofit Explorer Agent (7/20 public-record fusion) — 990
@@ -56,12 +57,36 @@ export function nonprofitYears(filings: OrgFiling[]): NonprofitYear[] {
     }));
 }
 
+const dollars = (s: string | undefined) => (s ? Number(s.replace(/[$,]/g, "")) : undefined);
+
+/**
+ * Years the organization's page shows that the API doesn't yet have
+ * (launch fix P2: Homeboy's 2024 990 was on the page, not in the API).
+ * Each "Fiscal year ending" block, read for its revenue, expenses and
+ * assets; a block without a revenue figure is skipped.
+ */
+export function pageYears(html: string): NonprofitYear[] {
+  const text = htmlToFullText(html);
+  const parts = text.split(/(?=Fiscal year ending\s)/i).filter((p) => /^Fiscal year ending/i.test(p));
+  const out: NonprofitYear[] = [];
+  for (const p of parts) {
+    const year = p.match(/^Fiscal year ending\s+(?:[A-Z][a-z]{2,8}\.?\s+(?:\d{1,2},?\s+)?)?(\d{4})/i)?.[1];
+    const block = p.slice(0, 3000);
+    const num = (label: RegExp) => dollars(block.match(new RegExp(`${label.source}\\s*\\$?\\s*(-?[\\d,]{4,})`, "i"))?.[1]);
+    const revenue = num(/Total Revenue/);
+    if (!year || revenue === undefined || out.some((y) => y.year === year)) continue;
+    out.push({ year, revenue, expenses: num(/Total Functional Expenses|Total Expenses/), assets: num(/Total Assets/),
+      contributions: num(/Contributions(?:,? Gifts,? Grants)?|Contributions Received/) });
+  }
+  return out;
+}
+
 /**
  * The organization this report is about, of the search's matches: its name
  * is the company's, and its state the HQ's when both are known.
  */
 export function subjectOrganization(orgs: NonprofitFilingEntry[], name: string, state?: string): NonprofitFilingEntry | undefined {
-  const named = orgs.filter((o) => mentionsCompany(o.name, name) || mentionsCompany(name, o.name));
+  const named = orgs.filter((o) => strongNameMatch(o.name, name));
   return named.find((o) => !state || !o.state || o.state === state) ?? (state ? undefined : named[0]);
 }
 
@@ -82,9 +107,9 @@ export class ProPublicaNonprofitAgent {
       const data = (await res.json()) as NonprofitSearchResponse;
       const results = data.organizations ?? [];
 
-      const organizations: NonprofitFilingEntry[] = results
+      const candidates: NonprofitFilingEntry[] = results
         .filter((r): r is NonprofitSearchResult & { ein: number; name: string } => Boolean(r.ein && r.name))
-        .slice(0, 10)
+        .slice(0, 25)
         .map((r) => ({
           ein: String(r.ein).padStart(9, "0"),
           name: r.name,
@@ -94,24 +119,19 @@ export class ProPublicaNonprofitAgent {
           url: `https://projects.propublica.org/nonprofits/organizations/${r.ein}`,
         }));
 
-      const sources: Source[] = organizations.length > 0
-        ? [{
-            url: `https://projects.propublica.org/nonprofits/search?q=${encodeURIComponent(name)}`,
-            title: `ProPublica Nonprofit Explorer — ${name}`,
-            retrievedAt: new Date().toISOString(),
-            usedFor: ["nonprofit"],
-          }]
+      // Only the organization this report is about (launch fix 40): Crumbl
+      // listed "Crumbs From Christ" and nine other unrelated nonprofits.
+      const org = subjectOrganization(candidates, name, state);
+      const organizations = org ? [org] : [];
+      const sources: Source[] = org
+        ? [{ url: org.url, title: `ProPublica Nonprofit Explorer — ${org.name}`, retrievedAt: new Date().toISOString(), usedFor: ["nonprofit"] }]
         : [];
 
       // The matching organization's 990 figures (launch fix 33: Homeboy's
       // record was linked but its revenue never pulled).
-      const org = subjectOrganization(organizations, name, state);
       const financials = org ? await this.financials(org) : undefined;
-      if (financials) {
-        sources.push({ url: financials.url, title: `Form 990 filings — ${financials.name} (ProPublica)`, retrievedAt: new Date().toISOString(), usedFor: ["nonprofit"] });
-      }
 
-      console.log(`[propublica-nonprofit-agent] "${name}" — ${organizations.length} match(es)${financials ? `, ${financials.years.length} year(s) of 990 figures for EIN ${financials.ein}` : ""}`);
+      console.log(`[propublica-nonprofit-agent] "${name}" — ${org ? `matched EIN ${org.ein}` : "no matching organization"} of ${candidates.length} result(s)${financials ? `, ${financials.years.length} year(s) of 990 figures for EIN ${financials.ein}` : ""}`);
 
       return { organizations, financials, sources };
     } catch (err) {
@@ -125,7 +145,16 @@ export class ProPublicaNonprofitAgent {
       const res = await fetch(`${NONPROFIT_BASE}/organizations/${Number(org.ein)}.json`, { signal: AbortSignal.timeout(15_000) });
       if (!res.ok) return undefined;
       const data = (await res.json()) as { filings_with_data?: OrgFiling[] };
-      const years = nonprofitYears(data.filings_with_data ?? []);
+      let years = nonprofitYears(data.filings_with_data ?? []);
+      // Always the latest filing: the page can be a year ahead of the API.
+      try {
+        const page = await fetch(org.url, { signal: AbortSignal.timeout(15_000) });
+        const newer = page.ok ? pageYears(await page.text()).filter((y) => !years.length || y.year > years[0].year) : [];
+        if (newer.length) {
+          console.log(`[propublica-nonprofit-agent] EIN ${org.ein}: ${newer.map((y) => y.year).join(", ")} from the organization page`);
+          years = [...newer, ...years].sort((a, b) => b.year.localeCompare(a.year)).slice(0, 3);
+        }
+      } catch { /* the API's years stand */ }
       return years.length ? { ein: org.ein, name: org.name, url: org.url, years } : undefined;
     } catch {
       return undefined;

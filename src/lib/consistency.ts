@@ -1,7 +1,7 @@
 import type { PersonResearchBundle, ResearchBundle } from "../types/research.js";
 import { cityOf } from "./closure.js";
-import { normalizeWords } from "./news-noise.js";
-import { tiedToSubject, type SubjectRecord } from "./entities/subject.js";
+import { brandName, normalizeWords } from "./news-noise.js";
+import { newsAboutSubject, tiedToSubject, type SubjectRecord } from "./entities/subject.js";
 import { isCitable } from "./source-quality.js";
 
 /**
@@ -40,6 +40,8 @@ export function isSmallCompany(bundle: Pick<ResearchBundle, "company"> & Partial
   // A nonprofit with 990 figures on file is measured by them (launch fix
   // 35: Homeboy's $100M campaign read as out of scale).
   if (bundle.nonprofitFinancials?.years.length) return false;
+  // A sponsor raising a fund has the fund's figures on record.
+  if ((bundle.funding ?? []).some((f) => /\(target\)$|^Form D:/.test(f.round ?? ""))) return false;
   if (c.thin || c.anchor?.location || c.anchor?.unlisted || c.anchor?.website) return true;
   // No funding, filings or ownership on record: the footprint of a small
   // private company, whatever the name suggests (round 2, Fix 3).
@@ -62,8 +64,9 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
   const city = cityOf(subject.anchor.location);
   const namesCity = (t: string | undefined) => !city || normalizeWords(t ?? "").includes(normalizeWords(city));
 
+  const alias = brandName(subject.name, subject.domain);
   bundle.news = keep("news not tied to the subject", bundle.news,
-    (n) => tiedToSubject(`${n.headline} ${n.summary ?? ""}`, n.url, subject));
+    (n) => newsAboutSubject(`${n.headline} ${n.summary ?? ""}`, n.url, subject, alias ? [alias] : []));
   // A job posting names the company but isn't news about it (launch fix 8:
   // Promise ABA's one "news" hit was a data-analyst listing in Burbank).
   bundle.news = keep("job listings in news", bundle.news,
@@ -82,8 +85,9 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
   }
 
   if (isSmallCompany(bundle)) {
-    bundle.funding = keep("funding out of scale", bundle.funding, (f) =>
-      !LATE_ROUND.test(f.round ?? "") && parseMoney(f.amount ?? "").every((v) => v < SMALL_COMPANY_CEILING));
+    // A fund's target is the fund's size, not the sponsor's (launch fix 47).
+    bundle.funding = keep("funding out of scale", bundle.funding, (f) => /\(target\)$/.test(f.round ?? "") ||
+      (!LATE_ROUND.test(f.round ?? "") && parseMoney(f.amount ?? "").every((v) => v < SMALL_COMPANY_CEILING)));
   }
 
   // A thin report keeps only what ties to the record by identifier or

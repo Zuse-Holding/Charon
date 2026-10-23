@@ -691,9 +691,17 @@ export const TenKExtractionSchema = AnyObject.transform((obj) => ({
   founded: toStringOrUndefined(obj.founded),
   incorporatedYear: toStringOrUndefined(obj.incorporatedYear),
   employees: toStringOrUndefined(obj.employees),
+  competitors: toStringList(obj.competitors),
   riskFactors: toStringList(obj.riskFactors),
   legalProceedings: toStringOrUndefined(obj.legalProceedings),
   executiveOfficers: toLeadershipArray(obj.executiveOfficers),
+}));
+
+// Industry and peer role before the competitor search (launch fix 42).
+export const PeerClassSchema = AnyObject.transform((obj) => ({
+  naics: toStringOrUndefined(obj.naics),
+  naicsTitle: toStringOrUndefined(obj.naicsTitle ?? obj.naics_title),
+  peerRole: toStringOrUndefined(obj.peerRole ?? obj.peer_role ?? obj.role),
 }));
 
 // Latest earnings release, 8-K exhibit 99.1 (sec-filings-agent, launch fix 33).

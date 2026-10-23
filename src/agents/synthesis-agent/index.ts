@@ -1,6 +1,7 @@
 import { ResearchBundle, Source } from "../../types/research.js";
 import { extractAnalysis, RisksOpportunitiesSchema } from "../../lib/llm.js";
 import { money } from "../report-agent/index.js";
+import type { CaseRecord } from "../public-filings-agent/index.js";
 
 /**
  * Risks & Opportunities synthesis.
@@ -27,6 +28,42 @@ import { money } from "../report-agent/index.js";
 export interface Fact {
   text: string;
   url?: string;
+  /** When it happened, for facts that are events (awards, rounds, cases, news). */
+  when?: string;
+  /** What kind of record it is: past awards and rounds are history (launch fix 45). */
+  kind?: "award" | "funding" | "case" | "news" | "trend";
+  /** The case behind a case fact, to check sentences against (launch fix 46). */
+  caseRef?: CaseRecord;
+}
+
+/**
+ * Cases filed in the same court on the same day, against the company: one
+ * related claim, not separate risks (launch fix 46: Blyden, Sims and Guay v.
+ * Graybar, all E.D. Mo. on one day).
+ */
+export function caseClusters(cases: CaseRecord[]): { text: string; cases: CaseRecord[] }[] {
+  const groups = new Map<string, CaseRecord[]>();
+  for (const c of cases) {
+    if (c.routine || !c.filed || !c.court) continue;
+    const key = `${c.court}|${c.filed}|${c.role ?? ""}`;
+    groups.set(key, [...(groups.get(key) ?? []), c]);
+  }
+  return [...groups.values()].filter((g) => g.length >= 2).map((g) => {
+    const names = g.map((c) => c.caption.split(/\s+v(?:s)?\.?\s+/i)[c.role === "defendant" ? 0 : 1] ?? c.caption).map((n) => n.trim());
+    const type = g.every((c) => c.caseType && c.caseType === g[0].caseType) ? ` ${g[0].caseType}` : "";
+    const side = g[0].role === "defendant" ? " against the company" : g[0].role === "plaintiff" ? " brought by the company" : "";
+    return { text: `${g.length}${type} suits${side} (${names.join(", ")}) filed in ${g[0].court} on the same day, ${g[0].filed}: likely one related claim`, cases: g };
+  });
+}
+
+/** First and last year of a series, as a trend line (launch fix 46). */
+export function trendLine(label: string, series: { year: string; value?: number }[]): string | undefined {
+  const known = series.filter((p) => p.value !== undefined).sort((a, b) => a.year.localeCompare(b.year));
+  if (known.length < 2) return undefined;
+  const [a, b] = [known[0], known[known.length - 1]];
+  const pct = Math.round(((b.value! - a.value!) / Math.abs(a.value!)) * 100);
+  if (!Number.isFinite(pct) || Math.abs(pct) < 5) return `${label} flat at about ${money(b.value!)} (${a.year}-${b.year})`;
+  return `${label} ${pct > 0 ? "rose" : "fell"} ${Math.abs(pct)}% from ${money(a.value!)} (${a.year}) to ${money(b.value!)} (${b.year})`;
 }
 
 /** Every fact the report states about the business, in report order. */
@@ -57,20 +94,31 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
       y.expenses !== undefined && `expenses ${money(y.expenses)}`, y.assets !== undefined && `assets ${money(y.assets)}`].filter(Boolean);
     if (parts.length) facts.push({ text: `Form 990 (${y.year}): ${parts.join(", ")}`, url: np!.url });
   }
+  // Trends across the 990 years, which the model otherwise reads as a list.
+  if (np && np.years.length >= 2) {
+    const series = (pick: (y: NonNullable<typeof np>["years"][number]) => number | undefined) => np.years.map((y) => ({ year: y.year, value: pick(y) }));
+    const lines = [trendLine("Expenses", series((y) => y.expenses)), trendLine("Contributions and grants", series((y) => y.contributions)),
+      trendLine("Revenue", series((y) => y.revenue))].filter(Boolean);
+    if (lines.length) facts.push({ text: `990 trend: ${lines.join("; ")}`, url: np.url, kind: "trend" });
+  }
   const fundingSource = bundle.sources.find((s) => s.usedFor.includes("funding"))?.url;
   for (const f of bundle.funding) {
-    facts.push({ text: `Funding: ${[f.round, f.amount, f.date, f.investors?.join(", ")].filter(Boolean).join(", ")}`, url: fundingSource });
+    facts.push({ text: `Funding: ${[f.round, f.amount, f.date, f.investors?.join(", ")].filter(Boolean).join(", ")}`, url: fundingSource, when: f.date, kind: "funding" });
   }
-  for (const n of bundle.news.slice(0, 5)) {
-    facts.push({ text: `News${n.date ? ` (${n.date})` : ""}: ${n.headline}${n.summary ? `. ${n.summary}` : ""}`, url: n.url });
+  // A plaintiff firm's "investigation" release is routine after a share-
+  // price drop and never a risk on its own (launch fix 46).
+  for (const n of bundle.news.filter((x) => !x.solicitation).slice(0, 5)) {
+    facts.push({ text: `News${n.date ? ` (${n.date})` : ""}: ${n.headline}${n.summary ? `. ${n.summary}` : ""}`, url: n.url, when: n.date, kind: "news" });
   }
   // Cases arrive ranked (cases against the company, open, newest first);
   // routine bankruptcy matters aren't risks (launch fix 21).
+  // Related suits read as one pattern, ahead of the cases themselves.
+  for (const cl of caseClusters(bundle.courtCases ?? [])) facts.push({ text: `Case pattern: ${cl.text}`, url: cl.cases[0].url, when: cl.cases[0].filed, kind: "case" });
   for (const c of (bundle.courtCases ?? []).filter((x) => !x.routine).slice(0, 5)) {
     const side = c.role === "defendant" ? "company is the defendant" : c.role === "plaintiff" ? "company is the plaintiff"
       : c.role === "charged" ? "charge against the company" : c.role === "debtor" ? "company is the debtor" : "";
     const ctx = [c.court && `${c.court}${c.docketNumber ? ` ${c.docketNumber}` : ""}`, c.filed && `filed ${c.filed}`, side, c.caseType, c.status].filter(Boolean).join(", ");
-    facts.push({ text: `Case: ${c.caption}${ctx ? ` (${ctx})` : ""}`, url: c.url });
+    facts.push({ text: `Case: ${c.caption}${ctx ? ` (${ctx})` : ""}`, url: c.url, when: c.filed, kind: "case", caseRef: c });
   }
   const spendingUrl = bundle.sources.find((s) => s.usedFor.includes("federal-spending"))?.url;
   for (const c of bundle.contractCeilings ?? []) {
@@ -89,6 +137,13 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
       const parts = [y.revenue !== undefined && `revenue ${money(y.revenue)}`, y.netIncome !== undefined && `net income ${money(y.netIncome)}`,
         y.grossMargin !== undefined && `gross margin ${(y.grossMargin * 100).toFixed(1)}%`].filter(Boolean);
       if (parts.length) facts.push({ text: `Financials FY${y.year} (SEC): ${parts.join(", ")}`, url: fin });
+    }
+    if (sec.financials.length >= 2) {
+      const rev = trendLine("Revenue", sec.financials.map((y) => ({ year: y.year, value: y.revenue })));
+      const gm = sec.financials.filter((y) => y.grossMargin !== undefined).sort((a, b) => a.year.localeCompare(b.year));
+      const margin = gm.length >= 2 ? `gross margin ${(gm[0].grossMargin! * 100).toFixed(1)}% (FY${gm[0].year}) to ${(gm[gm.length - 1].grossMargin! * 100).toFixed(1)}% (FY${gm[gm.length - 1].year})` : undefined;
+      const lines = [rev, margin].filter(Boolean);
+      if (lines.length) facts.push({ text: `SEC trend: ${lines.join("; ")}`, url: fin, kind: "trend" });
     }
     const q = sec.latestQuarter;
     if (q && q.revenue !== undefined) {
@@ -109,7 +164,7 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
   for (const l of c.locations ?? []) facts.push({ text: `Location: ${l}`, url: site });
   const spendingSource = bundle.sources.find((s) => s.usedFor.includes("federal-spending"))?.url;
   for (const s of (bundle.federalSpending ?? []).slice(0, 5)) {
-    facts.push({ text: `Federal award: ${[s.amount, s.awardingAgency, s.date].filter(Boolean).join(", ")}`, url: spendingSource });
+    facts.push({ text: `Federal award (past): ${[s.amount, s.awardingAgency, s.date].filter(Boolean).join(", ")}`, url: spendingSource, when: s.date, kind: "award" });
   }
   return facts;
 }
@@ -123,7 +178,8 @@ export function resolveCitations(
   items: { text: string; sources: number[] }[],
   facts: Fact[],
   sources: Source[],
-  tag: string
+  tag: string,
+  keep: (text: string, cited: number[]) => boolean = () => true
 ): { text: string; facts: number[]; urls: string[] }[] {
   const kept: { text: string; facts: number[]; urls: string[] }[] = [];
   for (const item of items) {
@@ -137,13 +193,49 @@ export function resolveCitations(
     const urls = [...new Set(valid.map((n) => facts[n - 1].url).filter((u): u is string => !!u))];
     // Resting only on facts with no page behind them ("no public funding
     // records found") leaves nothing to cite: the item doesn't ship.
-    if (urls.length === 0) continue;
+    if (urls.length === 0 || !keep(item.text, valid)) continue;
     kept.push({ text: item.text, facts: valid, urls });
     for (const s of sources) {
       if (urls.includes(s.url) && !s.usedFor.includes(tag)) s.usedFor.push(tag);
     }
   }
   return kept;
+}
+
+const YEAR_MS = 365 * 86_400_000;
+const parsedWhen = (w?: string) => {
+  const t = w ? Date.parse(/^\d{4}$/.test(w) ? `${w}-12-31` : w) : NaN;
+  return isNaN(t) ? undefined : t;
+};
+
+/**
+ * An opportunity resting only on things that already happened more than
+ * a year ago (launch fix 45: ACCO and Graybar listed federal awards back
+ * to 2013; Homeboy called a 2025 grant "scheduled") is history.
+ */
+export function isHistoryOnly(cited: number[], facts: Fact[], now = Date.now()): boolean {
+  const fs = cited.map((n) => facts[n - 1]).filter(Boolean);
+  return fs.length > 0 && fs.every((f) => (f.kind === "award" || f.kind === "funding" || f.kind === "case")
+    && (parsedWhen(f.when) ?? 0) < now - YEAR_MS);
+}
+
+/**
+ * A sentence the case records it cites contradict (launch fix 46: Crumbl's
+ * risk said it "filed multiple lawsuits as a defendant" and that all cases
+ * were open; several were closed).
+ */
+export function contradictsCases(text: string, cited: number[], facts: Fact[]): boolean {
+  const cases = cited.map((n) => facts[n - 1]?.caseRef).filter((c): c is CaseRecord => !!c);
+  if (!cases.length) return false;
+  const t = text.toLowerCase();
+  const filedBy = /\b(filed|brought|initiated)\b[^.]{0,30}\b(law)?suits?\b|\bas (a |the )?plaintiff\b/.test(t);
+  const against = /\bas (a |the )?defendant\b|\b(sued|faces?|facing)\b[^.]{0,20}\b(law)?suits?\b|\bagainst (it|the company)\b/.test(t);
+  if (filedBy && /\bas (a |the )?defendant\b/.test(t)) return true;
+  if (/\b(all|every)\b[^.]{0,30}\b(open|pending|ongoing)\b/.test(t) && cases.some((c) => c.status === "closed")) return true;
+  if (/\b(open|pending|ongoing|active)\b/.test(t) && cases.every((c) => c.status === "closed")) return true;
+  if (against && cases.every((c) => c.role === "plaintiff")) return true;
+  if (filedBy && cases.every((c) => c.role === "defendant" || c.role === "charged")) return true;
+  return false;
 }
 
 // Risks any company "faces" (launch fix 4): ACCO's and MJW's top risk was
@@ -202,7 +294,7 @@ You get a numbered list of FACTS. They are everything known about this business.
 Answer with ONE JSON object, exactly this shape:
 {"summary": {"text": "...", "sources": [1, 2]}, "risks": [{"text": "...", "sources": [3]}], "opportunities": [{"text": "...", "sources": [4]}]}
 
-"summary" is an executive summary of what the facts show: what the business does, where, for whom, at what scale, and what stands out. Write it in your own words. Never copy or lightly reword the "What it does" fact or any marketing tagline.
+"summary" is an executive summary of 3-5 sentences on what the facts show: what the business does, where, for whom, at what scale (revenue, locations, people), and the two or three things that stand out most. Write it in your own words. Never copy or lightly reword the "What it does" fact or any marketing tagline.
 
 RULES — these are non-negotiable:
 - Every risk and opportunity must rest on one or more of the numbered facts. Return each item as {"text": "<one sentence>", "sources": [<fact numbers>]}. An item you can't tie to a fact does not go in.
@@ -214,6 +306,9 @@ RULES — these are non-negotiable:
 - Order risks by how much they matter now: an open case against the company, a recent filing or financial decline first; a case the company brought, or an old closed one, last or not at all.
 - Every risk must name something specific to this business from the facts: a location, a person, a contract, a filing, a figure, a date, a named competitor. Never a risk any company has ("faces competition from larger companies", "economic downturns", "regulatory changes").
 - A funding round more than 18 months old is history, never a current opportunity.
+- An opportunity is ahead of the business: an expansion under way, a contract vehicle with room left under its ceiling, a new market, a campaign in progress. A past federal award, grant or round is history, never an opportunity, and never call a past grant "scheduled".
+- Connect facts instead of listing them: related cases filed together are one risk; a "Case pattern" or "trend" fact beats several single facts. Say what changed and by how much.
+- State case status and the company's side exactly as the facts give them.
 - Leadership facts are current. Never build a risk on titles, turnover or a "dispute" the facts don't state.
 - For a nonprofit, risks and opportunities are about its programs, revenue mix, grants, campaigns, cases and leadership, never investors.
 - If the facts can't support a credible assessment, return empty arrays.`,
@@ -222,8 +317,9 @@ RULES — these are non-negotiable:
   );
 
   if (!result) return null;
+  const checkRisk = (text: string, cited: number[]) => !contradictsCases(text, cited, facts);
 
-  let risks = resolveCitations((result.risks ?? []).filter((r) => !isGenericRisk(r.text)), facts, bundle.sources, "risks");
+  let risks = resolveCitations((result.risks ?? []).filter((r) => !isGenericRisk(r.text)), facts, bundle.sources, "risks", checkRisk);
   // No risk survived from a rich fact set (launch fix 35: Homeboy's summary
   // worked, its Risks said "insufficient data"): ask once more for risks
   // alone, each tied to fact numbers.
@@ -233,7 +329,7 @@ RULES — these are non-negotiable:
 Answer with ONE JSON object: {"risks": [{"text": "<one sentence naming a specific fact: a case, figure, date, filing, location or person>", "sources": [<fact numbers>]}]}
 Most current and serious first: open cases against it, declines in its figures, recent closures or layoffs, concentration on one funder, customer or contract. Never a risk any organization has. 1-4 items, or none if the facts show none.`,
       context, RisksOpportunitiesSchema);
-    risks = resolveCitations((again?.risks ?? []).filter((r) => !isGenericRisk(r.text)), facts, bundle.sources, "risks");
+    risks = resolveCitations((again?.risks ?? []).filter((r) => !isGenericRisk(r.text)), facts, bundle.sources, "risks", checkRisk);
     console.log(`[synthesis] "${bundle.company.name}": risks-only retry gave ${again?.risks?.length ?? 0}, ${risks.length} kept with citations`);
   }
   console.log(`[synthesis] "${bundle.company.name}": model gave ${result.risks?.length ?? 0} risk(s), ${result.opportunities?.length ?? 0} opportunit(ies); ${risks.length} risk(s) kept with citations`);
@@ -242,7 +338,8 @@ Most current and serious first: open cases against it, declines in its figures, 
   const summary = result.summary
     ? resolveCitations([result.summary], facts, bundle.sources, "overview")[0]
     : undefined;
-  const opportunities = resolveCitations(result.opportunities ?? [], facts, bundle.sources, "opportunities");
+  const opportunities = resolveCitations(result.opportunities ?? [], facts, bundle.sources, "opportunities",
+    (text, cited) => !isHistoryOnly(cited, facts) && !contradictsCases(text, cited, facts));
   return {
     summary: summary && !copiesDescription(summary.text, bundle.company.description) ? summary.text : undefined,
     risks: risks.map((r) => r.text),

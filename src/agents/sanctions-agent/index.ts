@@ -1,4 +1,5 @@
 import { SanctionsMatch, Source } from "../../types/research.js";
+import { strongNameMatch } from "../../lib/name-match.js";
 
 /**
  * Sanctions Agent (7/20 public-record fusion, roadmap #1) — screens a
@@ -29,6 +30,8 @@ const CSL_BASE = "https://data.trade.gov/consolidated_screening_list/v1/search";
 
 interface CslResult {
   name?: string;
+  alt_names?: string[];
+  addresses?: { city?: string; state?: string; country?: string }[];
   source?: string;
   type?: string;
   programs?: string[];
@@ -40,19 +43,35 @@ interface CslResponse {
   results?: CslResult[];
 }
 
+const US = /^(us|usa|united states( of america)?)$/i;
+
+/**
+ * A list entry is this subject only on a strong name match (the name or a
+ * listed alias) plus an address in the subject's country (launch fix 40,
+ * stop-ship). Everything else is a similar name, never displayed: MJW
+ * Investments drew an Iranian investment company and a Huawei affiliate
+ * on the word "Investments".
+ */
+export function isSanctionsHit(r: { name?: string; alt_names?: string[]; addresses?: { country?: string }[] }, name: string, country = "US"): boolean {
+  const named = [r.name ?? "", ...(r.alt_names ?? [])].some((n) => n && strongNameMatch(n, name));
+  if (!named) return false;
+  const want = US.test(country) ? US : new RegExp(`^${country}$`, "i");
+  return (r.addresses ?? []).some((a) => !!a.country && want.test(a.country.trim()));
+}
+
 export class SanctionsAgent {
   private apiKey = process.env.TRADE_GOV_API_KEY;
 
   /** A failed lookup is retried once before the report says screening
    *  didn't run (launch fix 11). */
-  async run(name: string): Promise<{ matches: SanctionsMatch[]; sources: Source[]; unavailable?: boolean }> {
+  async run(name: string): Promise<{ matches: SanctionsMatch[]; sources: Source[]; unavailable?: boolean; ruledOut?: number }> {
     const first = await this.lookup(name);
     if (!first.unavailable || !this.apiKey) return first;
     await new Promise((r) => setTimeout(r, 1500));
     return this.lookup(name);
   }
 
-  private async lookup(name: string): Promise<{ matches: SanctionsMatch[]; sources: Source[]; unavailable?: boolean }> {
+  private async lookup(name: string): Promise<{ matches: SanctionsMatch[]; sources: Source[]; unavailable?: boolean; ruledOut?: number }> {
     const unavailable = { matches: [], sources: [], unavailable: true };
     if (!this.apiKey) {
       console.warn("[sanctions-agent] TRADE_GOV_API_KEY not set — screening unavailable");
@@ -83,8 +102,9 @@ export class SanctionsAgent {
       const data = (await res.json()) as CslResponse;
       const results = data.results ?? [];
 
-      const matches: SanctionsMatch[] = results
-        .filter((r): r is CslResult & { name: string; source: string } => Boolean(r.name && r.source))
+      const named = results.filter((r): r is CslResult & { name: string; source: string } => Boolean(r.name && r.source));
+      const hits = named.filter((r) => isSanctionsHit(r, name));
+      const matches: SanctionsMatch[] = hits
         .slice(0, 10)
         .map((r) => ({
           name: r.name,
@@ -95,18 +115,17 @@ export class SanctionsAgent {
           url: r.id ? `https://www.trade.gov/consolidated-screening-list` : undefined,
         }));
 
-      const sources: Source[] = matches.length > 0
-        ? [{
-            url: "https://www.trade.gov/consolidated-screening-list",
-            title: `Consolidated Screening List — ${name}`,
-            retrievedAt: new Date().toISOString(),
-            usedFor: ["sanctions"],
-          }]
-        : [];
+      // The screening ran either way, so "No matches" cites the list too.
+      const sources: Source[] = [{
+        url: "https://www.trade.gov/consolidated-screening-list",
+        title: `Consolidated Screening List — ${name}`,
+        retrievedAt: new Date().toISOString(),
+        usedFor: ["sanctions"],
+      }];
 
-      console.log(`[sanctions-agent] "${name}" — ${matches.length} possible match(es)`);
+      console.log(`[sanctions-agent] "${name}" — ${matches.length} match(es); ${named.length - hits.length} similar name(s) ruled out`);
 
-      return { matches, sources };
+      return { matches, sources, ruledOut: named.length - hits.length };
     } catch (err) {
       // "fetch failed" alone hides the cause (DNS, TLS, refused): log it so
       // a host that can't reach data.trade.gov shows why (round 2, Fix 7).

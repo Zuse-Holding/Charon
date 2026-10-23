@@ -82,18 +82,21 @@ export class CorporateAgent {
     // website-agent's filter does for company overview/leadership/products.
     const override = findOverride(companyName);
 
-    const [olderResults, recentResults, form4Result] = await Promise.all([
+    const [olderResults, recentResults, newsResults, form4Result] = await Promise.all([
       this.searcher.search(appendDomainExclusions(`${companyName}${anchorSuffix(subject.anchor)} funding round investors raised parent company subsidiary`, override), 5),
       // The latest rounds (launch fix 27): Gecko stopped at a 2022 Series C,
       // missing its Dec 2023 extension and Jun 2025 Series D.
       this.searcher.search(appendDomainExclusions(`"${companyName}" raises Series funding valuation latest round`, override), 5),
+      // The news index has the latest rounds the web index buries (launch
+      // fix 47: Gecko still stopped at its 2022 Series C).
+      this.searcher.news ? this.searcher.news(`"${companyName}" raises funding round`, 8) : Promise.resolve([]),
       // Insider activity (Round 2, item 5) — same "who owns/controls this
       // company" question funding/ownership already answers here.
       this.form4Agent.run(companyName),
     ]);
 
     const seenUrl = new Set<string>();
-    const rawResults = [...recentResults, ...olderResults].filter((r) => !seenUrl.has(r.url) && seenUrl.add(r.url));
+    const rawResults = [...newsResults, ...recentResults, ...olderResults].filter((r) => !seenUrl.has(r.url) && seenUrl.add(r.url));
     const results = rawResults
       .filter((r) => !isRejectedDomain(r.url, override))
       .filter((r) => tiedToSubject(`${r.title} ${r.snippet ?? ""}`, r.url, subject));

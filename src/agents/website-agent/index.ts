@@ -221,6 +221,44 @@ function cleanLeadershipField(value: string): string {
  * (lib/nlp.ts) that was already here — the agent never errors out
  * just because the LLM is unavailable.
  */
+/**
+ * An inner page's own content: its <main> when it has one, without the
+ * header, nav and footer every page repeats, and without any opening run
+ * it shares with the homepage text (launch fix 50).
+ */
+export function pageBody(html: string, homeText: string): string {
+  const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1];
+  const body = (main ?? html).replace(/<(nav|header|footer)\b[\s\S]*?<\/\1>/gi, " ");
+  const text = htmlToFullText(body);
+  let i = 0;
+  while (i < text.length && i < homeText.length && text[i] === homeText[i]) i++;
+  // Only a real shared run (a menu) is cut, back to a word boundary.
+  if (i < 200) return text;
+  const cut = text.lastIndexOf(" ", i);
+  return text.slice(cut > 0 ? cut + 1 : i);
+}
+
+/** Equal shares of a budget, with what a short page doesn't use handed to the rest. */
+export function budgetShares(lengths: number[], budget: number): number[] {
+  const shares = lengths.map(() => 0);
+  let left = Math.max(0, budget);
+  let open = lengths.map((_, i) => i);
+  while (open.length && left > 0) {
+    const each = Math.floor(left / open.length);
+    if (each === 0) break;
+    const next: number[] = [];
+    for (const i of open) {
+      const take = Math.min(each, lengths[i] - shares[i]);
+      shares[i] += take;
+      left -= take;
+      if (shares[i] < lengths[i]) next.push(i);
+    }
+    if (next.length === open.length) break;
+    open = next;
+  }
+  return shares;
+}
+
 export class WebsiteAgent {
   constructor(
     private fetcher: FetchProvider,
@@ -312,14 +350,15 @@ export class WebsiteAgent {
     }
     const pages = [
       { url: website, kind: "home", text: homeText },
-      ...subpages.filter((p) => p.html).map((p) => ({ url: p.url, kind: p.kind, text: htmlToFullText(p.html!) })),
+      ...subpages.filter((p) => p.html).map((p) => ({ url: p.url, kind: p.kind, text: pageBody(p.html!, homeText) })),
     ];
-    // Each page gets an even share of the budget, so a long homepage can't
-    // crowd out the About page that has the founding year, and the last
-    // kinds read (press, acquisitions, contact) still fit.
+    // A long homepage can't crowd out the About page that has the founding
+    // year, and the last kinds read (press, acquisitions, contact) still
+    // fit; a short page's unused share goes to the longer ones (launch fix
+    // 50: Gecko lost its products and industry, Promise all but one service).
     const homeShare = 2000;
-    const share = Math.max(600, Math.floor((SITE_TEXT_BUDGET - homeShare) / Math.max(1, pages.length - 1)) - 40);
-    const text = pages.map((p) => `PAGE (${p.kind}, ${p.url}):\n${p.text.slice(0, p.kind === "home" ? homeShare : share)}`).join("\n\n");
+    const shares = budgetShares(pages.slice(1).map((p) => p.text.length), SITE_TEXT_BUDGET - homeShare - pages.length * 40);
+    const text = pages.map((p, i) => `PAGE (${p.kind}, ${p.url}):\n${p.text.slice(0, i === 0 ? homeShare : shares[i - 1])}`).join("\n\n");
     const emailDomain = sendingDomain([home.html, ...subpages.map((p) => p.html ?? "")], website);
     return { text, record, url: website, pages, via: home.via, emailDomain };
   }

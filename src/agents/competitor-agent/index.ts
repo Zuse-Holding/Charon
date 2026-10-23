@@ -4,9 +4,10 @@ import {
   Source } from "../../types/research.js";
 import { hostOf, type SubjectRecord } from "../../lib/entities/subject.js";
 import { pageSupports, rankCitable } from "../../lib/source-quality.js";
+import { mentionsCompany } from "../../lib/news-noise.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { extractOrganizations } from "../../lib/nlp.js";
-import { CompetitorExtractionSchema, extractStructured } from "../../lib/llm.js";
+import { CompetitorExtractionSchema, extractStructured, PeerClassSchema } from "../../lib/llm.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
 
 const NON_COMPETITOR_ENTITIES = new Set([
@@ -86,6 +87,15 @@ export interface PeerProfile {
   headquarters?: string;
   /** A local or regional business: peers are searched near it. */
   local?: boolean;
+  /** Products or services, for classifying what it does. */
+  products?: string[];
+  /** Competitors its 10-K names, with the filing's URL (launch fix 42). */
+  filed?: { names: string[]; url: string };
+}
+
+/** "Named competitors" pages for a company known beyond its town. */
+export function namedPeerQuery(companyName: string, profile: PeerProfile): string | undefined {
+  return profile.local ? undefined : `"${companyName}" competitors alternatives`;
 }
 
 /** "Pasadena, CA" -> { city: "Pasadena", state: "California" }. */
@@ -136,7 +146,25 @@ export class CompetitorAgent {
    *  @param profile Its role, industry and region, from the website step. */
   async run(companyName: string, subject: SubjectRecord = { name: companyName, anchor: {} }, profile: PeerProfile = {}): Promise<CompetitorAgentResult> {
     const override = findOverride(companyName);
-    const queries = peerQueries(companyName, profile);
+    // A public company names its competitors in its 10-K (launch fix 42):
+    // that list is primary-sourced and beats any search.
+    // Its own name in either form ("Graybar" in a Graybar 10-K) is not a peer.
+    const filed = (profile.filed?.names ?? []).filter((n) => isCompanyName(n, companyName) && !pageSupports(n, companyName) && !mentionsCompany(companyName, n));
+    if (profile.filed && filed.length >= 2) {
+      console.log(`[competitors] "${companyName}": ${filed.length} from the 10-K`);
+      return {
+        competitors: filed.slice(0, 8).map((name) => ({ name, url: profile.filed!.url, note: "named in its 10-K" })),
+        sources: [{ url: profile.filed.url, title: "Annual report (10-K): competition", retrievedAt: new Date().toISOString(), usedFor: ["competitors"] }],
+      };
+    }
+    // Everyone else: classify the industry and peer role first (launch fix
+    // 42: Gecko's "robotics company" drew a medical AI scribe, Crumbl's
+    // "cookie company" drew packaged-food makers), then search that role.
+    const cls = await this.classify(companyName, profile);
+    const refined: PeerProfile = cls?.peerRole ? { ...profile, role: cls.peerRole } : profile;
+    const named = namedPeerQuery(companyName, profile);
+    const queries = [...peerQueries(companyName, refined), ...(cls?.peerRole && !profile.local ? [`${cls.peerRole} market key players`] : []), ...(named ? [named] : [])];
+    console.log(`[competitors] "${companyName}": ${cls?.naics ? `NAICS ${cls.naics} ${cls.naicsTitle ?? ""}, ` : ""}peers as "${refined.role ?? "unknown"}"; ${queries.length} search(es)`);
     if (queries.length === 0) return { competitors: [], sources: [] };
     const batches = await Promise.all(queries.map((q) => this.searcher.search(appendDomainExclusions(q, override), 6)));
     const seen = new Set<string>();
@@ -156,7 +184,7 @@ export class CompetitorAgent {
 
     let candidates: { name: string; note?: string; relationship?: string }[] = [];
     if (combinedText.length > 0) {
-      const what = [profile.role, profile.industry].filter(Boolean).join(", ");
+      const what = [refined.role, profile.industry, cls?.naicsTitle && `NAICS ${cls.naics} ${cls.naicsTitle}`].filter(Boolean).join(", ");
       const llmResult = await extractStructured(
         `You are a business research assistant listing direct competitors of "${companyName}"${what ? `, a ${what}` : ""}${profile.local && profile.headquarters ? ` based in ${profile.headquarters}` : ""}.${profile.description ? ` What it does: ${profile.description}` : ""}
 
@@ -203,6 +231,7 @@ STRICT RULES:
       if (competitors.length >= 8) break;
     }
 
+    console.log(`[competitors] "${companyName}": ${candidates.length} candidate(s), ${competitors.length} kept`);
     const sources: Source[] = results.filter((r) => cited.has(r.url)).map((r) => ({
       url: r.url,
       title: r.title,
@@ -210,5 +239,17 @@ STRICT RULES:
       usedFor: ["competitors"],
     }));
     return { competitors, sources };
+  }
+
+  /** NAICS industry and the role its peers share, from what it does. */
+  private async classify(companyName: string, profile: PeerProfile) {
+    const about = [profile.description && `What it does: ${profile.description}`, profile.industry && `Industry: ${profile.industry}`,
+      profile.role && `Role: ${profile.role}`, profile.products?.length && `Sells: ${profile.products.slice(0, 8).join("; ")}`].filter(Boolean).join("\n");
+    if (!about) return null;
+    return extractStructured(
+      `Classify the business "${companyName}" for a competitor search. Return one JSON object:
+{"naics": "<6-digit NAICS code>", "naicsTitle": "<its title>", "peerRole": "<3-6 words naming what its direct competitors are, specific enough that a search returns only them, e.g. 'robotic industrial inspection companies', 'cookie and dessert franchise chains', 'commercial HVAC mechanical contractors', 'student housing investment sponsors', 'reentry and job-training nonprofits'>"}
+Name the kind of company, never a company name. Never so broad that unrelated companies fit ("robotics companies", "food companies").`,
+      about, PeerClassSchema);
   }
 }

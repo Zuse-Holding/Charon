@@ -1,21 +1,9 @@
 import { CompanyAnchor, NewsAgentResult, NewsEntry, Source } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
-import { isNewsIndexPage, isNewsNoise, isUsableHeadline, mentionsCompany, newsDate, outletFromUrl } from "../../lib/news-noise.js";
+import { brandName, isLawFirmSolicitation, isPersonalLifeNews, isNewsIndexPage, isNewsNoise, isUsableHeadline, mentionsCompany, newsDate, outletFromUrl } from "../../lib/news-noise.js";
 
-/**
- * The short name the press uses (launch fix 36): "Graybar" for Graybar
- * Electric Company, "Crumbl" for Crumbl Cookies, when the website's domain
- * starts with it. Only a distinctive first word (five letters or more).
- */
-export function brandName(companyName: string, domain?: string): string | undefined {
-  if (!domain) return undefined;
-  const label = domain.replace(/^www\./, "").split(".")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
-  const words = companyName.trim().split(/\s+/);
-  if (words.length < 2) return undefined;
-  const first = words[0].replace(/[^A-Za-z0-9]/g, "");
-  return first.length >= 5 && label.startsWith(first.toLowerCase()) ? first : undefined;
-}
+export { brandName };
 
 /**
  * News Agent
@@ -61,7 +49,8 @@ export class NewsAgent {
         .filter(r => !isRejectedDomain(r.url, override))
         // An item must have a real headline and name this company; a hit
         // that only matched loosely is usually about someone else.
-        .filter(r => isUsableHeadline(r.title) && names.some((n) => mentionsCompany(`${r.title} ${r.snippet ?? ""}`, n)));
+        .filter(r => isUsableHeadline(r.title) && names.some((n) => mentionsCompany(`${r.title} ${r.snippet ?? ""}`, n)))
+        .filter(r => !isPersonalLifeNews(r.title, r.snippet, r.url));
       console.log(`[news] "${companyName}"${where}: ${web.length} web + ${press.length} news result(s), ${filtered.length} about the company`);
       return filtered;
     };
@@ -85,6 +74,7 @@ export class NewsAgent {
       summary: r.snippet,
       articleText: fetchedTexts[i]?.slice(0, 600) || undefined,
       url: r.url,
+      solicitation: isLawFirmSolicitation(r.title, r.snippet) || undefined,
     }));
 
     const sources: Source[] = top.map((r) => ({

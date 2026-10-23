@@ -253,7 +253,7 @@ export class ReportAgent {
       // headline · outlet · date, as a link. ReportViewer renders the
       // part after " — " as the card's subline.
       for (const n of datedNews) {
-        const meta = [n.outlet, n.date].filter(Boolean).join(" · ");
+        const meta = [n.outlet, n.date, n.solicitation ? "law-firm solicitation, not a filed lawsuit" : ""].filter(Boolean).join(" · ");
         lines.push(`- [${n.headline}](${n.url ?? "#"})${meta ? ` — ${meta}` : ""}`);
       }
     }
@@ -285,10 +285,10 @@ export class ReportAgent {
    */
   private pushPublicRecordsSection(
     lines: string[],
-    bundle: Pick<ResearchBundle, "sanctionsMatches" | "sanctionsUnavailable" | "webArchive" | "nonprofitFilings" | "powerMapConnections"> & Partial<Pick<ResearchBundle, "domainPosture">>
+    bundle: Pick<ResearchBundle, "sanctionsMatches" | "sanctionsUnavailable" | "webArchive" | "nonprofitFilings" | "powerMapConnections"> & Partial<Pick<ResearchBundle, "domainPosture" | "sanctionsScreened" | "sanctionsRuledOut">>
   ) {
     const hasAny =
-      bundle.sanctionsUnavailable ||
+      bundle.sanctionsUnavailable || bundle.sanctionsScreened ||
       (bundle.sanctionsMatches && bundle.sanctionsMatches.length > 0) ||
       bundle.webArchive ||
       (bundle.nonprofitFilings && bundle.nonprofitFilings.length > 0) ||
@@ -302,8 +302,15 @@ export class ReportAgent {
       lines.push(``);
     }
 
+    if (bundle.sanctionsScreened && !bundle.sanctionsMatches?.length) {
+      // Similar names are never listed (launch fix 40): only counted.
+      const ruled = bundle.sanctionsRuledOut ? ` ${bundle.sanctionsRuledOut} similar name${bundle.sanctionsRuledOut === 1 ? "" : "s"} on the lists ${bundle.sanctionsRuledOut === 1 ? "was" : "were"} checked and ruled out (different name or country).` : "";
+      lines.push(`**Sanctions Screening:** No matches on the Consolidated Screening List (OFAC SDN, Entity List and nine other US lists).${ruled}`);
+      lines.push(``);
+    }
+
     if (bundle.sanctionsMatches && bundle.sanctionsMatches.length > 0) {
-      lines.push(`**Sanctions Screening** _(possible matches — not confirmed identity, verify before acting)_`);
+      lines.push(`**Sanctions Screening** _(name and country match this subject — confirm identity before acting)_`);
       for (const m of bundle.sanctionsMatches) {
         lines.push(`- **${m.name}** — ${m.source}${m.type ? ` (${m.type})` : ""}${m.programs?.length ? ` · ${m.programs.join(", ")}` : ""}`);
       }
@@ -573,7 +580,7 @@ export class ReportAgent {
       // headline · outlet · date, as a link. ReportViewer renders the
       // part after " — " as the card's subline.
       for (const n of bundle.news) {
-        const meta = [n.outlet, n.date].filter(Boolean).join(" · ");
+        const meta = [n.outlet, n.date, n.solicitation ? "law-firm solicitation, not a filed lawsuit" : ""].filter(Boolean).join(" · ");
         lines.push(`- [${n.headline}](${n.url ?? "#"})${meta ? ` — ${meta}` : ""}`);
       }
     }

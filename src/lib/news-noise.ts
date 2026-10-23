@@ -138,3 +138,43 @@ export function mentionsPerson(text: string, personName: string): boolean {
   const firstPrefix = parts[0].slice(0, 4);
   return words.includes(last) && (parts.length === 1 || words.some((w) => w.startsWith(firstPrefix)));
 }
+
+/**
+ * The short name the press uses (launch fix 36): "Graybar" for Graybar
+ * Electric Company, "Crumbl" for Crumbl Cookies, when the website's domain
+ * starts with it. Only a distinctive first word (five letters or more).
+ */
+export function brandName(companyName: string, domain?: string): string | undefined {
+  if (!domain) return undefined;
+  const label = domain.replace(/^www\./, "").split(".")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+  const words = companyName.trim().split(/\s+/);
+  if (words.length < 2) return undefined;
+  const first = words[0].replace(/[^A-Za-z0-9]/g, "");
+  return first.length >= 5 && label.startsWith(first.toLowerCase()) ? first : undefined;
+}
+
+
+// Gossip outlets and personal-life stories aren't business news (launch
+// fix 49: Crumbl's news had a tabloid item about a co-founder's personal life).
+const TABLOID_HOSTS = ["dailymail.co.uk", "tmz.com", "pagesix.com", "people.com", "usmagazine.com", "eonline.com", "thesun.co.uk",
+  "radaronline.com", "hollywoodlife.com", "intouchweekly.com", "okmagazine.com", "lifeandstylemag.com", "perezhilton.com",
+  "thesun.com", "mirror.co.uk", "dailystar.co.uk", "nickiswift.com", "distractify.com", "thelist.com", "celebritynetworth.com"];
+const PERSONAL_LIFE = /\b(divorc\w*|wedding|married|marries|engaged|engagement ring|girlfriend|boyfriend|ex-wife|ex-husband|his wife|her husband|dating|romance|affair|cheating|pregnan\w*|baby (boy|girl|news)|gender reveal|mansion|house tour|net worth|plastic surgery|weight loss journey|instagram post|tiktok drama)\b/i;
+
+export function isPersonalLifeNews(headline: string, snippet: string | undefined, url: string | undefined): boolean {
+  let host = "";
+  try { host = url ? new URL(url).hostname.replace(/^www\./, "").toLowerCase() : ""; } catch { /* no host */ }
+  if (TABLOID_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) return true;
+  return PERSONAL_LIFE.test(`${headline} ${snippet ?? ""}`);
+}
+
+// Plaintiff firms announce "investigations" after any share-price drop;
+// they're solicitations for clients, not filed suits (launch fix 46:
+// Limbach's top risk was one).
+const SOLICITING_FIRMS = /\b(rosen law|pomerantz|levi (&|and) korsinsky|bragar eagel|glancy prongay|faruqi|bronstein,? gewirtz|kirby mcinerney|schall law|portnoy law|gross law|johnson fistel|robbins (geller|llp)|kessler topaz|bernstein liebhard|howard g\.? smith|frank r\.? cruz|holzer (&|and) holzer|block (&|and) leviton|hagens berman|rigrodsky|halper sadeh|ademi|monteverde|kahn swick|brodsky (&|and) smith|wohl (&|and) fruchter|lifshitz|bernstein litowitz|the klein law|gainey mckenna|levi korsinsky)\b/i;
+const SOLICITATION = /\b(announces? (an )?investigation|investigation (of|into|on behalf of)|investigating (potential |possible )?(securities|claims)|encourages? (investors|shareholders)|reminds? (investors|shareholders)|shareholder alert|investor alert|lead plaintiff deadline|class action (filed|lawsuit) (on behalf of|against)|have you suffered losses|losses? (in|on) .{0,40}(stock|shares))/i;
+
+export function isLawFirmSolicitation(headline: string, snippet?: string): boolean {
+  const t = `${headline} ${snippet ?? ""}`;
+  return SOLICITATION.test(t) || (SOLICITING_FIRMS.test(t) && /\b(investigat\w*|class action|investors?|shareholders?)\b/i.test(t));
+}

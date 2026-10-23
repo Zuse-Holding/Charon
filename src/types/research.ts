@@ -129,6 +129,8 @@ export interface NewsEntry {
   /** Fetched article text, passed to synthesis as context. Never rendered:
    *  extracted page text carries site navigation and broken words. */
   articleText?: string;
+  /** A plaintiff firm's "investigation" announcement, not a filed suit (launch fix 46). */
+  solicitation?: boolean;
 }
 
 export interface FundingEntry {
@@ -286,6 +288,10 @@ export interface PersonResearchBundle {
   sanctionsMatches?: SanctionsMatch[];
   /** The Consolidated Screening List couldn't be checked on this run. */
   sanctionsUnavailable?: boolean;
+  /** Screening ran: with no matches the report says "No matches" (launch fix 40). */
+  sanctionsScreened?: boolean;
+  /** List entries with a similar name that failed the name-and-country test. */
+  sanctionsRuledOut?: number;
   nonprofitFilings?: NonprofitFilingEntry[];
   powerMapConnections?: PowerMapEntry[];
   /** Per-finding provenance (Feature 2). Present only when the
@@ -347,6 +353,10 @@ export interface ResearchBundle {
   sanctionsMatches?: SanctionsMatch[];
   /** The Consolidated Screening List couldn't be checked on this run. */
   sanctionsUnavailable?: boolean;
+  /** Screening ran: with no matches the report says "No matches" (launch fix 40). */
+  sanctionsScreened?: boolean;
+  /** List entries with a similar name that failed the name-and-country test. */
+  sanctionsRuledOut?: number;
   webArchive?: WebArchiveSummary;
   nonprofitFilings?: NonprofitFilingEntry[];
   powerMapConnections?: PowerMapEntry[];

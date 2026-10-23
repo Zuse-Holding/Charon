@@ -18,10 +18,13 @@ import { ProPublicaNonprofitAgent } from "../propublica-nonprofit-agent/index.js
 import { LittleSisAgent, LittleSisRelationshipEntry } from "../littlesis-agent/index.js";
 import { DomainPostureAgent } from "../domain-posture-agent/index.js";
 import { RelatedEntitiesAgent } from "../related-entities-agent/index.js";
-import { PublicFilingsAgent, fundNames, isHealthcare, nameVariants, rankCases } from "../public-filings-agent/index.js";
+import { PublicFilingsAgent, fundNames, fundTargets, isHealthcare, nameVariants, rankCases } from "../public-filings-agent/index.js";
+
+const INVESTMENT_FIRM = /\b(invest\w*|capital|equity|fund|sponsor|asset management|real estate investment|private equity|holdings)\b/i;
 import { SecFilingsAgent, type SecFilings } from "../sec-filings-agent/index.js";
-import { cleanLeadership, personKey } from "../../lib/leadership.js";
+import { applyAppointments, appointmentsFromNews, checkFoundersAgainst, cleanLeadership, foundedBy, personKey } from "../../lib/leadership.js";
 import { entityTypeOf } from "../../lib/entity-type.js";
+import { strongNameMatch } from "../../lib/name-match.js";
 import { contractCeilings } from "../../lib/contract-ceilings.js";
 import { guardFromEnv } from "../../lib/exclusions/adapters.js";
 import { siteOf } from "../../lib/provenance/findings.js";
@@ -188,6 +191,8 @@ export class ResearchOrchestrator {
             // Matched on a city or its own site, and not national in scale:
             // a local or regional business, whose peers are the ones near it.
             local: !national && !!(anchor.location || anchor.website),
+            products: siteResult.products.map((p) => p.name),
+            filed: sec?.competitors?.length && sec.tenKUrl ? { names: sec.competitors, url: sec.tenKUrl } : undefined,
           }), { competitors: [], sources: [] }, (r) => r.competitors.length),
         cov.run("sec", () => this.corporateAgent.run(companyName, subject), { funding: [], insiderActivity: [], sources: [] },
           (r) => r.funding.length + r.insiderActivity.length + (r.ownership ? 1 : 0)),
@@ -239,6 +244,8 @@ export class ResearchOrchestrator {
     if (!franchisor) cov.skip("fdd", "Not a franchisor.");
     const fundTexts = [siteResult.company.description ?? "", ...siteResult.products.map((p) => `${p.name} ${p.description ?? ""}`),
       ...newsResult.news.map((n) => `${n.headline} ${n.summary ?? ""}`)];
+    // An investment sponsor's funds file under its short name (launch fix 47).
+    const sponsor = INVESTMENT_FIRM.test(`${companyName} ${siteResult.company.industry ?? ""} ${siteResult.company.role ?? ""}`);
     const registry = Promise.all([
       proAccess ? cov.run("courtlistener", () => filings.courtCases(companyName), { cases: [], sources: [] }, (r) => r.cases.length) : Promise.resolve({ cases: [], sources: [] }),
       proAccess ? cov.run("nlrb", () => filings.nlrbCases(companyName), { cases: [], sources: [] }, (r) => r.cases.length) : Promise.resolve({ cases: [], sources: [] }),
@@ -247,7 +254,7 @@ export class ResearchOrchestrator {
         : cov.run("state-records", () => filings.stateFormation(companyName, recordState), { record: undefined, sources: [] }, (r) => (r.record ? 1 : 0)),
       franchisor ? cov.run("fdd", () => filings.fddFigures(companyName), { fdd: undefined, sources: [] }, (r) => (r.fdd ? 1 : 0))
         : Promise.resolve({ fdd: undefined, sources: [] }),
-      proAccess ? cov.run("formd", () => filings.formDFilings([...nameVariants(companyName), ...fundNames(fundTexts, companyName)]), { funding: [], sources: [] }, (r) => r.funding.length)
+      proAccess ? cov.run("formd", () => filings.formDFilings([...nameVariants(companyName), ...fundNames(fundTexts, companyName)], sponsor ? companyName.split(/\s+/)[0] : undefined), { funding: [], sources: [] }, (r) => r.funding.length)
         : Promise.resolve({ funding: [], sources: [] }),
     ]);
 
@@ -304,6 +311,7 @@ export class ResearchOrchestrator {
       products: siteResult.products,
       news: newsResult.news,
       funding: [...corporateResult.funding, ...formDResult.funding],
+      
       competitors: competitorResult.competitors,
       ownership: corporateResult.ownership,
       sources,
@@ -311,9 +319,12 @@ export class ResearchOrchestrator {
       insiderActivity: corporateResult.insiderActivity,
       sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
       sanctionsUnavailable: sanctionsResult.unavailable || undefined,
+      sanctionsScreened: (proAccess && !sanctionsResult.unavailable) || undefined,
+      sanctionsRuledOut: "ruledOut" in sanctionsResult && sanctionsResult.ruledOut ? sanctionsResult.ruledOut : undefined,
       webArchive: waybackResult.summary.snapshotCount ? waybackResult.summary : undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
-      powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
+      // Only this organization's own LittleSis record (launch fix 40).
+      powerMapConnections: orgMatches(littleSisResult.matches, companyName),
       domainPosture: postureResult.posture,
       relatedEntities: relatedResult.graph,
       // Most material first (launch fix 21).
@@ -324,6 +335,19 @@ export class ResearchOrchestrator {
       nonprofitFinancials: nonprofitResult.financials,
     };
     if (sec) applySecFilings(bundle, sec);
+    // Fund targets the company's own pages or the news state (launch fix 47).
+    const targets = fundTargets([
+      ...siteResult.products.map((p) => ({ text: `${p.name}. ${p.description ?? ""}`, url: p.sourceUrl })),
+      { text: siteResult.company.description ?? "", url: siteResult.company.website },
+      ...newsResult.news.map((n) => ({ text: `${n.headline}. ${n.summary ?? ""}`, url: n.url, date: n.date })),
+    ], companyName);
+    for (const t of targets) {
+      if (!t.url) continue;
+      bundle.funding.push({ round: t.round, amount: t.amount, date: t.date });
+      const src = bundle.sources.find((x) => x.url === t.url);
+      if (src) { if (!src.usedFor.includes("funding")) src.usedFor.push("funding"); }
+      else bundle.sources.push({ url: t.url, title: t.round, retrievedAt: new Date().toISOString(), usedFor: ["funding"] });
+    }
     applyEntityType(bundle, franchisor);
     const ceilings = contractCeilings(bundle.federalSpending ?? [], bundle.news);
     if (ceilings.length) bundle.contractCeilings = ceilings;
@@ -342,7 +366,15 @@ export class ResearchOrchestrator {
     }
     // Officers from the 10-K and NPI joined the site's list: one entry per
     // person again, and former officers off it (launch fix 35).
-    bundle.leadership = cleanLeadership(bundle.leadership, subject.domain);
+    // Appointments in the news are dated, so they settle title conflicts
+    // with an undated page (launch fix 44: Darway's promotion at ACCO).
+    const appointed = appointmentsFromNews(bundle.news);
+    if (appointed.length) console.log(`[leadership] "${companyName}": ${appointed.map((a) => `${a.name} (${a.title})`).join(", ")} from news`);
+    bundle.leadership = cleanLeadership(applyAppointments(bundle.leadership, appointed), subject.domain);
+    bundle.leadership = checkFoundersAgainst(bundle.leadership, foundedBy([
+      bundle.company.description ?? "", sec?.description ?? "",
+      ...bundle.leadership.map((l) => l.bio ?? ""), ...bundle.news.map((n) => `${n.headline}. ${n.summary ?? ""}`),
+    ]));
 
     // Closure can surface in news as well as on the business's own pages.
     const city = cityOf(anchor.location);
@@ -461,6 +493,8 @@ export class ResearchOrchestrator {
       foiaRequests: foiaResult.requests.length > 0 ? foiaResult.requests : undefined,
       sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
       sanctionsUnavailable: sanctionsResult.unavailable || undefined,
+      sanctionsScreened: (proAccess && !sanctionsResult.unavailable) || undefined,
+      sanctionsRuledOut: "ruledOut" in sanctionsResult && sanctionsResult.ruledOut ? sanctionsResult.ruledOut : undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
     };
@@ -672,6 +706,11 @@ export function isNationalScale(c: { locations?: string[]; description?: string;
  * the business address as HQ when nothing else gave one, and the executive
  * officers as leadership, cited to the 10-K.
  */
+function orgMatches<T extends { name: string; entityKind?: string }>(matches: T[], companyName: string): T[] | undefined {
+  const kept = matches.filter((m) => m.entityKind !== "Person" && strongNameMatch(m.name, companyName));
+  return kept.length ? kept : undefined;
+}
+
 /**
  * Entity type before Funding is filled (launch fix 34). A nonprofit's
  * rounds are someone else's (Homeboy's "Series B: $76M"), so none are

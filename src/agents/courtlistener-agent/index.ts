@@ -42,7 +42,7 @@ interface CourtListenerSearchResponse {
 export class CourtListenerAgent {
   /** @param pages Result pages to read (20 dockets each). Company reports
    *  read up to 3 (launch fix 30: one page missed Warner Records v. Crumbl). */
-  async run(name: string, pages = 1): Promise<{ records: CourtListenerRecord[]; sources: Source[] }> {
+  async run(name: string, pages = 1): Promise<{ records: CourtListenerRecord[]; sources: Source[]; failed?: boolean }> {
     const token = process.env.COURTLISTENER_API_TOKEN;
     const headers: Record<string, string> = token ? { Authorization: `Token ${token}` } : {};
 
@@ -51,14 +51,30 @@ export class CourtListenerAgent {
       // free mirror of PACER data.
       const results: CourtListenerSearchResult[] = [];
       let url: string | null | undefined = `${COURTLISTENER_BASE}/search/?q=${encodeURIComponent(name)}&type=r`;
-      for (let page = 0; url && page < pages; page++) {
-        const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
-        if (!res.ok) {
-          console.warn(`[courtlistener-agent] "${name}" — HTTP ${res.status}`);
-          if (page === 0) return { records: [], sources: [] };
+      // Launch fix 11 follow-up (MJW timed out): each page has its own
+      // try, so a slow page 2 keeps page 1's results; the first page is
+      // retried once; and paging stops at a 60s budget, inside the 90s the
+      // coverage recorder allows.
+      const deadline = Date.now() + 60_000;
+      for (let page = 0; url && page < pages && Date.now() < deadline; page++) {
+        let data: CourtListenerSearchResponse | undefined;
+        for (let attempt = 0; attempt < (page === 0 ? 2 : 1) && !data; attempt++) {
+          try {
+            const res = await fetch(url, { headers, signal: AbortSignal.timeout(Math.min(20_000, Math.max(1_000, deadline - Date.now()))) });
+            if (!res.ok) {
+              console.warn(`[courtlistener-agent] "${name}" — HTTP ${res.status} on page ${page + 1}`);
+              if (res.status < 500) break;
+              continue;
+            }
+            data = (await res.json()) as CourtListenerSearchResponse;
+          } catch (err) {
+            console.warn(`[courtlistener-agent] "${name}" — page ${page + 1} failed:`, err instanceof Error ? err.message : err);
+          }
+        }
+        if (!data) {
+          if (page === 0) throw new Error("CourtListener search failed after a retry");
           break;
         }
-        const data = (await res.json()) as CourtListenerSearchResponse;
         results.push(...(data.results ?? []));
         url = data.next;
       }
@@ -91,7 +107,7 @@ export class CourtListenerAgent {
       return { records, sources };
     } catch (err) {
       console.warn(`[courtlistener-agent] "${name}" — lookup failed:`, err instanceof Error ? err.message : err);
-      return { records: [], sources: [] };
+      return { records: [], sources: [], failed: true };
     }
   }
 }

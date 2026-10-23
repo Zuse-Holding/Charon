@@ -256,6 +256,15 @@ export function evaluatePosture(f: DomainFacts, now = new Date()): DomainPosture
     }
     checks.push(...siteMail, ...mailChecks(f.sending.domain, f.sending.txt, f.sending.dmarc, ` (email domain ${f.sending.domain})`));
   } else {
+    // No mail servers and no other email domain found: the site's domain
+    // isn't where its email comes from, so missing records there are low.
+    if (f.mx !== undefined && f.mx.length === 0) {
+      for (const c of siteMail) {
+        if (c.status !== "flag") continue;
+        c.severity = "low";
+        c.detail = `${c.detail} This domain receives no email (no MX records), so the company likely sends from another domain; ask which.`;
+      }
+    }
     checks.push(...siteMail);
   }
 

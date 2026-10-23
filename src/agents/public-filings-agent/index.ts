@@ -1,6 +1,7 @@
 import type { FundingEntry, Source } from "../../types/research.js";
 import type { SearchProvider } from "../../lib/providers.js";
 import { CourtListenerAgent } from "../courtlistener-agent/index.js";
+import { strongNameMatch } from "../../lib/name-match.js";
 import { mentionsCompany } from "../../lib/news-noise.js";
 import { extractStructured, FddExtractionSchema } from "../../lib/llm.js";
 
@@ -120,6 +121,28 @@ export function fundNames(texts: string[], companyName: string): string[] {
 }
 
 /**
+ * A fund the company is raising and its target (launch fix 47: MJW lost
+ * its "$100M Student Housing Fund" target between runs). A sentence that
+ * names a fund and a target or raise amount.
+ */
+export function fundTargets(items: { text: string; url?: string; date?: string }[], companyName: string): (FundingEntry & { url?: string })[] {
+  const out: (FundingEntry & { url?: string })[] = [];
+  const amount = /\b(?:target(?:ing|s|ed)?|seeking to raise|plans? to raise|aims? to raise|to raise|up to|hard cap of|capitalization of)\b[^.$]{0,40}?(\$\s?\d+(?:\.\d+)?\s?(?:million|billion|mm|m|b)\b)/i;
+  for (const it of items) {
+    for (const sentence of it.text.split(/(?<=[.!?])\s+/)) {
+      if (!/\bfund\b/i.test(sentence)) continue;
+      const m = sentence.match(amount);
+      if (!m) continue;
+      const name = fundNames([sentence], companyName)[0] ?? sentence.match(/\b((?:[A-Z][\w&'.-]*\s){1,5}Fund(?:\s(?:[IVX]{1,4}|\d{1,2}))?)\b/)?.[1]?.trim();
+      const round = `${name ?? "Fund"} (target)`;
+      if (out.some((o) => o.round === round)) continue;
+      out.push({ round, amount: m[1].replace(/\s+/g, " "), date: it.date, url: it.url });
+    }
+  }
+  return out.slice(0, 3);
+}
+
+/**
  * The names a company files under (launch fix 27): as searched, without
  * its legal suffix, and with ", Inc." ("Gecko Robotics" ->
  * "Gecko Robotics, Inc."). Search is case-insensitive, so no upper-case copy.
@@ -177,7 +200,8 @@ const titleCase = (s: string) => s.toLowerCase().replace(/\b[a-z]/g, (c) => c.to
 
 export function parseNppes(data: NppesResponse | null, companyName: string): NpiRecord[] {
   return (data?.results ?? [])
-    .filter((r) => r.number && r.basic?.organization_name && mentionsCompany(titleCase(r.basic.organization_name), companyName))
+    // Same standard as every name-based registry (launch fix 40).
+    .filter((r) => r.number && r.basic?.organization_name && strongNameMatch(r.basic.organization_name, companyName))
     .slice(0, 5)
     .map((r) => {
       const b = r.basic!;
@@ -292,7 +316,10 @@ Omit anything not stated. Never estimate.`,
     // The name as searched and without its legal suffix, up to 3 pages each.
     const variants = [...new Set([companyName, bareName(companyName)])];
     const seen = new Set<string>();
-    const records = (await Promise.all(variants.map((v) => new CourtListenerAgent().run(`"${v}"`, 3)))).flat()
+    const runs = await Promise.all(variants.map((v) => new CourtListenerAgent().run(`"${v}"`, 3)));
+    // Every search failing is an error for the coverage table, not "none found".
+    if (runs.every((r) => r.failed)) throw new Error("CourtListener didn't answer");
+    const records = runs
       .flatMap((r) => r.records).filter((r) => !seen.has(r.url) && seen.add(r.url));
     const cases = records
       .filter((r) => mentionsCompany(r.caseName, companyName))
@@ -320,18 +347,26 @@ Omit anything not stated. Never estimate.`,
     return { record, sources: record ? [source(record.url, `State business record — ${companyName}`, "overview")] : [] };
   }
 
-  async formDFilings(names: string[]): Promise<{ funding: FundingEntry[]; sources: Source[] }> {
+  /** @param prefix The company's short name: its funds file as "<prefix> ... Fund I, LLC"
+   *  (launch fix 47: MJW's funds), searched once as a plain word. */
+  async formDFilings(names: string[], prefix?: string): Promise<{ funding: FundingEntry[]; sources: Source[] }> {
     const funding: FundingEntry[] = [];
     const sources: Source[] = [];
     const seen = new Set<string>();
-    for (const name of names.slice(0, 8)) {
-      const data = await getJson<EftsResponse>(`https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(`"${name}"`)}&forms=D`, { "user-agent": SEC_UA });
+    const queries: { q: string; accepts: (display: string) => boolean }[] = names.slice(0, 8).map((name) => ({ q: `"${name}"`, accepts: (d: string) => mentionsCompany(d, name) }));
+    if (prefix && prefix.length >= 3) {
+      const starts = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s.*\\b(fund|lp|l\\.p\\.)\\b`, "i");
+      queries.push({ q: `"${prefix}" fund`, accepts: (d) => starts.test(d.replace(/\s*\(CIK[^)]*\)/i, "")) });
+    }
+    for (const { q, accepts } of queries) {
+      const data = await getJson<EftsResponse>(`https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(q)}&forms=D`, { "user-agent": SEC_UA });
+      const name = q.replace(/"/g, "");
       for (const hit of (data?.hits?.hits ?? []).slice(0, 3)) {
         const s = hit._source;
         const cik = s?.ciks?.[0]?.replace(/^0+/, "");
         const adsh = s?.adsh ?? hit._id?.split(":")[0];
         if (!cik || !adsh || seen.has(adsh)) continue;
-        if (!(s?.display_names ?? []).some((d) => mentionsCompany(d, name))) continue;
+        if (!(s?.display_names ?? []).some(accepts)) continue;
         seen.add(adsh);
         const folder = `https://www.sec.gov/Archives/edgar/data/${cik}/${adsh.replace(/-/g, "")}`;
         const xml = await getText(`${folder}/primary_doc.xml`, { "user-agent": SEC_UA });
