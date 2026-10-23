@@ -22,7 +22,8 @@ import { PublicFilingsAgent, caseRole, fundNames, fundTargets, isHealthcare, nam
 
 const INVESTMENT_FIRM = /\b(invest\w*|capital|equity|fund|sponsor|asset management|real estate investment|private equity|holdings)\b/i;
 import { SecFilingsAgent, type SecFilings } from "../sec-filings-agent/index.js";
-import { applyAppointments, appointmentsFromNews, checkFoundersAgainst, cleanLeadership, foundedBy, personKey } from "../../lib/leadership.js";
+import { applyAppointments, appointmentsFromNews, checkFoundersAgainst, cleanLeadership, foundedBy, personKey, samePerson } from "../../lib/leadership.js";
+import { officersFromFilings } from "../../lib/insiders.js";
 import { entityTypeOf } from "../../lib/entity-type.js";
 import { strongNameMatch } from "../../lib/name-match.js";
 import { brandName } from "../../lib/news-noise.js";
@@ -178,7 +179,7 @@ export class ResearchOrchestrator {
     // tied to its HQ city (launch fixes 22, 23): news needn't name Clayton
     // to be about Graybar, and its peers are national, not local. A city
     // the user typed always holds.
-    const national = !queryAnchor.location && (!!sec || !!siteResult.company.chain || isNationalScale(siteResult.company));
+    const national = !queryAnchor.location && (!!sec || !!siteResult.company.stockListing || !!siteResult.company.chain || isNationalScale(siteResult.company));
     const tieAnchor: CompanyAnchor = national ? { ...anchor, location: undefined } : anchor;
     const subject: SubjectRecord = { name: companyName, anchor: tieAnchor, domain: hostOf(siteResult.company.website) };
     // Every name a registry may file it under (launch fixes 57, 60, 67):
@@ -434,7 +435,9 @@ export class ResearchOrchestrator {
     // with an undated page (launch fix 44: Darway's promotion at ACCO).
     const appointed = appointmentsFromNews(bundle.news);
     if (appointed.length) console.log(`[leadership] "${companyName}": ${appointed.map((a) => `${a.name} (${a.title})`).join(", ")} from news`);
-    bundle.leadership = cleanLeadership(applyAppointments(bundle.leadership, appointed), subject.domain);
+    // Officers the insider filings name (launch fix 83: Limbach's CFO).
+    const filers = officersFromFilings(bundle.insiderActivity ?? []).filter((o) => !bundle.leadership.some((l) => samePerson(l.name, o.name)));
+    bundle.leadership = cleanLeadership(applyAppointments([...bundle.leadership, ...filers], appointed), subject.domain);
     bundle.leadership = checkFoundersAgainst(bundle.leadership, foundedBy([
       bundle.company.description ?? "", sec?.description ?? "",
       ...bundle.leadership.map((l) => l.bio ?? ""), ...bundle.news.map((n) => `${n.headline}. ${n.summary ?? ""}`),
@@ -759,7 +762,7 @@ function attachProvenance<B extends { provenance?: BuiltProvenance["record"] }>(
 }
 
 // Many locations, or says it works nationally: not a local business.
-const NATIONAL = /\b\d{2,}\+?\s+(locations|branches|offices|distribution centers|facilities|stores|warehouses)\b|\bnationwide\b|\bacross the (u\.?s\.?|united states|country)\b|\b(global|worldwide|international|multinational|fortune 500)\b/i;
+const NATIONAL = /\b\d{2,}\+?\s+(locations|branches|offices|distribution centers|facilities|stores|warehouses)\b|\bnationwide\b|\bacross the (u\.?s\.?|united states|country)\b|\b(global|worldwide|international|multinational|fortune 500)\b|\b(nasdaq|nyse)\b|\bpublicly (traded|held|listed)\b/i;
 
 export function isNationalScale(c: { locations?: string[]; description?: string; summary?: string }): boolean {
   return (c.locations?.length ?? 0) >= 5 || NATIONAL.test(`${c.description ?? ""} ${c.summary ?? ""}`);

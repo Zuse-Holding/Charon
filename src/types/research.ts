@@ -37,6 +37,8 @@ export interface CompanyProfile {
   name: string;
   /** The legal entity, from the site's copyright line or a filing (launch fix 57). */
   legalName?: string;
+  /** "NASDAQ: LMB", when the site gives its stock listing (launch fix 83). */
+  stockListing?: string;
   description?: string;
   /** Executive summary written from the report's facts (launch fix 4);
    *  shown instead of the description, which is often the site's tagline. */

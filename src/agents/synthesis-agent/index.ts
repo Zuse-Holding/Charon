@@ -3,6 +3,7 @@ import { extractAnalysis, RisksOpportunitiesSchema } from "../../lib/llm.js";
 import { money } from "../report-agent/index.js";
 import type { CaseRecord } from "../public-filings-agent/index.js";
 import { STATES } from "../competitor-agent/index.js";
+import { insiderSelling } from "../../lib/insiders.js";
 
 /**
  * Risks & Opportunities synthesis.
@@ -134,6 +135,9 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
     const ctx = [c.court && `${c.court}${c.docketNumber ? ` ${c.docketNumber}` : ""}`, c.filed && `filed ${c.filed}`, side, c.caseType, c.status].filter(Boolean).join(", ");
     facts.push({ text: `Case: ${c.caption}${ctx ? ` (${ctx})` : ""}`, url: c.url, when: c.filed, kind: "case", caseRef: c });
   }
+  // Large or repeated insider selling (launch fix 83).
+  const insiderUrl = bundle.sources.find((s) => s.usedFor.includes("insider-activity"))?.url;
+  for (const s of insiderSelling(bundle.insiderActivity ?? [])) facts.push({ text: s.text, url: s.url ?? insiderUrl, when: s.when });
   const spendingUrl = bundle.sources.find((s) => s.usedFor.includes("federal-spending"))?.url;
   for (const c of bundle.contractCeilings ?? []) {
     facts.push({ text: `Federal contract: ${c.agency} ceiling ${money(c.ceiling)} announced${c.newsDate ? ` (${c.newsDate})` : ""}; about ${money(c.obligated)} obligated to date`, url: spendingUrl ?? c.newsUrl });
@@ -391,6 +395,7 @@ RULES — these are non-negotiable:
 - Never add a detail the cited facts don't state: no case type, court, state, date or dollar figure that isn't in them. If a fact leaves a field out, leave it out too.
 - Leadership facts are current. Never build a risk on titles, turnover or a "dispute" the facts don't state.
 - For a nonprofit, risks and opportunities are about its programs, revenue mix, grants, campaigns, cases and leadership, never investors.
+- An "Insider selling" fact is a risk: name who sold, how much and when, exactly as the fact states.
 - Never turn an opportunity around into a risk: a new fund, product or location is not a risk because it is new. If no fact shows a real risk, return an empty "risks" array.
 - If the facts can't support a credible assessment, return empty arrays.`,
     context,

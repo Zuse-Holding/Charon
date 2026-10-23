@@ -139,6 +139,22 @@ const NON_OFFICIAL_DOMAINS = new Set([
 
 /** "19524 Nordhoff St #3B, Northridge, CA 91324" -> "Northridge"; undefined
  *  when the address has no "City, ST" part. */
+const STATED_FOUNDING = /\b(?:founded|established|est\.?|since|dating back to)\s+(?:in\s+|back\s+in\s+)?((?:18|19|20)\d{2})\b/gi;
+
+/**
+ * The founding year the text states, over a model's reading (launch fix
+ * 83: Limbach showed 1901 one run and 1900 the next; its site says 1901).
+ * The most-stated year wins; a model year the text never gives is dropped.
+ */
+export function foundingYear(modelYear: string | undefined, text: string): string | undefined {
+  const counts = new Map<string, number>();
+  for (const m of text.matchAll(STATED_FOUNDING)) counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+  const stated = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const year = modelYear?.match(/\b(?:18|19|20)\d{2}\b/)?.[0];
+  if (stated) return stated;
+  return year && text.includes(year) ? year : undefined;
+}
+
 /** A listing for one store: its website is a page under the brand's site, not the site itself. */
 export function isStoreListing(p: { website?: string }): boolean {
   try {
@@ -718,7 +734,11 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
       if (llmResult) {
         usedLLM = true;
         if (llmResult.description) company.description = llmResult.description;
-        if (llmResult.founded) company.founded = llmResult.founded;
+        const founded = foundingYear(llmResult.founded, combinedText);
+        if (founded) company.founded = founded;
+        // A listed company is national, with or without SEC access (launch fix 83).
+        const listed = combinedText.match(/\b(NASDAQ|NYSE(?: American)?)\s*:\s*([A-Z]{1,5})\b/);
+        if (listed) company.stockListing = `${listed[1]}: ${listed[2]}`;
         if (llmResult.headquarters) company.headquarters = llmResult.headquarters;
         if (llmResult.industry) company.industry = llmResult.industry;
         if (llmResult.role) company.role = llmResult.role;

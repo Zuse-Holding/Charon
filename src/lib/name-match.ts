@@ -76,9 +76,13 @@ export function captionParties(side: string): string[] {
     .filter((p) => p.length > 1);
 }
 
+const FIRM_NAME = /^\s*[A-Z][\w'’-]+(?:,\s*[A-Z][\w'’-]+)*,?\s*&\s*[A-Z][\w'’-]+\.?(?:,?\s*(?:LLP|LLC|PLLC|P\.?C\.?|P\.?A\.?))?\s*$/;
+
 /** Whether this side of a caption names the company as a party (not a namesake). */
 export function partyIs(side: string, names: string[]): boolean {
-  const parties = captionParties(side);
+  // Surnames joined by commas and "&" are one firm (launch fix 83: "Limbach,
+  // Limbach & Sutton" is a law firm, not Limbach Holdings).
+  const parties = FIRM_NAME.test(side) ? [] : captionParties(side);
   // "Patagonia, Inc." splits on its comma only when a name follows, so the
   // whole side is also tried as one party.
   return [side, ...parties].some((p) => names.some((n) => n && nameOrDivision(p, n)));
