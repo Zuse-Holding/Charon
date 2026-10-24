@@ -62,7 +62,7 @@ import { lookupStatewideExecutive } from "../../database/statewide-executives.js
 import { fillGaps } from "../../lib/gap-fill.js";
 import { composeSummary } from "../../lib/summary.js";
 import { applyProfile, loadProfile, profileFrom, saveProfile, suspiciousFounded } from "../../lib/profile-cache.js";
-import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "../../lib/risk-rules.js";
+import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleOpportunities, mergeRuleRisks, ruleOpportunities, ruleRisks } from "../../lib/risk-rules.js";
 
 /**
  * Research Orchestrator
@@ -411,7 +411,7 @@ export class ResearchOrchestrator {
       : { filled: [], actionTexts: [], ownershipTexts: [] };
     // Who owns it, from the targeted search (ACCO's ESOP came and went).
     if (!bundle.ownership && gapFill.ownershipTexts?.length) {
-      const found = ownershipFrom(gapFill.ownershipTexts);
+      const found = ownershipFrom(gapFill.ownershipTexts, [companyName, ...entityNames]);
       if (found) {
         bundle.ownership = found.note;
         bundle.sources.push({ url: found.url, title: "Ownership", retrievedAt: new Date().toISOString(), usedFor: ["funding"] });
@@ -523,6 +523,22 @@ export class ResearchOrchestrator {
         for (const u of Object.values(merged.citations).flat()) {
           const src = bundle.sources.find((x) => x.url === u);
           if (src && !src.usedFor.includes("risks")) src.usedFor.push("risks");
+        }
+      }
+    }
+    // Opportunities in the data the model left out (round 12: Gecko's
+    // $300M Navy ceiling and new plant, under "insufficient data").
+    if (!bundle.company.thin) {
+      const rules = ruleOpportunities(bundle, nameSet).filter((r) => !isFillerOpportunity(r.text));
+      const merged = mergeRuleOpportunities(bundle.opportunities ?? [], bundle.synthesisCitations ?? {}, rules);
+      const added = merged.opportunities.length - (bundle.opportunities?.length ?? 0);
+      if (added > 0) {
+        console.log(`[risk-rules] "${companyName}": added ${added} opportunit(ies) from the data`);
+        bundle.opportunities = merged.opportunities;
+        bundle.synthesisCitations = merged.citations;
+        for (const u of Object.values(merged.citations).flat()) {
+          const src = bundle.sources.find((x) => x.url === u);
+          if (src && !src.usedFor.includes("opportunities")) src.usedFor.push("opportunities");
         }
       }
     }
@@ -841,10 +857,14 @@ export function acquiredBy(texts: string[], name: string): boolean {
 }
 
 /** "Owned by X", "ownership transferred to X": a note and the page that says it. */
-export function ownershipFrom(items: { text: string; url: string }[]): { note: string; url: string } | undefined {
+// An owner phrase that is a funding round or the company itself is a misread
+// (round 12: "It is owned by Series Gecko Robotics and").
+const NOT_AN_OWNER = /^(the\s+)?(series|seed|round|funding|founders?|investors?|venture|capital|private|public|employees?)\b/i;
+
+export function ownershipFrom(items: { text: string; url: string }[], names: string[] = []): { note: string; url: string } | undefined {
   // "100% employee-owned", "an ESOP company".
   for (const it of items) {
-    if (/\b(employee[- ]owned|employee stock ownership plan|ESOP)\b/i.test(it.text)) {
+    if (/\b(employee[- ]owned|employee stock ownership plan|ESOP|owned by (its |our )?(employees|associates))\b/i.test(it.text)) {
       return { note: /\b(ESOP|employee stock ownership plan)\b/i.test(it.text) ? "Employee-owned (ESOP)" : "Employee-owned", url: it.url };
     }
   }
@@ -856,6 +876,8 @@ export function ownershipFrom(items: { text: string; url: string }[]): { note: s
     const m = it.text.match(re);
     if (m) {
       const owners = m[1].replace(/[.,;:]+$/, "").replace(/\s+(and|of|the)$/i, "").trim();
+      const own = owners.toLowerCase();
+      if (NOT_AN_OWNER.test(owners) || names.some((n) => n && (own.includes(n.toLowerCase()) || n.toLowerCase().includes(own)))) continue;
       return { note: `Owned by ${owners}`, url: it.url };
     }
   }

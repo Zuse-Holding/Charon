@@ -2,7 +2,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { insiderSelling, saleValue } from "./insiders.js";
 import { addDevelopments, aboutCompany, findGaps, hasCurrentChief, gapQueries, isTotalRaised, mergeGaps, needsFunding, snippetStates, type GapExtraction, type GapSnippet } from "./gap-fill.js";
-import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleRisks, ruleRisks } from "./risk-rules.js";
+import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleOpportunities, mergeRuleRisks, ruleOpportunities, ruleRisks } from "./risk-rules.js";
+import { contractCeilings } from "./contract-ceilings.js";
+import { ownershipFrom } from "../agents/orchestrator/index.js";
 import { applyProfile, profileFrom, suspiciousFounded } from "./profile-cache.js";
 import { applyCompanyConsistency } from "./consistency.js";
 import { foundedLabel } from "../agents/report-agent/index.js";
@@ -306,5 +308,51 @@ describe("round 12: more gaps and a factual summary", () => {
     assert.match(s, /Series D \(\$125M, 2025\)/);
     assert.match(s, /Most recent coverage: "Gecko Robotics secures \$300M contract with the U\.S\. Navy" \(Oct 20, 2026\)\./);
     assert.equal(whatItDoes("MJW Investments", "A real estate investment firm."), "MJW Investments is a real estate investment firm.");
+  });
+});
+
+describe("round 12b: the Gecko canary", () => {
+  const now = Date.parse("2026-10-23");
+  const awards = [
+    { amount: "$3,427,919", awardingAgency: "General Services Administration", date: "2026-01-30", description: "GECKO ROBOTICS CNSP TO 01" },
+    { amount: "$1,494,360", awardingAgency: "Department of Defense", date: "2022-09-15", description: "SBIR PHASE II" },
+    { amount: "$72,216", awardingAgency: "Department of Defense", date: "2023-12-12", description: "ROBOTIC DATA ACQUISITION" },
+  ] as any[];
+  const news = [
+    { headline: "U.S. Navy Awards $300M Contract to Robotic-Inspection Startup Gecko", url: "https://maritime-executive.com/x", date: "Oct 22, 2026" },
+    { headline: "Gecko Robotics to open manufacturing facility in Sewickley", url: "https://axios.com/y", date: "Jul 16, 2026", outlet: "axios.com" },
+  ] as any[];
+
+  it("counts a Navy contract against Department of Defense awards", () => {
+    const k = contractCeilings(awards, news);
+    assert.equal(k.length, 1);
+    assert.equal(k[0].ceiling, 300e6);
+    assert.equal(k[0].obligated, 1_494_360 + 72_216);
+  });
+
+  it("states the open ceiling and the new plant as opportunities", () => {
+    const bundle = base({ company: { name: "Gecko Robotics" }, news, federalSpending: awards });
+    bundle.contractCeilings = contractCeilings(awards, news);
+    const rules = ruleOpportunities(bundle, ["Gecko Robotics"], now);
+    assert.deepEqual(rules.map((r) => r.key), ["ceiling", "expansion"]);
+    assert.match(rules[0].text, /\$300\.0M against about \$1\.6M obligated/);
+    assert.match(rules[1].text, /Sewickley \(axios\.com, Jul 16, 2026\)/);
+    const merged = mergeRuleOpportunities([], {}, rules);
+    assert.equal(merged.opportunities.length, 2);
+    // A model opportunity already on the ceiling keeps the rule out.
+    assert.equal(mergeRuleOpportunities(["The $300M ceiling leaves room for task orders."], {}, rules).opportunities.length, 2);
+  });
+
+  it("never reads a funding round or the company itself as its owner", () => {
+    const url = "https://x.com";
+    assert.equal(ownershipFrom([{ text: "backed and owned by Series Gecko Robotics and others", url }], ["Gecko Robotics"]), undefined);
+    assert.equal(ownershipFrom([{ text: "Gecko is owned by Gecko Robotics, Inc.", url }], ["Gecko Robotics"]), undefined);
+    assert.deepEqual(ownershipFrom([{ text: "ACCO is 100% employee-owned.", url }], ["ACCO"]), { note: "Employee-owned", url });
+    assert.deepEqual(ownershipFrom([{ text: "Graybar is owned by its employees and retirees", url }], ["Graybar"]), { note: "Employee-owned", url });
+  });
+
+  it("skips the ownership search for a venture-backed company", () => {
+    const bundle = base({ company: { name: "Gecko Robotics" }, funding: [{ round: "Series B", amount: "$40M" }] });
+    assert.ok(!findGaps(bundle).includes("ownership"));
   });
 });
