@@ -367,6 +367,13 @@ describe("round 12c: Gecko canary, second run", () => {
     assert.equal(isValuation("Crumbl closed a $1B funding round.", "$1B"), false);
   });
 
+  it("an amount named as the raise is the round, even beside \"unicorn\"", () => {
+    assert.equal(isValuation("Gecko Robotics becomes a unicorn with $125M raise", "$125M"), false);
+    assert.equal(isValuation("Gecko Robotics becomes a unicorn with $125 million Series D", "$125 million"), false);
+    // Still a valuation when the series names the valuation, not the raise.
+    assert.equal(isValuation("Gecko Robotics raised $125M at a $1.25B Series D valuation", "$1.25B"), true);
+  });
+
   it("shows one announced ceiling once, whichever articles carried it", () => {
     const awards = [{ amount: "$1,494,360", awardingAgency: "Department of Defense" }, { amount: "$72,216", awardingAgency: "Department of Defense" }] as any[];
     const news = [

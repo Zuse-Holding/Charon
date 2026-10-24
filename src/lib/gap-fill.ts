@@ -207,8 +207,9 @@ export function isValuation(text: string, amount: string): boolean {
   const unit = "(?:\\s*(?:million|billion|mn|bn|m|b)\\b)?";
   const val = new RegExp(`\\b(valuation|valued|valuing|worth|unicorn)\\b[^.;$]{0,25}\\$?${n}(?!\\d)|\\$?${n}${unit}(?:\\+|\\s*plus)?\\s+(post-money\\s+|pre-money\\s+)?valuation\\b|\\bat an?\\s+\\$?${n}${unit}`, "i");
   if (!val.test(text)) return false;
-  // Raised in its own right elsewhere in the text: keep it.
-  return !new RegExp(`\\b(rais\\w*|secur\\w*|clos\\w*)\\s+(a\\s+|an\\s+)?\\$?${n}(?!\\d)`, "i").test(text);
+  // Raised in its own right elsewhere in the text: keep it. That includes
+  // an amount named as the raise itself ("a unicorn with $125M raise").
+  return !new RegExp(`\\b(rais\\w*|secur\\w*|clos\\w*)\\s+(a\\s+|an\\s+)?\\$?${n}(?!\\d)|\\$?${n}(?!\\d)${unit}\\s+(raise|round|funding|investment|series\\s+[a-z])\\b(?!\\s+valuation)`, "i").test(text);
 }
 
 /** The snippet states this value, as written (year, city, name or figure). */
