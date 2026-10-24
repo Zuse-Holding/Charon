@@ -4,12 +4,13 @@ import { insiderSelling, saleValue } from "./insiders.js";
 import { addDevelopments, aboutCompany, findGaps, hasCurrentChief, gapQueries, isTotalRaised, mergeGaps, needsFunding, snippetStates, type GapExtraction, type GapSnippet } from "./gap-fill.js";
 import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleOpportunities, mergeRuleRisks, ruleOpportunities, ruleRisks } from "./risk-rules.js";
 import { contractCeilings } from "./contract-ceilings.js";
-import { ownershipFrom, sameRecordOnce } from "../agents/orchestrator/index.js";
+import { ownershipFrom, restsOnClosedCases, sameRecordOnce } from "../agents/orchestrator/index.js";
 import { isValuation } from "./gap-fill.js";
 import { applyProfile, profileFrom, suspiciousFounded } from "./profile-cache.js";
 import { applyCompanyConsistency } from "./consistency.js";
 import { foundedLabel } from "../agents/report-agent/index.js";
-import { composeSummary, whatItDoes } from "./summary.js";
+import { composeSummary, quotableHeadline, whatItDoes } from "./summary.js";
+import { entityTypeOf } from "./entity-type.js";
 import type { Form4Entry, ResearchBundle } from "../types/research.js";
 
 const base = (over: Partial<ResearchBundle> = {}): ResearchBundle => ({
@@ -391,5 +392,44 @@ describe("round 12c: Gecko canary, second run", () => {
     const c = "Further growth in US naval work after the expanded contract.";
     const cites = { [a]: ["https://maritime.com", "https://usaspending.gov"], [b]: ["https://usaspending.gov"], [c]: ["https://janes.com"] };
     assert.deepEqual(sameRecordOnce([c, a, b], cites), [c, a]);
+  });
+});
+
+describe("round 13: what Round 12 got wrong", () => {
+  it("a company with a stock listing is public, so a SPAC parent note drops", () => {
+    assert.equal(entityTypeOf({ company: { stockListing: "NASDAQ: LMB" }, funding: [] }), "public");
+  });
+
+  it("writes the opening sentence for noun phrases and names already given", () => {
+    assert.equal(whatItDoes("Graybar", "Distributor of electrical and data networking products."), "Graybar is a distributor of electrical and data networking products.");
+    assert.equal(whatItDoes("Limbach Holdings", "Limbach provides MEP systems for mission-critical facilities."), "Limbach provides MEP systems for mission-critical facilities.");
+  });
+
+  it("quotes only whole headlines, without the outlet tail", () => {
+    assert.equal(quotableHeadline("Homeboy Industries to aid with Olympic goods | Los Angeles Times - newspaper"), "Homeboy Industries to aid with Olympic goods");
+    assert.equal(quotableHeadline("New Meta-Analysis Reveals ABA's Strong Impact on"), undefined);
+    assert.equal(quotableHeadline("Crumbl shutters dozens of locations nationwide, including ..."), undefined);
+  });
+
+  it("drops a risk resting only on closed cases", () => {
+    const cases = [{ url: "https://cl/1", status: "closed" }, { url: "https://cl/2", status: "open" }] as any[];
+    assert.equal(restsOnClosedCases(["https://cl/1"], cases), true);
+    assert.equal(restsOnClosedCases(["https://cl/1", "https://cl/2"], cases), false);
+    assert.equal(restsOnClosedCases([], cases), false);
+  });
+
+  it("drops a person listed as a product", () => {
+    const bundle = base({ company: { name: "MJW Investments" }, leadership: [{ name: "Tony Cianciolo", title: "Head of Acquisitions" }],
+      products: [{ name: "Tony Cianciolo" }, { name: "MJW Student Housing Fund" }] as any });
+    applyCompanyConsistency(bundle, { name: "MJW Investments", anchor: {}, aliases: [] } as any);
+    assert.deepEqual(bundle.products.map((p) => p.name), ["MJW Student Housing Fund"]);
+  });
+
+  it("turns a nonprofit's dollar plan into a campaign opportunity", () => {
+    const bundle = base({ company: { name: "Homeboy Industries", entityType: "nonprofit" },
+      news: [{ headline: "'Supplier of hope': Homeboy Industries plans $100-million ...", url: "https://latimes.com/x", date: "Oct 10, 2025", outlet: "latimes.com" }] as any });
+    const r = ruleOpportunities(bundle, ["Homeboy Industries"], Date.parse("2026-10-23"));
+    assert.equal(r[0]?.key, "campaign");
+    assert.match(r[0].text, /plans \$100-million \(latimes\.com, Oct 10, 2025\)\.$/);
   });
 });
