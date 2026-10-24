@@ -119,7 +119,9 @@ export function mergeRuleRisks(risks: string[], citations: Record<string, string
   const cites = { ...citations };
   const citedUrls = new Set(risks.flatMap((r) => cites[r] ?? []));
   const said = risks.join(" ").toLowerCase();
-  const covered = (r: RuleRisk) => r.urls.some((u) => citedUrls.has(u))
+  // Open cases are covered only when every case is already cited: a risk on
+  // Chang alone hid Northwest Administrators (round 13: ACCO).
+  const covered = (r: RuleRisk) => (r.key === "open-cases" ? r.urls.every((u) => citedUrls.has(u)) : r.urls.some((u) => citedUrls.has(u)))
     || (r.key === "insider" && /\binsider|\bsold\b/.test(said) && said.includes(r.text.split(/\s+/)[1]?.toLowerCase() ?? "~"))
     || (r.key === "990" && /\bexpenses?\b/.test(said))
     || (r.key === "closure" && CLOSURE.test(said));
