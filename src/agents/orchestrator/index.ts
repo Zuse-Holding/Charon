@@ -1,4 +1,4 @@
-import { WebsiteAgent } from "../website-agent/index.js";
+import { WebsiteAgent, stockListingFor } from "../website-agent/index.js";
 import { NewsAgent } from "../news-agent/index.js";
 import { CompetitorAgent } from "../competitor-agent/index.js";
 import { CorporateAgent } from "../corporate-agent/index.js";
@@ -22,7 +22,7 @@ import { PublicFilingsAgent, caseRole, fundNames, fundTargets, isHealthcare, nam
 
 const INVESTMENT_FIRM = /\b(invest\w*|capital|equity|fund|sponsor|asset management|real estate investment|private equity|holdings)\b/i;
 import { SecFilingsAgent, type SecFilings } from "../sec-filings-agent/index.js";
-import { applyAppointments, appointmentsFromNews, checkFoundersAgainst, cleanLeadership, foundedBy, personKey, samePerson } from "../../lib/leadership.js";
+import { applyAppointments, applyDepartures, appointmentsFromNews, checkFoundersAgainst, cleanLeadership, foundedBy, personKey, samePerson } from "../../lib/leadership.js";
 import { officersFromFilings } from "../../lib/insiders.js";
 import { entityTypeOf } from "../../lib/entity-type.js";
 import { strongNameMatch } from "../../lib/name-match.js";
@@ -449,6 +449,11 @@ export class ResearchOrchestrator {
       bundle.company.founded = formationResult.record.date.slice(0, 4);
       bundle.company.foundedSource = formationResult.record.url;
     }
+    // A ticker its own site didn't show (or couldn't, this run) still makes
+    // it public: from its funding sources or its news (round 15: Limbach,
+    // NASDAQ: LMB, read as a subsidiary of 1347 Capital).
+    bundle.company.stockListing ??= corporateResult.stockListing
+      ?? bundle.news.map((n) => stockListingFor(`${n.headline}. ${n.summary ?? ""}`, [companyName, ...entityNames])).find(Boolean);
     applyEntityType(bundle, franchisor);
     const ceilings = contractCeilings(bundle.federalSpending ?? [], bundle.news);
     if (ceilings.length) bundle.contractCeilings = ceilings;
@@ -473,6 +478,11 @@ export class ResearchOrchestrator {
       bundle.company.description ?? "", sec?.description ?? "",
       ...bundle.leadership.map((l) => l.bio ?? ""), ...bundle.news.map((n) => `${n.headline}. ${n.summary ?? ""}`),
     ]));
+    // Anyone newer news says stepped down (round 15: Crumbl's founders).
+    const before = bundle.leadership.map((l) => `${l.name} (${l.title})`);
+    bundle.leadership = applyDepartures(bundle.leadership, bundle.news);
+    const changed = before.filter((b) => !bundle.leadership.some((l) => `${l.name} (${l.title})` === b));
+    if (changed.length) console.log(`[leadership] "${companyName}": stepped down per news: ${changed.join(", ")}`);
 
     // Closure can surface in news as well as on the business's own pages.
     const city = cityOf(anchor.location);
