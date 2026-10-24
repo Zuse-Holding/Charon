@@ -357,6 +357,11 @@ Omit anything not stated. Never estimate.`,
     // "Limbach Company LLC" for Limbach Holdings); parties are checked below.
     const core = distinctiveWords(companyName).join(" ");
     const variants = [...new Set([companyName, bareName(companyName), ...(core.length >= 4 ? [core] : []), ...names.filter((n) => n.split(/\s+/).length > 1)])].slice(0, 5);
+    // Courts misspell "Engineered" as "Engineering" (launch fix 67: ACCO v.
+    // Noresco is captioned "ACCO Engineering Systems"). Matching already
+    // treats them as one; the search has to ask for both.
+    const respelled = variants.map(edIngVariant).filter((v): v is string => !!v && !variants.includes(v));
+    variants.push(...respelled.slice(0, 2));
     const seen = new Set<string>();
     // One search over the case captions for every variant (launch fix 77:
     // nine parallel full-text searches hit CourtListener's rate limit and
@@ -436,4 +441,15 @@ Omit anything not stated. Never estimate.`,
 
 function source(url: string, title: string, usedFor: string): Source {
   return { url, title, retrievedAt: new Date().toISOString(), usedFor: [usedFor] };
+}
+
+/** "ACCO Engineered Systems" -> "ACCO Engineering Systems" and back; undefined when no word swaps. */
+export function edIngVariant(name: string): string | undefined {
+  let changed = false;
+  const out = name.replace(/\b([A-Za-z]{4,})(ed|ing)\b/g, (w, stem: string, end: string) => {
+    if (w.length < 7) return w;
+    changed = true;
+    return `${stem}${end.toLowerCase() === "ed" ? "ing" : "ed"}`;
+  });
+  return changed ? out : undefined;
 }
