@@ -168,3 +168,57 @@ const ADVERSE = /\b(defendant|lawsuit|suit|case|charge[ds]?|enforcement|violatio
 export function isNonRisk(text: string): boolean {
   return !ADVERSE.test(text);
 }
+
+/**
+ * Rule-based opportunities (round 12). Gecko's report said "insufficient
+ * data" while it held a $300M Navy ceiling with a few million obligated and
+ * a new plant announced. These read what the report already holds.
+ */
+export interface RuleOpportunity { text: string; urls: string[]; key: string }
+
+const EXPANSION = /\b(to open|opens?|opening|new (facility|plant|factory|office|headquarters|campus|location|market)|expan(ds?|sion|ding)|launch(es|ed)?|enters?|breaks ground|groundbreaking)\b/i;
+const CAMPAIGN = /\b(capital campaign|campaign|fundrais\w*)\b/i;
+
+export function ruleOpportunities(bundle: ResearchBundle, names: string[], now = Date.now()): RuleOpportunity[] {
+  const out: RuleOpportunity[] = [];
+  const about = (n: NewsEntry) => names.some((nm) => mentionsCompany(`${n.headline}. ${n.summary ?? ""}`, nm));
+  const when = (n: NewsEntry) => (n.date ? ` (${n.outlet ? `${n.outlet}, ` : ""}${n.date})` : "");
+
+  // 1. Room left under a large contract ceiling.
+  for (const k of (bundle.contractCeilings ?? []).filter((k) => k.ceiling >= 10_000_000 && k.ceiling > k.obligated * 3).slice(0, 1)) {
+    const url = k.newsUrl ?? bundle.sources.find((s) => s.usedFor.includes("federal-spending"))?.url;
+    out.push({ text: `${k.agency} contract announced at ${money(k.ceiling)} against about ${money(k.obligated)} obligated so far, leaving most of the ceiling open for future task orders.`, urls: url ? [url] : [], key: "ceiling" });
+  }
+
+  // 2. An expansion announced in the last year.
+  const grow = bundle.news.filter((n) => n.url && !n.solicitation && recent(n.date, now) && EXPANSION.test(n.headline) && !CLOSURE.test(n.headline) && about(n));
+  if (grow.length) {
+    const n = grow[0];
+    out.push({ text: `Expansion under way: ${n.headline.replace(/[.\s]+$/, "")}${when(n)}.`, urls: [n.url!], key: "expansion" });
+  }
+
+  // 3. A fund or campaign being raised now.
+  const target = bundle.funding.find((f) => /\(target\)$/.test(f.round ?? "") && f.amount);
+  const targetUrl = bundle.sources.find((s) => s.usedFor.includes("funding"))?.url;
+  if (target && targetUrl) out.push({ text: `Raising ${target.round!.replace(/\s*\(target\)$/, "")} toward a ${target.amount} target.`, urls: [targetUrl], key: "fund" });
+  const campaign = bundle.news.find((n) => n.url && recent(n.date, now, 2) && CAMPAIGN.test(n.headline) && /\$\d/.test(n.headline) && about(n));
+  if (campaign) out.push({ text: `Campaign in progress: ${campaign.headline.replace(/[.\s]+$/, "")}${when(campaign)}.`, urls: [campaign.url!], key: "campaign" });
+
+  return out.filter((r) => r.urls.length);
+}
+
+/** Model opportunities first; a rule adds its line unless one already cites its record. At most `cap`. */
+export function mergeRuleOpportunities(opps: string[], citations: Record<string, string[]>, rules: RuleOpportunity[], cap = 5): { opportunities: string[]; citations: Record<string, string[]> } {
+  const out = [...opps];
+  const cites = { ...citations };
+  const citedUrls = new Set(opps.flatMap((o) => cites[o] ?? []));
+  const said = opps.join(" ").toLowerCase();
+  for (const r of rules) {
+    if (out.length >= cap) break;
+    if (r.urls.some((u) => citedUrls.has(u)) || (r.key === "ceiling" && /\bceiling\b/.test(said))) continue;
+    out.push(r.text);
+    cites[r.text] = r.urls;
+    for (const u of r.urls) citedUrls.add(u);
+  }
+  return { opportunities: out, citations: cites };
+}

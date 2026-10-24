@@ -68,7 +68,10 @@ export function findGaps(bundle: ResearchBundle, domain?: string, now = Date.now
   if (needsFunding(bundle)) gaps.push("funding");
   if (!(bundle.corporateActions?.length)) gaps.push("acquisitions");
   if (bundle.products.length < 3) gaps.push("products");
-  if (!bundle.ownership && c.entityType !== "public" && c.entityType !== "nonprofit" && !bundle.secFilings) gaps.push("ownership");
+  // A venture-backed company's owners are its investors; "owned by" searches
+  // only turn up noise for it (round 12: Gecko).
+  const ventureBacked = bundle.funding.some((f) => /\bseries\s+[a-z]\b/i.test(f.round ?? ""));
+  if (!bundle.ownership && !ventureBacked && c.entityType !== "public" && c.entityType !== "nonprofit" && !bundle.secFilings) gaps.push("ownership");
   gaps.push("developments");
   return gaps;
 }

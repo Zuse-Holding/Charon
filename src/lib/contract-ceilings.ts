@@ -19,9 +19,12 @@ export interface ContractCeiling {
 
 // Words news uses for an agency, and how USAspending names it.
 const AGENCIES: { label: string; news: RegExp; spending: RegExp }[] = [
-  { label: "Navy", news: /\b(navy|naval|navsea|navair)\b/i, spending: /navy|naval/i },
-  { label: "Army", news: /\barmy\b/i, spending: /army/i },
-  { label: "Air Force", news: /\b(air force|usaf)\b/i, spending: /air force/i },
+  // A service branch's awards often show on USAspending under its top-tier
+  // agency, the Department of Defense (round 12: Gecko's $300M Navy contract
+  // found no "Navy" awards, so the ceiling and its risk disappeared).
+  { label: "Navy", news: /\b(navy|naval|navsea|navair)\b/i, spending: /navy|naval|defense/i },
+  { label: "Army", news: /\barmy\b/i, spending: /army|defense/i },
+  { label: "Air Force", news: /\b(air force|usaf)\b/i, spending: /air force|defense/i },
   { label: "Coast Guard", news: /\bcoast guard\b/i, spending: /coast guard|homeland security/i },
   { label: "GSA", news: /\b(gsa|general services administration)\b/i, spending: /general services/i },
   { label: "Department of Defense", news: /\b(pentagon|department of defense|dod)\b/i, spending: /defense/i },
