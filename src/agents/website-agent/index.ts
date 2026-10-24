@@ -363,6 +363,11 @@ export class WebsiteAgent {
         if (twin.html) { home = twin; website = u.origin; }
       } catch { /* keep the first failure */ }
     }
+    // One more try when the failure may pass (round 15: crumblcookies.com).
+    if (!home.html && !/doesn't exist|isn't a web page/.test(home.reason ?? "")) {
+      const again = await this.fetchPage(website, true);
+      if (again.html) home = again;
+    }
     if (!home.html) return { error: home.reason ?? "the site couldn't be reached" };
     const viaFallback = !!home.via;
     const homeText = htmlToFullText(home.html);

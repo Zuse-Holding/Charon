@@ -310,6 +310,34 @@ export function applyAppointments(entries: LeadershipEntry[], appointments: Lead
   return entries;
 }
 
+const STEPPED_DOWN = "(?:steps?|stepped|stepping|to step|will step) down|resign(?:s|ed|ing)?|retir(?:es|ed|ing)|depart(?:s|ed|ing)|exit(?:s|ed|ing)|(?:is |was )?ousted";
+const REMAINS = /\b(remains?|remaining|stays? on|will stay|continues? as|will continue as)\b/i;
+
+/**
+ * Leaders the news says stepped down, after the source that lists them
+ * (round 15: Crumbl listed Jason McGowan as CEO while its own news said the
+ * founders stepped down in May 2026). A founder stays a founder; a board
+ * seat the story says they keep stays; any other title goes, and so does
+ * anyone left with none. An undated source counts as older than the news.
+ */
+export function applyDepartures(entries: LeadershipEntry[], news: { headline: string; summary?: string; date?: string }[]): LeadershipEntry[] {
+  const out: LeadershipEntry[] = [];
+  for (const e of entries) {
+    const last = personKey(e.name).split(" ").pop() ?? "";
+    const who = [e.name, ...(last.length >= 4 ? [last] : []), ...(/founder/i.test(e.title) ? ["(?:co-?)?founders?"] : [])]
+      .map((w) => (w.startsWith("(") ? w : w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    const left = new RegExp(`\\b(?:${who.join("|")})\\b[^.;]{0,80}?\\b(?:${STEPPED_DOWN})\\b[^.;]*`, "i");
+    const story = news.find((n) => n.date && !isNaN(Date.parse(n.date)) && (!e.asOf || Date.parse(n.date) > Date.parse(e.asOf))
+      && left.test(`${n.headline}. ${n.summary ?? ""}`));
+    if (!story) { out.push(e); continue; }
+    const said = `${story.headline}. ${story.summary ?? ""}`.match(left)![0];
+    const kept = roles(e.title).filter((r) => /founder/i.test(r) || (REMAINS.test(said) && /\b(chair\w*|board|director)\b/i.test(r)));
+    if (!kept.length) continue;
+    out.push({ ...e, title: kept.join(", ") });
+  }
+  return out;
+}
+
 /** Rank of a title: 0 the top seat, 5 below management. */
 export function seniority(title: string): number {
   const t = title.toLowerCase();

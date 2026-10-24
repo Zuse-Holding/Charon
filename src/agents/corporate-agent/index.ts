@@ -10,6 +10,8 @@ import { splitSentences } from "../../lib/nlp.js";
 import { isValuation } from "../../lib/gap-fill.js";
 import { FundingExtractionSchema, extractStructured } from "../../lib/llm.js";
 import { Form4Agent } from "../form4-agent/index.js";
+import { stockListingFor } from "../website-agent/index.js";
+import { staleParent } from "../../lib/entity-type.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
 
 /**
@@ -207,9 +209,19 @@ export class CorporateAgent {
       ownership = ownershipSignal?.snippet;
     }
 
+    // A parent only old sources name is gone; a ticker of its own means it
+    // has none (round 15: Limbach and its 2016 SPAC, 1347 Capital).
+    const read = results.map((r, i) => ({ url: r.url, date: r.date, text: `${r.title} ${r.snippet ?? ""} ${fetchedPages[i] ?? ""}` }));
+    const stockListing = read.map((r) => stockListingFor(r.text, [companyName, ...(subject.aliases ?? [])])).find(Boolean);
+    if (ownership && staleParent(ownership, read)) {
+      console.log(`[corporate] "${companyName}": dropped ownership note "${ownership}" (only older sources name it)`);
+      ownership = undefined;
+    }
+
     return {
       funding: cleanFunding(funding),
       ownership,
+      stockListing,
       insiderActivity: form4Result.filings,
       sources: [...sources, ...form4Result.sources],
     };

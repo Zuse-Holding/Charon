@@ -165,6 +165,8 @@ export interface NewsAgentResult {
 export interface CorporateAgentResult {
   funding: FundingEntry[];
   ownership?: string;
+  /** The company's own ticker, as its funding and ownership sources give it. */
+  stockListing?: string;
   insiderActivity: Form4Entry[];
   sources: Source[];
 }

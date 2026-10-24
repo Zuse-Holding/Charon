@@ -101,12 +101,13 @@ export class ReportAgent {
     if (bundle.company.siteUnreadable && bundle.company.thin) {
       // Website-first (round 2, Fix 1): never a name-only report instead.
       lines.push(`_Couldn't read this website: ${bundle.company.siteUnreadable}. Metis matches a business to the website you give it, so it didn't fall back to searching the name alone. Check the address, or add the city instead, and run it again._`);
-    } else if (bundle.company.siteUnreadable) {
-      lines.push(`Couldn't read this website: ${bundle.company.siteUnreadable}. Matched through the business listing that links to it instead.${bundle.company.description ? ` ${bundle.company.description}` : ""}`);
     } else if (bundle.company.thin) {
       // Honest thin report (Fix 1): never trade up to a namesake.
       lines.push(`_Little public presence. Metis couldn't tie a website or other public pages to this business, so this report covers only public records that match the name.${bundle.company.anchor?.unlisted ? " Other companies share this name; they're not included." : ""} Add the city or website and run it again for more._`);
     } else {
+      // Matched through the business listing when the site couldn't be read:
+      // the summary states the business, never the fetch error (round 15:
+      // Crumbl's summary opened "Couldn't read this website").
       lines.push(
         bundle.company.summary ?? bundle.company.description
           ? `${bundle.company.brandLevel ? `Brand-level: this describes ${bundle.company.name} overall, not the ${bundle.company.anchor?.location} location. ` : ""}${bundle.company.summary ?? bundle.company.description}`
