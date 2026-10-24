@@ -77,6 +77,9 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
       // An agency release over ten years old found by name alone is a
       // namesake's (round 13: Patagonia's 2013 "drug traffickers").
       && !(n.date && Date.parse(n.date) < Date.now() - 10 * 365 * 86_400_000)));
+  // Recent News is recent: nothing over ten years old (round 14: Patagonia's
+  // 2012-13 DOJ releases stayed even after the enforcement rule).
+  bundle.news = keep("news over ten years old", bundle.news, (n) => !(n.date && Date.parse(n.date) < Date.now() - 10 * 365 * 86_400_000));
   // A founder's personal life isn't company news (round 13: Crumbl's Grindr items).
   bundle.news = keep("personal-life news", bundle.news, (n) => !isPersonalLifeNews(n.headline, n.summary, n.url));
   // A job posting names the company but isn't news about it (launch fix 8:

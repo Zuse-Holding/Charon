@@ -494,3 +494,35 @@ describe("round 14: what Round 13 got wrong", () => {
     assert.ok(isFillerOpportunity("The promotion of Chuck Darway to President indicates leadership stability and potential for strategic direction."));
   });
 });
+
+describe("round 15: what Round 14 got wrong", () => {
+  it("reads 'The company designs ...' as the company's own sentence", () => {
+    assert.equal(whatItDoes("ACCO Engineered Systems", "The company designs, fabricates and maintains HVAC systems."), "ACCO Engineered Systems designs, fabricates and maintains HVAC systems.");
+  });
+
+  it("keeps Grindr and celebrity-feud items out of news, and anything over ten years old", () => {
+    const bundle = base({ company: { name: "Crumbl" }, news: [
+      { headline: "Did Crumbl's Sawyer Hemsley get TikToker who outed him banned from Grindr ball?", url: "https://out.com/y", date: "Oct 23, 2026" },
+      { headline: "Crumbl's Sawyer Hemsley Denies Grant Gibbs' Claims About Grindr Event", url: "https://justjared.com/z", date: "Oct 22, 2026" },
+      { headline: "Crumbl shutters dozens of locations nationwide", url: "https://ktla.com/a", date: "Oct 23, 2026" },
+      { headline: "Crumbl opens in 2012 somewhere", url: "https://x.com/b", date: "Jul 2, 2013" },
+    ] as any });
+    applyCompanyConsistency(bundle, { name: "Crumbl", anchor: {}, aliases: ["Crumbl"] } as any);
+    assert.deepEqual(bundle.news.map((n) => n.url), ["https://ktla.com/a"]);
+  });
+
+  it("never quotes a namesake travel story, or calls a credit line funding", () => {
+    const bundle = base({ company: { name: "Patagonia", description: "Designs outdoor clothing.", founded: "1973", headquarters: "Ventura, CA" },
+      leadership: [{ name: "Ryan Gellert", title: "CEO" }], funding: [{ round: "Debt", amount: "$750M" }],
+      news: [{ headline: "Patagonia's New 231-Mile Lodge-to-Lodge Trek Is All About Protecting the Environment", url: "https://afar.com/x", date: "Oct 22, 2026" }] as any });
+    const s = composeSummary(bundle, Date.parse("2026-10-23"))!;
+    assert.doesNotMatch(s, /Trek|Debt/);
+  });
+
+  it("calls sales, awards and talk filler, not opportunities", () => {
+    for (const t of ["Patagonia is offering its R1 Ultralight Hoody at a reduced price, presenting an opportunity to increase sales.",
+      "Graybar has been recognized as one of Forbes' 2027 Most Trusted Companies, which could enhance its brand reputation.",
+      "Graybar's leadership is actively engaged in discussions about data center revenue."]) assert.ok(isFillerOpportunity(t), t);
+    assert.ok(!isFillerOpportunity("Graybar's acquisition of Samson Electrical Supply expands its New Jersey presence."));
+  });
+});
