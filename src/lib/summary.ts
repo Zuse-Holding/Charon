@@ -4,6 +4,9 @@ import { isPersonalLifeNews, isShoppingOrQuote } from "./news-noise.js";
 
 // A sale or deal story says nothing about the business (round 13: Patagonia's
 // summary quoted "Selling Its Best Active Layers for Way, Way Below Retail").
+// A travel story about a namesake place (round 14: Patagonia's summary quoted
+// a "231-Mile Lodge-to-Lodge Trek").
+const TRAVEL = /\b(trek|trekking|hike|hikes|hiking|itinerary|glaciers?|lodge-to-lodge|travel guide|road trip)\b/i;
 const PROMO = /\b(\d+\s?% off|below retail|on sale|sales? to shop|deals?|discount\w*|best \w+ to buy|gift guide|coupon)\b/i;
 
 /**
@@ -30,8 +33,11 @@ function money(v: number): string {
  * distributor of X"; "Limbach provides X" stays as written.
  */
 export function whatItDoes(name: string, description?: string): string | undefined {
-  const d = description ? trimEnd(description.split(/(?<=[.!?])\s+/)[0]) : "";
+  let d = description ? trimEnd(description.split(/(?<=[.!?])\s+/)[0]) : "";
   if (!d) return undefined;
+  // "The company designs ..." (round 14: ACCO read "is the company designs").
+  const self = d.match(/^(?:the company|the firm|it)\s+(?=[a-z]+s\b)/i);
+  if (self) return `${name} ${d.slice(self[0].length)}.`;
   // Already names the company, in full or by its first word.
   const first = name.split(/\s+/)[0].toLowerCase();
   if (d.toLowerCase().startsWith(name.toLowerCase()) || (first.length >= 4 && new RegExp(`^${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(d))) return `${d}.`;
@@ -71,7 +77,8 @@ export function composeSummary(bundle: ResearchBundle, now = Date.now()): string
   if (fin) parts.push(`Revenue was ${money(fin.revenue!)} in FY${fin.year}.`);
   else if (np) parts.push(`A nonprofit with ${money(np.revenue!)} in revenue (${np.year} Form 990).`);
   else if (bundle.funding.length) {
-    const rounds = bundle.funding.filter((f) => f.round && f.amount && !/\(target\)$/.test(f.round)).slice(0, 2);
+    // Equity rounds only; a credit line isn't "funding" (round 14: Graybar's "Debt ($750M)").
+    const rounds = bundle.funding.filter((f) => f.round && f.amount && !/\(target\)$/.test(f.round) && !/\b(debt|loan|credit|notes?|bond)\b/i.test(f.round)).slice(0, 2);
     const target = bundle.funding.find((f) => /\(target\)$/.test(f.round ?? ""));
     if (rounds.length) parts.push(`Funding on record includes ${rounds.map((f) => `${f.round} (${f.amount}${f.date ? `, ${f.date}` : ""})`).join(" and ")}.`);
     else if (target) parts.push(`It is raising a fund with a ${target.amount} target.`);
@@ -82,7 +89,7 @@ export function composeSummary(bundle: ResearchBundle, now = Date.now()): string
   // The latest development: an acquisition, or the newest dated news item.
   const action = (bundle.corporateActions ?? []).filter((a) => a.kind === "Acquisition" && a.date && Date.parse(a.date) >= now - 2 * 365 * 86_400_000)[0];
   const news = bundle.news.filter((n) => n.date && !n.solicitation && Date.parse(n.date) >= now - 180 * 86_400_000 && quotableHeadline(n.headline)
-    && !PROMO.test(n.headline) && !isShoppingOrQuote(n.headline, n.url) && !isPersonalLifeNews(n.headline, n.summary, n.url))
+    && !PROMO.test(n.headline) && !TRAVEL.test(n.headline) && !isShoppingOrQuote(n.headline, n.url) && !isPersonalLifeNews(n.headline, n.summary, n.url))
     .sort((a, b) => Date.parse(b.date!) - Date.parse(a.date!))[0];
   if (action) parts.push(`It acquired ${action.name} (${action.date}).`);
   else if (news) parts.push(`Most recent coverage: "${quotableHeadline(news.headline)}" (${news.date}).`);

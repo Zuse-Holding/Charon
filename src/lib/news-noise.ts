@@ -166,9 +166,9 @@ export function brandName(companyName: string, domain?: string): string | undefi
 // fix 49: Crumbl's news had a tabloid item about a co-founder's personal life).
 const TABLOID_HOSTS = ["dailymail.co.uk", "tmz.com", "pagesix.com", "people.com", "usmagazine.com", "eonline.com", "thesun.co.uk",
   "radaronline.com", "hollywoodlife.com", "intouchweekly.com", "okmagazine.com", "lifeandstylemag.com", "perezhilton.com",
-  "thesun.com", "mirror.co.uk", "dailystar.co.uk", "nickiswift.com", "distractify.com", "thelist.com", "celebritynetworth.com",
+  "thesun.com", "justjared.com", "mirror.co.uk", "dailystar.co.uk", "nickiswift.com", "distractify.com", "thelist.com", "celebritynetworth.com",
   "dailymail.com", "the-sun.com", "inquisitr.com", "bossip.com", "realitytea.com", "starcasm.net", "thethings.com", "suggest.com"];
-const PERSONAL_LIFE = /\b(divorc\w*|wedding|married|marries|engaged|engagement ring|girlfriend|boyfriend|ex-wife|ex-husband|his wife|her husband|dating|romance|affair|cheating|pregnan\w*|baby (boy|girl|news)|gender reveal|mansion|house tour|net worth|plastic surgery|weight loss journey|instagram post|tiktok drama)\b/i;
+const PERSONAL_LIFE = /\b(divorc\w*|wedding|married|marries|engaged|engagement ring|girlfriend|boyfriend|ex-wife|ex-husband|his wife|her husband|dating|romance|affair|cheating|pregnan\w*|baby (boy|girl|news)|gender reveal|mansion|house tour|net worth|plastic surgery|weight loss journey|instagram post|tiktok drama|tiktoker|grindr|outed|feud|denies [^.]{0,40}claims)\b/i;
 
 export function isPersonalLifeNews(headline: string, snippet: string | undefined, url: string | undefined): boolean {
   let host = "";
