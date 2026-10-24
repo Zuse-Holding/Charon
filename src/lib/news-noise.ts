@@ -247,8 +247,12 @@ export function isShoppingOrQuote(headline: string, url: string | undefined): bo
   try { host = url ? new URL(url).hostname.replace(/^www\./, "").toLowerCase() : ""; } catch { /* no host */ }
   if (QUOTE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) && QUOTE_PAGE.test(headline)) return true;
   if (/\/(quote|quotes|stock|stocks|symbol)\//i.test(url ?? "") && !/\/news\//i.test(url ?? "")) return true;
-  return SHOPPING.test(headline);
+  return SHOPPING.test(headline) || STOCK_PITCH.test(headline);
 }
+
+// Pre-IPO broker pages and stock pitches, not news (round 14: Gecko's
+// "Invest in Series Gecko Robotics (2025 Round)", "Stock: $1.25B — Is It a Buy?").
+const STOCK_PITCH = /^\s*invest in\b|\b(is it a buy|buy or sell|should you buy|pre-?ipo (stock|shares|investing)|stock:\s*\$|how to (buy|invest in) \S+ (stock|shares))/i;
 
 // Government enforcement sources (launch fix 62).
 const ENFORCEMENT_HOSTS = ["justice.gov", "sec.gov", "ftc.gov", "epa.gov", "osha.gov", "dol.gov", "eeoc.gov", "cfpb.gov", "consumerfinance.gov", "hhs.gov", "oig.hhs.gov", "fda.gov"];

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { CompetitorEntry, FundingEntry, LeadershipEntry, NewsEntry, ProductEntry, ResearchBundle, Source } from "../types/research.js";
-import { isPersonalLifeNews, isShoppingOrQuote, isUsableHeadline, outletFromUrl } from "./news-noise.js";
+import { isPersonalLifeNews, isShoppingOrQuote, isUsableHeadline, newsDate, outletFromUrl } from "./news-noise.js";
 import type { SearchProvider, SearchResult } from "./providers.js";
 import { extractAnalysis } from "./llm.js";
 import { mentionsCompany } from "./news-noise.js";
@@ -113,20 +113,28 @@ export function needsFunding(bundle: ResearchBundle, now = Date.now()): boolean 
 }
 
 /** Targeted queries for each gap. */
-export function gapQueries(name: string, gaps: Gap[]): { gap: Gap; query: string }[] {
+export function gapQueries(name: string, gaps: Gap[]): { gap: Gap; query: string; news?: boolean }[] {
   const q = `"${name}"`;
-  const out: { gap: Gap; query: string }[] = [];
+  const out: { gap: Gap; query: string; news?: boolean }[] = [];
   for (const g of gaps) {
     if (g === "basics") out.push({ gap: g, query: `${q} founded headquarters` });
     if (g === "executives") out.push({ gap: g, query: `${q} CEO` }, { gap: g, query: `${q} president chief executive officer` });
     if (g === "competitors") out.push({ gap: g, query: `${q} competitors` }, { gap: g, query: `${q} vs alternatives` });
     if (g === "funding") out.push({ gap: g, query: `${q} raises funding round Series` });
     if (g === "acquisitions") out.push({ gap: g, query: `${q} acquires acquisition` });
-    if (g === "products") out.push({ gap: g, query: `${q} products platform` });
+    // Launch coverage names products ("Gecko Robotics Launches Cantilever");
+    // a generic search only finds the homepage's "AI+R" (round 14).
+    if (g === "products") out.push({ gap: g, query: `${q} products platform` }, { gap: g, query: `${q} launches OR unveils OR introduces` });
     if (g === "ownership") out.push({ gap: g, query: `${q} employee-owned OR ESOP OR "owned by" OR "family-owned"` });
     if (g === "developments") {
       const year = new Date().getFullYear();
-      out.push({ gap: g, query: `${q} announces ${year}` }, { gap: g, query: `${q} names OR appoints OR "steps down" OR investment OR campaign` });
+      // Announcements and leadership changes from the news index, which
+      // dates its results (round 14: Crumbl's founder transition never came
+      // from the web index). Investments from the web index, which keeps
+      // older items the news index drops (Crumbl's TSG stake, May 2025).
+      out.push({ gap: g, query: `${q} announces ${year}`, news: true },
+        { gap: g, query: `${q} founder OR CEO "steps down" OR "stepping down" OR transition OR appoints OR names`, news: true },
+        { gap: g, query: `${q} investment OR stake OR acquires OR acquisition OR campaign` });
     }
   }
   return out;
@@ -155,7 +163,7 @@ export function namedAsBusiness(text: string, name: string, domain?: string): bo
   const c = esc(core(name));
   if (domain && text.toLowerCase().includes(domain.toLowerCase())) return true;
   if (new RegExp(`\\b(town|city|county|region|province|valley|lake|river|mount|of)\\s+${c}\\b`, "i").test(text)) return false;
-  return new RegExp(`\\b${c}(,?\\s+(inc|llc|corp|co)\\b|['’]s\\b|\\s+(ceo|founder|president|chairman|company|brand|raises|acquires|announces|competitors|headquarter\\w*|employees|stores?|reported|said)\\b)|\\b(ceo|founder|president) of ${c}\\b`, "i").test(text);
+  return new RegExp(`\\b${c}(,?\\s+(inc|llc|corp|co)\\b|['’]s\\b|\\s+(ceo|founders?|co-?founders?|president|chairman|company|brand|raises|acquires|announces|competitors|headquarter\\w*|employees|stores?|locations|franchise\\w*|reported|said|partners|sells|sold|closes|closing|opens|launches|names|appoints|hires|cuts|lays|sues|sued|settles|plans|expands|files|faces|stake|to (sell|buy|acquire|open|close|launch|raise|expand|cut))\\b)|\\b(ceo|founders?|president) of ${c}\\b|\\bstake in ${c}\\b`, "i").test(text);
 }
 
 const GapSchema = z.record(z.string(), z.unknown()).transform((o) => {
@@ -340,15 +348,17 @@ export async function fillGaps(bundle: ResearchBundle, searcher: SearchProvider,
   const primary = names[0];
   const queries = gapQueries(primary, gaps);
   try {
-    const batches = await Promise.all(queries.map((q) => searcher.search(q.query, 8).catch(() => [] as SearchResult[])));
+    const batches = await Promise.all(queries.map((q) => (q.news && searcher.news ? searcher.news(q.query, 8) : searcher.search(q.query, 8)).catch(() => [] as SearchResult[])));
     const seen = new Set<string>();
     const snippets: GapSnippet[] = [];
+    // No shared cap: developments come last and found nothing once earlier
+    // gaps had filled it (round 14). The model context is capped below.
     batches.forEach((batch, bi) => {
       for (const r of batch) {
-        if (snippets.length >= MAX_SNIPPETS + 10) break;
         if (!r.url || seen.has(r.url) || !aboutCompany(r, names, domain)) continue;
         seen.add(r.url);
-        snippets.push({ n: snippets.length + 1, title: r.title, url: r.url, text: `${r.title}. ${r.snippet ?? ""}`, date: r.date, gap: queries[bi].gap });
+        // "5 months ago" as a date (round 14: relative dates read as no date).
+        snippets.push({ n: snippets.length + 1, title: r.title, url: r.url, text: `${r.title}. ${r.snippet ?? ""}`, date: newsDate(r.date, r.url) ?? r.date, gap: queries[bi].gap });
       }
     });
     if (gaps.includes("ownership")) {
@@ -369,7 +379,8 @@ export async function fillGaps(bundle: ResearchBundle, searcher: SearchProvider,
     // One line per run, filled or not, so the logs show the pass ran.
     console.log(`[gap-fill] "${primary}": gaps ${gaps.join(", ")}; ${batches.flat().length} results, ${snippets.length} about the company`);
     if (!snippets.length || !wanted.length) return result;
-    const context = snippets.map((s) => `[${s.n}] ${s.text} (${s.url})`).join("\n");
+    // Only the results for what the model is asked; their numbers stay.
+    const context = snippets.filter((s) => !s.gap || (wanted as Gap[]).includes(s.gap)).slice(0, MAX_SNIPPETS).map((s) => `[${s.n}] ${s.text} (${s.url})`).join("\n");
     const ask = [
       wanted.includes("basics") && `"founded": {"value": "<year>", "source": <n>} and "headquarters": {"value": "<City, ST>", "source": <n>} for ${primary} itself`,
       wanted.includes("executives") && `"executives": [{"name": "...", "title": "...", "source": <n>}] — current CEO, president, chair, founders and chief officers of ${primary} only`,
@@ -387,7 +398,7 @@ RULES:
 - Leave out anything the results don't state. An empty list or a missing key is fine.`,
       context, GapSchema);
     if (!x) { console.log(`[gap-fill] "${primary}": model returned nothing usable`); return result; }
-    result.filled.push(...mergeGaps(bundle, x, snippets.slice(0, MAX_SNIPPETS + 10), wanted, names));
+    result.filled.push(...mergeGaps(bundle, x, snippets, wanted, names));
     console.log(`[gap-fill] "${primary}": ${result.filled.length ? `filled ${result.filled.join("; ")}` : "nothing passed the source checks"}`);
   } catch (err) {
     console.error("[gap-fill] skipped:", err instanceof Error ? err.message : err);
@@ -397,6 +408,7 @@ RULES:
 
 const EVENT = /\b(announc\w*|launch\w*|names?|named|appoint\w*|steps? down|succeed\w*|promot\w*|acquir\w*|invest\w*|stake|raises?|raised|campaign|expand\w*|opens?|opening|clos(es|ing|ure)|layoffs?|partners? with|partnership|contract|award\w*|fund)\b/i;
 const MAX_DEVELOPMENTS = 4;
+const MAJOR_EVENT = /\b(steps? down|stepping (down|aside)|transition\w*|succeed\w*|appoint\w*|names? (new |its )?(ceo|president|chief|cfo|coo|cto)|new ceo|minority stake|stake|invest\w*|acquir\w*|acquisition|merger|layoffs?|clos(es|ing|ure)|bankrupt\w*|chapter (7|11)|lawsuit|settle\w*)\b/i;
 const TWO_YEARS = 2 * 365 * 86_400_000;
 
 /**
@@ -408,10 +420,20 @@ const TWO_YEARS = 2 * 365 * 86_400_000;
 export function addDevelopments(bundle: ResearchBundle, snippets: GapSnippet[], now = Date.now()): string[] {
   const added: string[] = [];
   const year = new Date(now).getFullYear();
-  for (const s of snippets) {
+  // Leadership, ownership and closure events before menus and promotions,
+  // newest first (round 14: Crumbl's founder transition and TSG stake were
+  // outranked by menu launches).
+  const tier = (s: GapSnippet) => (MAJOR_EVENT.test(s.title) ? 0 : MAJOR_EVENT.test(s.text) ? 1 : 2);
+  const when = (s: GapSnippet) => { const t = s.date ? Date.parse(s.date) : NaN; return isNaN(t) ? 0 : t; };
+  const ordered = [...snippets].sort((a, b) => tier(a) - tier(b) || when(b) - when(a));
+  const words = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3));
+  // The same story from several outlets is one development.
+  const sameStory = (a: string, b: string) => { const x = words(a); const y = words(b); const shared = [...x].filter((w) => y.has(w)).length; return shared >= Math.min(3, Math.min(x.size, y.size)); };
+  for (const s of ordered) {
     if (added.length >= MAX_DEVELOPMENTS) break;
     if (!EVENT.test(s.text) || !isUsableHeadline(s.title) || isShoppingOrQuote(s.title, s.url) || isPersonalLifeNews(s.title, s.text, s.url)) continue;
     if (bundle.news.some((n) => n.url === s.url || n.headline.toLowerCase() === s.title.toLowerCase())) continue;
+    if (added.some((h) => sameStory(h, s.title))) continue;
     const t = s.date ? Date.parse(s.date) : NaN;
     const recentByDate = !isNaN(t) && t >= now - TWO_YEARS;
     const recentByText = isNaN(t) && new RegExp(`\\b(${year}|${year - 1})\\b`).test(s.text);
