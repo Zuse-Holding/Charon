@@ -168,13 +168,19 @@ const TABLOID_HOSTS = ["dailymail.co.uk", "tmz.com", "pagesix.com", "people.com"
   "radaronline.com", "hollywoodlife.com", "intouchweekly.com", "okmagazine.com", "lifeandstylemag.com", "perezhilton.com",
   "thesun.com", "justjared.com", "mirror.co.uk", "dailystar.co.uk", "nickiswift.com", "distractify.com", "thelist.com", "celebritynetworth.com",
   "dailymail.com", "the-sun.com", "inquisitr.com", "bossip.com", "realitytea.com", "starcasm.net", "thethings.com", "suggest.com"];
-const PERSONAL_LIFE = /\b(divorc\w*|wedding|married|marries|engaged|engagement ring|girlfriend|boyfriend|ex-wife|ex-husband|his wife|her husband|dating|romance|affair|cheating|pregnan\w*|baby (boy|girl|news)|gender reveal|mansion|house tour|net worth|plastic surgery|weight loss journey|instagram post|tiktok drama|tiktoker|grindr|outed|feud|denies [^.]{0,40}claims)\b/i;
+const PERSONAL_LIFE = /\b(divorc\w*|wedding|married|marries|engaged|engagement ring|girlfriend|boyfriend|ex-wife|ex-husband|his wife|her husband|dating|romance|affair|cheating|pregnan\w*|baby (boy|girl|news)|gender reveal|mansion|house tour|net worth|plastic surgery|weight loss journey|instagram post|tiktok drama|tiktoker|grindr|outed)\b/i;
+// Feuds and denials are gossip only when nothing legal or commercial is at
+// stake: "Crumbl and Dirty Dough settle trademark feud" and "ACCO denies
+// discrimination claims in federal lawsuit" are business news (round 15).
+const GOSSIP = /\b(feud\w*|denies [^.]{0,40}claims)\b/i;
+const BUSINESS_STAKE = /\b(lawsuits?|suits?|sued|sues|court|trademark|patent|copyright|settle\w*|discriminat\w*|wages?|wage-theft|harass\w*|shareholders?|investors?|franchise\w*|contracts?|regulat\w*|class action|complaints?|filed|federal|eeoc|osha|nlrb|union)\b/i;
 
 export function isPersonalLifeNews(headline: string, snippet: string | undefined, url: string | undefined): boolean {
   let host = "";
   try { host = url ? new URL(url).hostname.replace(/^www\./, "").toLowerCase() : ""; } catch { /* no host */ }
   if (TABLOID_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) return true;
-  return PERSONAL_LIFE.test(`${headline} ${snippet ?? ""}`);
+  const text = `${headline} ${snippet ?? ""}`;
+  return PERSONAL_LIFE.test(text) || (GOSSIP.test(text) && !BUSINESS_STAKE.test(text));
 }
 
 // Plaintiff firms announce "investigations" after any share-price drop;
