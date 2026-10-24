@@ -859,7 +859,9 @@ export function acquiredBy(texts: string[], name: string): boolean {
 /** "Owned by X", "ownership transferred to X": a note and the page that says it. */
 // An owner phrase that is a funding round or the company itself is a misread
 // (round 12: "It is owned by Series Gecko Robotics and").
-const NOT_AN_OWNER = /^(the\s+)?(series|seed|round|funding|founders?|investors?|venture|capital|private|public|employees?)\b/i;
+// "Private Equity firm Blackstone" is a real owner, so "private" isn't here.
+const NOT_AN_OWNER = /^(the\s+)?(series|seed|round|funding|founders?|investors?|venture|capital|public|employees?)\b/i;
+const bareOwner = (t: string) => t.toLowerCase().replace(/^the\s+/, "").replace(/,?\s+(inc\.?|llc|corp\.?|corporation|co\.?|company|ltd\.?)$/, "").trim();
 
 export function ownershipFrom(items: { text: string; url: string }[], names: string[] = []): { note: string; url: string } | undefined {
   // "100% employee-owned", "an ESOP company".
@@ -871,13 +873,14 @@ export function ownershipFrom(items: { text: string; url: string }[], names: str
   // Lowercase words may sit between "owned by" and the owner (launch fix
   // 78: "owned by a non profit corporations since 2022, the Patagonia
   // Purpose Trust and Holdfast Collective").
-  const re = /\b(?:(?:is |are )?(?:owned|controlled) by(?:\s+[a-z][\w-]*|\s+\d{4},?|,){0,10}?|ownership (?:was |has been )?(?:transferred|given) to|subsidiary of|gave (?:away )?(?:the |his |her )?company to|transferred (?:the company|ownership|its (?:voting )?stock) to)\s+((?:the\s+)?[A-Z][\w&'’.-]*(?:\s+(?:[A-Z][\w&'’.-]*|and|of|the)){0,6})/;
+  const re = /\b(?:(?:is |are )?(?:owned|controlled) by(?:\s+[a-z][\w-]*|\s+\d{4},?|,){0,10}?|ownership (?:was |has been )?(?:transferred|given) to|subsidiary of|gave (?:away )?(?:the |his |her )?company to|transferred (?:the company|ownership|its (?:voting )?stock) to)\s+((?:the\s+)?[A-Z][\w&'’.-]*(?:\s+(?:[A-Z][\w&'’.-]*|and|of|the|firm)){0,6})/;
   for (const it of items) {
     const m = it.text.match(re);
     if (m) {
       const owners = m[1].replace(/[.,;:]+$/, "").replace(/\s+(and|of|the)$/i, "").trim();
-      const own = owners.toLowerCase();
-      if (NOT_AN_OWNER.test(owners) || names.some((n) => n && (own.includes(n.toLowerCase()) || n.toLowerCase().includes(own)))) continue;
+      // Only the company itself is a misread: an owner whose name contains
+      // it ("the Patagonia Purpose Trust") is a real one.
+      if (NOT_AN_OWNER.test(owners) || names.some((n) => n && bareOwner(n).includes(bareOwner(owners)))) continue;
       return { note: `Owned by ${owners}`, url: it.url };
     }
   }
