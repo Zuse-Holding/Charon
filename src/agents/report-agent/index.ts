@@ -31,13 +31,22 @@ export class ReportAgent {
    * source, a section that states anything is dropped whole; one that only
    * says nothing was found (an italic "_..._" line) stays, with no badge.
    */
-  private pushSectionSources(lines: string[], sources: Source[], tags: string[]) {
+  /** @param cited URLs the section's own items link to: they count as its sources too. */
+  private pushSectionSources(lines: string[], sources: Source[], tags: string[], cited: (string | undefined)[] = []) {
     const seen = new Set<string>();
     const matched = sources.filter((s) => {
       if (!s.usedFor.some((u) => tags.includes(u)) || seen.has(s.url)) return false;
       seen.add(s.url);
       return true;
     });
+    // An item that links its own source keeps the section, even when the
+    // tagged pages were dropped (round 13: ACCO's Leadership vanished while
+    // the summary still named Darway).
+    for (const url of cited) {
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      matched.push(sources.find((s) => s.url === url) ?? { url, title: hostLabel(url), retrievedAt: "", usedFor: tags });
+    }
     if (matched.length === 0) {
       dropUnsourcedSection(lines);
     } else {
@@ -155,7 +164,7 @@ export class ReportAgent {
       }
     }
     lines.push(``);
-    this.pushSectionSources(lines, bundle.sources, ["leadership"]);
+    this.pushSectionSources(lines, bundle.sources, ["leadership"], bundle.leadership.map((l) => l.sourceUrl));
 
     // Investment and holding firms don't sell products (round 2, Fix 5).
     const firmLike = /\b(invest\w*|holding\w*|capital|equity|ventures?|partners|fund|asset management)\b/i
@@ -1040,4 +1049,9 @@ export function foundedLabel(url: string): string {
   if (/sec\.gov/i.test(url)) return "10-K";
   if (/\.(gov|us)(\/|$)|sos\.|bizfile|opencorporates|corporations/i.test(url)) return "state record";
   return "source";
+}
+
+/** "https://www.businesswire.com/news/x" -> "businesswire.com". */
+function hostLabel(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
