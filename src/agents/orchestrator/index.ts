@@ -502,7 +502,7 @@ export class ResearchOrchestrator {
       // Personal-life items and discount sales are never risks; restated
       // offerings, praise and the namesake region are never opportunities (round 10).
       bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts).filter((r) => !isTabloidRisk(r) && !isSaleRisk(r) && !isNonRisk(r));
-      bundle.opportunities = plausibleAnalysis(synthesis.opportunities, bundle, synthesis.facts).filter((o) => !isFillerOpportunity(o) && !aboutNamesake(o, nameSet));
+      bundle.opportunities = sameRecordOnce(plausibleAnalysis(synthesis.opportunities, bundle, synthesis.facts).filter((o) => !isFillerOpportunity(o) && !aboutNamesake(o, nameSet)), synthesis.citations);
       console.log(`[synthesis] "${companyName}": ${bundle.risks.length} risk(s), ${bundle.opportunities.length} opportunit(ies) after the consistency check`);
       bundle.synthesisCitations = synthesis.citations;
       // Same drift checks as the analysis: nothing the facts don't state.
@@ -862,6 +862,28 @@ export function acquiredBy(texts: string[], name: string): boolean {
 // "Private Equity firm Blackstone" is a real owner, so "private" isn't here.
 const NOT_AN_OWNER = /^(the\s+)?(series|seed|round|funding|founders?|investors?|venture|capital|public|employees?)\b/i;
 const bareOwner = (t: string) => t.toLowerCase().replace(/^the\s+/, "").replace(/,?\s+(inc\.?|llc|corp\.?|corporation|co\.?|company|ltd\.?)$/, "").trim();
+
+/**
+ * One item per record: an item whose cited sources were all cited by an
+ * earlier item, and which repeats its dollar figure, says the same thing
+ * again (round 12: Gecko's $300M ceiling as three opportunities).
+ */
+export function sameRecordOnce(items: string[], citations: Record<string, string[]>): string[] {
+  const out: string[] = [];
+  const figures = (t: string) => new Set(t.match(/\$\d[\d,.]*\s*(?:million|billion|[mbk])?/gi)?.map((x) => x.toLowerCase().replace(/\s+/g, "").replace(/million$/, "m").replace(/billion$/, "b")) ?? []);
+  for (const it of items) {
+    const urls = citations[it] ?? [];
+    const figs = figures(it);
+    const repeat = out.some((o) => {
+      const prior = citations[o] ?? [];
+      const shareUrl = urls.length > 0 && urls.every((u) => prior.includes(u));
+      const shareFig = [...figs].some((f) => figures(o).has(f));
+      return shareFig && (shareUrl || urls.some((u) => prior.includes(u)));
+    });
+    if (!repeat) out.push(it);
+  }
+  return out;
+}
 
 export function ownershipFrom(items: { text: string; url: string }[], names: string[] = []): { note: string; url: string } | undefined {
   // "100% employee-owned", "an ESOP company".
