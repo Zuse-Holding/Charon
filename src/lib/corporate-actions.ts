@@ -1,3 +1,4 @@
+import { isNewsNoise } from "./news-noise.js";
 /**
  * Acquisitions, subsidiaries and brands a company's news and own pages
  * state (launch fix 80: ChatGPT listed Andersen's Bright Wood and
@@ -35,6 +36,9 @@ export function corporateActions(items: { text: string; url: string; date?: stri
     out.push({ kind, name, date: it.date, url: it.url });
   };
   for (const it of items) {
+    // A social post isn't a record of a deal (round 13: MJW's "Atlanta"
+    // acquisition came from a Facebook post).
+    if (/^https?:\/\//i.test(it.url) && isNewsNoise(it.url)) continue;
     // "Pioneer Power and 1901 Group" is two.
     for (const m of it.text.matchAll(bought)) for (const part of m[1].split(/\s+and\s+/)) add("Acquisition", part, it);
     for (const m of it.text.matchAll(unit)) add("Subsidiary or brand", m[1], it);

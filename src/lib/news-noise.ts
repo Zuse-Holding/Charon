@@ -196,7 +196,9 @@ const AFTER_NAME = new Set(["inc", "llc", "corp", "co", "company", "ltd", "lp", 
   "files", "wins", "expands", "plans", "to", "and", "in", "at", "for", "of", "on", "with", "is", "has", "says", "said", "reports",
   "posts", "cuts", "lays", "closing", "closes", "unveils", "debuts", "partners", "agrees", "completes", "receives", "gets", "faces",
   "stock", "shares", "employees", "workers", "stores", "locations", "jacket", "jackets", "x", "vs", "v", "news", "inc.", "llc."]);
-const BEFORE_NAME = /\b(town|city|county|village|lake|port|university|school|district|church|hotel|bank|state) of\s*$|\b(chilean|argentine|argentinian|argentina['’]s|chile['’]s|southern|northern|eastern|western|central)\s*$/i;
+const BEFORE_NAME = /\b(town|city|county|village|lake|port|university|school|district|church|hotel|bank|state) of\s*$|\b(chilean|argentine|argentinian|argentina['’]s|chile['’]s|southern|northern|eastern|western|central)\s*$|\b(health|healthcare|medical|insurance|medicaid|medicare|mutual)\s*$/i;
+// "Mountain Health Promise ABA Coverage" names a Medicaid plan, not Promise
+// ABA (round 13): a health-plan word right before the name makes a longer name.
 // A place, not the company: "Patagonia region", "Patagonia glaciers"
 // (launch fix 77: regional data-center news and EPA research on the region).
 const PLACE_AFTER = /^\s*(region|regions|province|steppe|ice ?fields?|glaciers?|lakes?|coast|desert|wilderness)\b/i;
