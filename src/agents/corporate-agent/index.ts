@@ -7,6 +7,7 @@ import {
 } from "../../types/research.js";
 import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
 import { splitSentences } from "../../lib/nlp.js";
+import { isValuation } from "../../lib/gap-fill.js";
 import { FundingExtractionSchema, extractStructured } from "../../lib/llm.js";
 import { Form4Agent } from "../form4-agent/index.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
@@ -159,11 +160,14 @@ export class CorporateAgent {
 
       if (llmResult) {
         if (llmResult.funding) {
-          funding = llmResult.funding.map((f) => ({
-            round: f.round,
-            amount: f.amount,
-            date: f.date,
-          }));
+          // A valuation read as the round's size is dropped (round 12).
+          funding = llmResult.funding
+            .filter((f) => !f.amount || !isValuation(combinedText, f.amount))
+            .map((f) => ({
+              round: f.round,
+              amount: f.amount,
+              date: f.date,
+            }));
         }
         ownership = llmResult.ownership;
       }
@@ -183,6 +187,7 @@ export class CorporateAgent {
           const roundMatch = sentence.match(ROUND_RE);
           const amount = amountMatch[0];
           const round = roundMatch?.[0];
+          if (isValuation(sentence, amount)) continue;
 
           const key = `${round ?? ""}-${amount}`;
           if (seen.has(key)) continue;

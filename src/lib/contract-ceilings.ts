@@ -46,7 +46,9 @@ export function contractCeilings(awards: FederalSpendingEntry[], news: NewsEntry
   const raw = ceilingsByAgency(awards, news);
   const merged = new Map<string, { labels: string[]; ceiling: number; newsUrl?: string; newsDate?: string }>();
   for (const c of raw) {
-    const key = `${c.ceiling}|${c.newsUrl ?? ""}`;
+    // The same announced figure is the same contract, whichever article
+    // carried it (round 12: Gecko's $300M showed under Navy and DoD).
+    const key = `${c.ceiling}`;
     const m = merged.get(key);
     if (m) m.labels.push(c.agency);
     else merged.set(key, { labels: [c.agency], ceiling: c.ceiling, newsUrl: c.newsUrl, newsDate: c.newsDate });

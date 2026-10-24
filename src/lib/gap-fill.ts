@@ -195,6 +195,22 @@ export function isTotalRaised(text: string, amount: string): boolean {
   return new RegExp(`${after}|${before}`, "i").test(text);
 }
 
+/**
+ * The text gives this amount as a valuation, and never as money raised
+ * (round 12: Gecko's "$125M Series D at a $1.25B valuation" became
+ * "Series D: $1.25B").
+ */
+export function isValuation(text: string, amount: string): boolean {
+  const d = amount.match(/\d+(?:\.\d+)?/)?.[0];
+  if (!d) return false;
+  const n = d.replace(".", "\\.");
+  const unit = "(?:\\s*(?:million|billion|mn|bn|m|b)\\b)?";
+  const val = new RegExp(`\\b(valuation|valued|valuing|worth|unicorn)\\b[^.;$]{0,25}\\$?${n}(?!\\d)|\\$?${n}${unit}(?:\\+|\\s*plus)?\\s+(post-money\\s+|pre-money\\s+)?valuation\\b|\\bat an?\\s+\\$?${n}${unit}`, "i");
+  if (!val.test(text)) return false;
+  // Raised in its own right elsewhere in the text: keep it.
+  return !new RegExp(`\\b(rais\\w*|secur\\w*|clos\\w*)\\s+(a\\s+|an\\s+)?\\$?${n}(?!\\d)`, "i").test(text);
+}
+
 /** The snippet states this value, as written (year, city, name or figure). */
 export function snippetStates(snippet: string, value: string, kind: "year" | "place" | "name" | "money"): boolean {
   const s = norm(snippet);
@@ -302,7 +318,7 @@ export function mergeGaps(bundle: ResearchBundle, x: GapExtraction, snippets: Ga
       if (!f.round || !f.amount || !s || !snippetStates(s.text, f.amount, "money")) continue;
       if (bundle.funding.some((g) => (g.round ?? "").toLowerCase() === f.round!.toLowerCase())) continue;
       // "Raised $354M to date" is a total, not a round.
-      if (isTotalRaised(s.text, f.amount!)) continue;
+      if (isTotalRaised(s.text, f.amount!) || isValuation(s.text, f.amount!)) continue;
       // The snippet must say this company raised it, not a namesake or an investor.
       if (!names.some((n) => mentionsCompany(s.text, n)) || !/\b(rais\w*|secur\w*|closes?|funding|round|series|seed)\b/i.test(s.text)) continue;
       bundle.funding.push({ round: f.round, amount: f.amount, date: f.date, verified: true } as FundingEntry);

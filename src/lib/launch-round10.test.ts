@@ -4,7 +4,8 @@ import { insiderSelling, saleValue } from "./insiders.js";
 import { addDevelopments, aboutCompany, findGaps, hasCurrentChief, gapQueries, isTotalRaised, mergeGaps, needsFunding, snippetStates, type GapExtraction, type GapSnippet } from "./gap-fill.js";
 import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleOpportunities, mergeRuleRisks, ruleOpportunities, ruleRisks } from "./risk-rules.js";
 import { contractCeilings } from "./contract-ceilings.js";
-import { ownershipFrom } from "../agents/orchestrator/index.js";
+import { ownershipFrom, sameRecordOnce } from "../agents/orchestrator/index.js";
+import { isValuation } from "./gap-fill.js";
 import { applyProfile, profileFrom, suspiciousFounded } from "./profile-cache.js";
 import { applyCompanyConsistency } from "./consistency.js";
 import { foundedLabel } from "../agents/report-agent/index.js";
@@ -354,5 +355,34 @@ describe("round 12b: the Gecko canary", () => {
   it("skips the ownership search for a venture-backed company", () => {
     const bundle = base({ company: { name: "Gecko Robotics" }, funding: [{ round: "Series B", amount: "$40M" }] });
     assert.ok(!findGaps(bundle).includes("ownership"));
+  });
+});
+
+describe("round 12c: Gecko canary, second run", () => {
+  it("never takes a valuation for the round's size", () => {
+    const t = "Gecko Robotics raises $125M Series D at a $1.25B valuation, becoming a unicorn.";
+    assert.equal(isValuation(t, "$1.25B"), true);
+    assert.equal(isValuation(t, "$125M"), false);
+    assert.equal(isValuation("Gecko is now valued at $1.25 billion after its Series D.", "$1.25B"), true);
+    assert.equal(isValuation("Crumbl closed a $1B funding round.", "$1B"), false);
+  });
+
+  it("shows one announced ceiling once, whichever articles carried it", () => {
+    const awards = [{ amount: "$1,494,360", awardingAgency: "Department of Defense" }, { amount: "$72,216", awardingAgency: "Department of Defense" }] as any[];
+    const news = [
+      { headline: "U.S. Navy Awards $300M Contract to Robotic-Inspection Startup Gecko", url: "https://maritime-executive.com/x" },
+      { headline: "Gecko Robotics secures $300M contract with the U.S. Navy and Department of Defense", url: "https://therobotreport.com/y" },
+    ] as any[];
+    const k = contractCeilings(awards, news);
+    assert.equal(k.length, 1);
+    assert.equal(k[0].agency, "Navy / Department of Defense");
+  });
+
+  it("keeps one opportunity per record and figure", () => {
+    const a = "Opportunity to secure more work under its $300 million IDIQ contract with only $1.57 million obligated.";
+    const b = "Opportunity to expand DoD work under a $300M ceiling contract.";
+    const c = "Further growth in US naval work after the expanded contract.";
+    const cites = { [a]: ["https://maritime.com", "https://usaspending.gov"], [b]: ["https://usaspending.gov"], [c]: ["https://janes.com"] };
+    assert.deepEqual(sameRecordOnce([c, a, b], cites), [c, a]);
   });
 });
