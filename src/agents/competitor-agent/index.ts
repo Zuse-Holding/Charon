@@ -91,6 +91,8 @@ export interface PeerProfile {
   products?: string[];
   /** Competitors its 10-K names, with the filing's URL (launch fix 42). */
   filed?: { names: string[]; url: string };
+  /** Listed on a stock exchange: its peers are other listed or national firms. */
+  listed?: boolean;
 }
 
 /** "Named competitors" pages for a company known beyond its town. */
@@ -117,7 +119,8 @@ export function peerQueries(companyName: string, profile: PeerProfile): string[]
   const clean = role.split(/\s+/).filter((w) => !nameWords.has(w.toLowerCase())).join(" ");
   if (!clean) return [];
   const plural = /s$/i.test(clean) ? clean : /(y)$/i.test(clean) && !/[aeiou]y$/i.test(clean) ? `${clean.slice(0, -1)}ies` : `${clean}s`;
-  if (!profile.local) return [`largest ${plural}`, `top ${plural} companies list`];
+  // A listed company's peers by scale (round 15: Limbach's were local shops, not EMCOR or Comfort Systems).
+  if (!profile.local) return [`largest ${plural}`, profile.listed ? `publicly traded ${plural} NYSE NASDAQ` : `top ${plural} companies list`];
   const { city, state } = regionOf(profile.headquarters);
   const out: string[] = [];
   if (city) out.push(`${plural} ${city}${state ? ` ${state}` : ""}`);
@@ -190,7 +193,7 @@ export class CompetitorAgent {
 
 STRICT RULES:
 - Only companies that do the same kind of work for the same kind of customer${profile.local ? " in the same region" : ""}. A contractor's competitors are other contractors, not the manufacturers whose equipment it installs; an investment sponsor's are other sponsors, not brokers, lenders or property managers.
-${profile.local ? "" : `- "${companyName}" operates nationally: only national or multi-region rivals of comparable scale, never a single-city shop or local supplier.\n`}- Only companies named in the text below. Never add one from memory.
+${profile.local ? "" : `- "${companyName}" operates nationally: only national or multi-region rivals of comparable scale, never a single-city shop or local supplier.\n`}${profile.listed ? `- "${companyName}" is a publicly traded company: list publicly traded rivals and large national firms first.\n` : ""}- Only companies named in the text below. Never add one from memory.
 - NEVER include "${companyName}" itself, social media platforms, news publishers, directories, or software vendors unless "${companyName}" is one.
 - If you are not confident a company is a direct competitor, exclude it.
 - Order by significance: the largest, best-known rivals named in the text first.
