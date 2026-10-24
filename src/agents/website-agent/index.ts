@@ -155,6 +155,26 @@ export function foundingYear(modelYear: string | undefined, text: string): strin
   return year && text.includes(year) ? year : undefined;
 }
 
+/**
+ * The company's own stock listing: the ticker must follow its name ("Limbach
+ * Holdings, Inc. (NASDAQ: LMB)"). A ticker for a partner, donor or parent in
+ * the same text would otherwise make a private company or nonprofit "public".
+ */
+export function stockListingFor(text: string, names: string[]): string | undefined {
+  const keys = names.flatMap((n) => [n, n.split(/\s+/)[0]]).map((k) => k.toLowerCase().trim()).filter((k) => k.length >= 4);
+  for (const m of text.matchAll(/\b(NASDAQ|NYSE(?: American)?)\s*:\s*([A-Z]{1,5})\b/g)) {
+    const before = text.slice(Math.max(0, m.index! - 60), m.index);
+    // Between the name and the ticker: only capitalized words and punctuation
+    // (" Holdings, Inc. ("), never a sentence ("thanks its partner Wells Fargo (").
+    const ownTicker = keys.some((k) => {
+      const at = before.toLowerCase().lastIndexOf(k);
+      return at >= 0 && !/(^|\s)[a-z]/.test(before.slice(at + k.length));
+    });
+    if (ownTicker) return `${m[1]}: ${m[2]}`;
+  }
+  return undefined;
+}
+
 /** A listing for one store: its website is a page under the brand's site, not the site itself. */
 export function isStoreListing(p: { website?: string }): boolean {
   try {
@@ -737,8 +757,8 @@ Return only facts that are explicitly stated in the source text. Omit fields whe
         const founded = foundingYear(llmResult.founded, combinedText);
         if (founded) company.founded = founded;
         // A listed company is national, with or without SEC access (launch fix 83).
-        const listed = combinedText.match(/\b(NASDAQ|NYSE(?: American)?)\s*:\s*([A-Z]{1,5})\b/);
-        if (listed) company.stockListing = `${listed[1]}: ${listed[2]}`;
+        const listed = stockListingFor(combinedText, [companyName, queryName]);
+        if (listed) company.stockListing = listed;
         if (llmResult.headquarters) company.headquarters = llmResult.headquarters;
         if (llmResult.industry) company.industry = llmResult.industry;
         if (llmResult.role) company.role = llmResult.role;

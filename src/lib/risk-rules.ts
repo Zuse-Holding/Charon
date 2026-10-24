@@ -202,9 +202,10 @@ export function ruleOpportunities(bundle: ResearchBundle, names: string[], now =
   const target = bundle.funding.find((f) => /\(target\)$/.test(f.round ?? "") && f.amount);
   const targetUrl = bundle.sources.find((s) => s.usedFor.includes("funding"))?.url;
   if (target && targetUrl) out.push({ text: `Raising ${target.round!.replace(/\s*\(target\)$/, "")} toward a ${target.amount} target.`, urls: [targetUrl], key: "fund" });
-  const campaign = bundle.company.entityType === "nonprofit" || /\bcampaign\b/i.test(bundle.news.map((n) => n.headline).join(" "))
-    ? bundle.news.find((n) => n.url && recent(n.date, now, 2) && CAMPAIGN.test(n.headline) && /\$\d/.test(n.headline) && !CLOSURE.test(n.headline) && about(n))
-    : undefined;
+  // A nonprofit's dollar plan, or a headline that itself says "campaign".
+  const nonprofit = bundle.company.entityType === "nonprofit";
+  const campaign = bundle.news.find((n) => n.url && recent(n.date, now, 2) && (nonprofit ? CAMPAIGN : /\bcampaign\b/i).test(n.headline)
+    && /\$\d/.test(n.headline) && !CLOSURE.test(n.headline) && about(n));
   if (campaign) out.push({ text: `Campaign in progress: ${campaign.headline.replace(/\s*(\.\.\.|…)\s*$/, "").replace(/[.\s]+$/, "")}${when(campaign)}.`, urls: [campaign.url!], key: "campaign" });
 
   return out.filter((r) => r.urls.length);

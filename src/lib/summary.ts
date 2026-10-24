@@ -29,11 +29,12 @@ export function whatItDoes(name: string, description?: string): string | undefin
   if (!d) return undefined;
   // Already names the company, in full or by its first word.
   const first = name.split(/\s+/)[0].toLowerCase();
-  if (d.toLowerCase().startsWith(name.toLowerCase()) || (first.length >= 4 && d.toLowerCase().startsWith(first))) return `${d}.`;
+  if (d.toLowerCase().startsWith(name.toLowerCase()) || (first.length >= 4 && new RegExp(`^${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(d))) return `${d}.`;
   if (/^(a|an|the)\s/i.test(d)) return `${name} is ${lc(d)}.`;
   if (/^[A-Z][a-z]+s\b/.test(d)) return `${name} ${lc(d)}.`;
   // A noun phrase: "Distributor of ...", "Leader in ...".
-  if (/^[A-Z][a-z]+\s+(of|in|for|and)\b/.test(d)) return `${name} is ${/^[AEIOU]/.test(d) ? "an" : "a"} ${d[0].toLowerCase()}${d.slice(1)}.`;
+  // Not a participle ("Founded in 1973", "Based in Ventura").
+  if (/^[A-Z][a-z]+\s+(of|in|for|and)\b/.test(d) && !/^[A-Z][a-z]+ed\s/.test(d)) return `${name} is ${/^[AEIOU]/.test(d) ? "an" : "a"} ${d[0].toLowerCase()}${d.slice(1)}.`;
   return `${name}: ${d}.`;
 }
 

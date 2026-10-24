@@ -11,6 +11,7 @@ import { applyCompanyConsistency } from "./consistency.js";
 import { foundedLabel } from "../agents/report-agent/index.js";
 import { composeSummary, quotableHeadline, whatItDoes } from "./summary.js";
 import { entityTypeOf } from "./entity-type.js";
+import { stockListingFor } from "../agents/website-agent/index.js";
 import type { Form4Entry, ResearchBundle } from "../types/research.js";
 
 const base = (over: Partial<ResearchBundle> = {}): ResearchBundle => ({
@@ -431,5 +432,22 @@ describe("round 13: what Round 12 got wrong", () => {
     const r = ruleOpportunities(bundle, ["Homeboy Industries"], Date.parse("2026-10-23"));
     assert.equal(r[0]?.key, "campaign");
     assert.match(r[0].text, /plans \$100-million \(latimes\.com, Oct 10, 2025\)\.$/);
+  });
+
+  it("takes only the company's own ticker, and a nonprofit stays a nonprofit", () => {
+    assert.equal(stockListingFor("Limbach Holdings, Inc. (NASDAQ: LMB) today announced", ["Limbach Holdings"]), "NASDAQ: LMB");
+    assert.equal(stockListingFor("Homeboy thanks its partner Wells Fargo (NYSE: WFC) for", ["Homeboy Industries"]), undefined);
+    assert.equal(entityTypeOf({ company: { stockListing: "NYSE: WFC" }, nonprofit: {} as any, funding: [] }), "nonprofit");
+  });
+
+  it("a for-profit's dollar plan isn't a campaign", () => {
+    const bundle = base({ company: { name: "Graybar" },
+      news: [{ headline: "Graybar plans $50 million distribution center", url: "https://x.com/a", date: "Oct 10, 2026", outlet: "x.com" },
+        { headline: "Graybar's holiday marketing campaign", url: "https://x.com/b", date: "Oct 1, 2026", outlet: "x.com" }] as any });
+    assert.equal(ruleOpportunities(bundle, ["Graybar"], Date.parse("2026-10-23")).find((r) => r.key === "campaign"), undefined);
+  });
+
+  it("doesn't turn a participle into a noun phrase", () => {
+    assert.equal(whatItDoes("Patagonia", "Founded in 1973, it makes outdoor clothing."), "Patagonia: Founded in 1973, it makes outdoor clothing.");
   });
 });
