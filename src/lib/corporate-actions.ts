@@ -26,7 +26,8 @@ export function corporateActions(items: { text: string; url: string; date?: stri
   const out: CorporateAction[] = [];
   const seen = new Set<string>();
   const add = (kind: CorporateAction["kind"], raw: string, it: { url: string; date?: string }) => {
-    const name = raw.replace(TRAILING, "").replace(/[.,]$/, "").trim();
+    // "Pioneer Power. Limbach Company. 1y" is "Pioneer Power" (round 13).
+    const name = raw.split(/\.\s/)[0].replace(TRAILING, "").replace(/[.,]$/, "").trim();
     const key = name.toLowerCase();
     // Never the company itself, and never a bare generic word.
     if (!name || name.split(/\s+/).length > 6 || cores.some((c) => key === c.toLowerCase()) || /^(the|its|a|an|company|business)$/i.test(name) || seen.has(key)) return;

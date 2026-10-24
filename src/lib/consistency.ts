@@ -1,6 +1,6 @@
 import type { PersonResearchBundle, ResearchBundle } from "../types/research.js";
 import { cityOf } from "./closure.js";
-import { mentionsCompany, normalizeWords } from "./news-noise.js";
+import { mentionsCompany, normalizeWords, isPersonalLifeNews } from "./news-noise.js";
 import { newsAboutSubject, tiedToSubject, type SubjectRecord } from "./entities/subject.js";
 import { isCitable } from "./source-quality.js";
 import { insiderSelling } from "./insiders.js";
@@ -73,7 +73,12 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
   // Short names only for a national brand (subject.aliases); enforcement
   // items found on an agency's site by the company's name stay.
   bundle.news = keep("news not tied to the subject", bundle.news,
-    (n) => newsAboutSubject(`${n.headline} ${n.summary ?? ""}`, n.url, subject) || (!!n.enforcement && mentionsCompany(`${n.headline} ${n.summary ?? ""}`, subject.name)));
+    (n) => newsAboutSubject(`${n.headline} ${n.summary ?? ""}`, n.url, subject) || (!!n.enforcement && mentionsCompany(`${n.headline} ${n.summary ?? ""}`, subject.name)
+      // An agency release over ten years old found by name alone is a
+      // namesake's (round 13: Patagonia's 2013 "drug traffickers").
+      && !(n.date && Date.parse(n.date) < Date.now() - 10 * 365 * 86_400_000)));
+  // A founder's personal life isn't company news (round 13: Crumbl's Grindr items).
+  bundle.news = keep("personal-life news", bundle.news, (n) => !isPersonalLifeNews(n.headline, n.summary, n.url));
   // A job posting names the company but isn't news about it (launch fix 8:
   // Promise ABA's one "news" hit was a data-analyst listing in Burbank).
   bundle.news = keep("job listings in news", bundle.news,
