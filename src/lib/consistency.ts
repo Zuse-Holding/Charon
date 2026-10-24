@@ -91,6 +91,11 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
     if (bundle.powerMapConnections.length === 0) bundle.powerMapConnections = undefined;
   }
 
+  // A product named after one of its own people is a misread (round 12:
+  // MJW listed "Tony Cianciolo", its head of acquisitions, as a service).
+  const people = new Set(bundle.leadership.map((l) => l.name.toLowerCase().trim()));
+  bundle.products = keep("people listed as products", bundle.products, (p) => !people.has((p.name ?? "").toLowerCase().trim()));
+
   // A seed or angel round of $20M or more is a total raised read as a
   // round (round 11: Gecko's "Seed: $354M" was its funding to date).
   bundle.funding = keep("seed rounds out of scale", bundle.funding, (f) =>

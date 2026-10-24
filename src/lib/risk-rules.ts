@@ -177,7 +177,8 @@ export function isNonRisk(text: string): boolean {
 export interface RuleOpportunity { text: string; urls: string[]; key: string }
 
 const EXPANSION = /\b(to open|opens?|opening|new (facility|plant|factory|office|headquarters|campus|location|market)|expan(ds?|sion|ding)|launch(es|ed)?|enters?|breaks ground|groundbreaking)\b/i;
-const CAMPAIGN = /\b(capital campaign|campaign|fundrais\w*)\b/i;
+// A dollar campaign or plan in the headline ("plans $100-million ...").
+const CAMPAIGN = /\b(capital campaign|campaign|fundrais\w*|plans?|launch(es)?|aims? to raise|to raise)\b/i;
 
 export function ruleOpportunities(bundle: ResearchBundle, names: string[], now = Date.now()): RuleOpportunity[] {
   const out: RuleOpportunity[] = [];
@@ -201,8 +202,11 @@ export function ruleOpportunities(bundle: ResearchBundle, names: string[], now =
   const target = bundle.funding.find((f) => /\(target\)$/.test(f.round ?? "") && f.amount);
   const targetUrl = bundle.sources.find((s) => s.usedFor.includes("funding"))?.url;
   if (target && targetUrl) out.push({ text: `Raising ${target.round!.replace(/\s*\(target\)$/, "")} toward a ${target.amount} target.`, urls: [targetUrl], key: "fund" });
-  const campaign = bundle.news.find((n) => n.url && recent(n.date, now, 2) && CAMPAIGN.test(n.headline) && /\$\d/.test(n.headline) && about(n));
-  if (campaign) out.push({ text: `Campaign in progress: ${campaign.headline.replace(/[.\s]+$/, "")}${when(campaign)}.`, urls: [campaign.url!], key: "campaign" });
+  // A nonprofit's dollar plan, or a headline that itself says "campaign".
+  const nonprofit = bundle.company.entityType === "nonprofit";
+  const campaign = bundle.news.find((n) => n.url && recent(n.date, now, 2) && (nonprofit ? CAMPAIGN : /\bcampaign\b/i).test(n.headline)
+    && /\$\d/.test(n.headline) && !CLOSURE.test(n.headline) && about(n));
+  if (campaign) out.push({ text: `Campaign in progress: ${campaign.headline.replace(/\s*(\.\.\.|…)\s*$/, "").replace(/[.\s]+$/, "")}${when(campaign)}.`, urls: [campaign.url!], key: "campaign" });
 
   return out.filter((r) => r.urls.length);
 }

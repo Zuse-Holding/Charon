@@ -501,7 +501,8 @@ export class ResearchOrchestrator {
     if (synthesis) {
       // Personal-life items and discount sales are never risks; restated
       // offerings, praise and the namesake region are never opportunities (round 10).
-      bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts).filter((r) => !isTabloidRisk(r) && !isSaleRisk(r) && !isNonRisk(r));
+      bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts).filter((r) => !isTabloidRisk(r) && !isSaleRisk(r) && !isNonRisk(r)
+        && !restsOnClosedCases(synthesis.citations[r] ?? [], bundle.courtCases ?? []));
       bundle.opportunities = sameRecordOnce(plausibleAnalysis(synthesis.opportunities, bundle, synthesis.facts).filter((o) => !isFillerOpportunity(o) && !aboutNamesake(o, nameSet)), synthesis.citations);
       console.log(`[synthesis] "${companyName}": ${bundle.risks.length} risk(s), ${bundle.opportunities.length} opportunit(ies) after the consistency check`);
       bundle.synthesisCitations = synthesis.citations;
@@ -862,6 +863,15 @@ export function acquiredBy(texts: string[], name: string): boolean {
 // "Private Equity firm Blackstone" is a real owner, so "private" isn't here.
 const NOT_AN_OWNER = /^(the\s+)?(series|seed|round|funding|founders?|investors?|venture|capital|public|employees?)\b/i;
 const bareOwner = (t: string) => t.toLowerCase().replace(/^the\s+/, "").replace(/,?\s+(inc\.?|llc|corp\.?|corporation|co\.?|company|ltd\.?)$/, "").trim();
+
+/**
+ * A risk whose every source is a closed court case is history, not a risk
+ * (round 12: Homeboy's 2016-17 copyright suits, Limbach's closed 2024 case).
+ */
+export function restsOnClosedCases(urls: string[], cases: CaseRecord[]): boolean {
+  if (!urls.length) return false;
+  return urls.every((u) => cases.some((c) => c.url === u && c.status === "closed"));
+}
 
 /**
  * One item per record: an item whose cited sources were all cited by an

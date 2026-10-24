@@ -13,7 +13,7 @@ const NONPROFIT_TEXT = /\b(non-?profit|not-for-profit|501\s?\(c\)\s?\(?3\)?|char
 const PRICED_ROUND = /\b(pre-?seed|seed|series [a-h]|venture)\b/i;
 
 export function entityTypeOf(input: {
-  company: Pick<CompanyProfile, "website" | "description" | "industry" | "role" | "chain">;
+  company: Pick<CompanyProfile, "website" | "description" | "industry" | "role" | "chain" | "stockListing">;
   sec?: SecFilings;
   nonprofit?: NonprofitFinancials;
   franchisor?: boolean;
@@ -21,6 +21,9 @@ export function entityTypeOf(input: {
 }): EntityType {
   if (input.sec?.financials.length || input.sec?.tenKUrl) return "public";
   if (input.nonprofit) return "nonprofit";
+  // Its site gives a stock listing ("NASDAQ: LMB"): public even while SEC
+  // search is off (round 12: Limbach read as a "Subsidiary of 1347 Capital").
+  if (input.company.stockListing) return "public";
   const text = [input.company.description, input.company.industry, input.company.role].filter(Boolean).join(" ");
   // A .org whose own pages say it's a nonprofit, or ask for donations.
   if (/\.org(\/|$)/i.test(input.company.website ?? "") && NONPROFIT_TEXT.test(text)) return "nonprofit";
