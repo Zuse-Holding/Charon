@@ -27,6 +27,8 @@ const CLOSURE = /\b(clos(e|es|ed|ing|ures?)|shutter(s|ed|ing)?|shuts? down|layof
 
 const money = (v: number) => (Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${Math.round(v / 1e3)}K`);
 const pct = (a: number, b: number) => Math.round(((b - a) / Math.abs(a)) * 100);
+const TOP_CHANGE = /\b((steps?|stepped|stepping) (down|away)|resign(s|ed|ing|ation)?|retir(es|ed|ing|ement)|ousted|departs?|departure|ceo search|search for a (new )?ceo|interim ceo)\b/i;
+const TOP_SEAT = /\b(ceo|chief executive|president|co-?founders?|founders?|chair\w*)\b/i;
 const recent = (date: string | undefined, now: number, years = 1) => {
   const t = date ? Date.parse(date) : NaN;
   return !isNaN(t) && t >= now - years * YEAR_MS;
@@ -102,7 +104,18 @@ export function ruleRisks(bundle: ResearchBundle, names: string[], now = Date.no
     out.push({ text: `Government enforcement action on record: ${c.caption}${c.court ? ` (${c.court}${c.filed ? `, ${c.filed}` : ""})` : ""}.`, urls: [c.url], key: "enforcement" });
   }
 
-  // 7. Dependence on one federal buyer: a contract ceiling far above what's been obligated.
+  // 7. A change at the top in the last year's news (round 15: Crumbl's
+  // founders stepped away and began a CEO search).
+  const atTop = bundle.news.find((n: NewsEntry) => {
+    const text = `${n.headline}. ${n.summary ?? ""}`;
+    return n.url && !n.solicitation && recent(n.date, now) && TOP_CHANGE.test(n.headline) && TOP_SEAT.test(text)
+      && names.some((nm) => mentionsCompany(text, nm));
+  });
+  if (atTop) {
+    out.push({ text: `Leadership transition: ${atTop.headline.replace(/[.\s]+$/, "")}${atTop.date ? ` (${atTop.outlet ? `${atTop.outlet}, ` : ""}${atTop.date})` : ""}.`, urls: [atTop.url!], key: "leadership" });
+  }
+
+  // 8. Dependence on one federal buyer: a contract ceiling far above what's been obligated.
   for (const k of (bundle.contractCeilings ?? []).filter((k) => k.ceiling >= 50_000_000).slice(0, 1)) {
     const url = bundle.sources.find((s) => s.usedFor.includes("federal-spending"))?.url ?? k.newsUrl;
     out.push({ text: `Growth leans on one federal buyer: ${k.agency}'s ${money(k.ceiling)} ceiling has about ${money(k.obligated)} obligated so far, so most of that value depends on future task orders.`, urls: url ? [url] : [], key: "concentration" });
@@ -126,7 +139,9 @@ export function mergeRuleRisks(risks: string[], citations: Record<string, string
     || (r.key === "990" && /\bexpenses?\b/.test(said))
     || (r.key === "closure" && CLOSURE.test(said));
   for (const r of rules) {
-    if (out.length >= cap) break;
+    // A change at the top is worth one over the cap (round 15: Crumbl's six
+    // case risks left its founders' exit as a headline only).
+    if (out.length >= cap && !(r.key === "leadership" && out.length === cap)) continue;
     if (covered(r)) continue;
     out.push(r.text);
     cites[r.text] = r.urls;
@@ -151,7 +166,9 @@ export function isSaleRisk(text: string): boolean {
 
 // Opportunities that only restate what it offers, praise it, or note an
 // event with no business consequence (round 10: Promise, ACCO, Andersen).
-const FILLER_OPPORTUNITY = /\b(engag\w* (with )?the community|annual (5k|gala|event|fundraiser|walk|run)|brings? thousands together|comprehensive offerings?|broad (market )?reach|diverse (service )?(capabilities|offerings)|cater to a broad|by offering both|expand its reach by offering|community (engagement|relations)|brand visibility|positive (public )?feedback|indicates? (ongoing )?leadership development|strategic planning within|demonstrates? (ongoing )?(commitment|engagement)|(\d+\s?%|significant(ly)?)\s?(off|discount)|below retail|discount(ed|s)?\b|reduced price|sale price|on sale|brand reputation|talent attraction|recogni[sz]ed as one of|(most trusted|top workplaces?)|actively engaged in discussions|scheduled to (release|report|hold)|conference call|earnings call|leadership stability|potential for (continued )?strategic direction)/i;
+// Menu prices and advocacy campaigns too (round 15: Crumbl's 99¢ value
+// menu, Patagonia's salmon appeal as "Expansion under way").
+const FILLER_OPPORTUNITY = /\b(engag\w* (with )?the community|annual (5k|gala|event|fundraiser|walk|run)|brings? thousands together|comprehensive offerings?|broad (market )?reach|diverse (service )?(capabilities|offerings)|cater to a broad|by offering both|expand its reach by offering|community (engagement|relations)|brand visibility|positive (public )?feedback|indicates? (ongoing )?leadership development|strategic planning within|demonstrates? (ongoing )?(commitment|engagement)|(\d+\s?%|significant(ly)?)\s?(off|discount)|below retail|discount(ed|s)?\b|reduced price|sale price|on sale|brand reputation|talent attraction|recogni[sz]ed as one of|(most trusted|top workplaces?)|actively engaged in discussions|scheduled to (release|report|hold)|conference call|earnings call|leadership stability|potential for (continued )?strategic direction|value menu|\d+\s?¢|\d+ cents\b|\d+\.\d{2} (combos?|menu|deals?|bundles?)|combo deals?|price points?|new (cookie |menu )?flavors?|limited[- ]time (menu|flavors?|offers?)|launch\w* an appeal|(appeal|petition|mobili[sz]ation campaign|campaign) to (save|saving|protect|stop|end|ban)|voter (mobili[sz]ation|registration|turnout))/i;
 
 export function isFillerOpportunity(text: string): boolean {
   return FILLER_OPPORTUNITY.test(text);
@@ -180,7 +197,8 @@ export interface RuleOpportunity { text: string; urls: string[]; key: string }
 
 const EXPANSION = /\b(to open|opens?|opening|new (facility|plant|factory|office|headquarters|campus|location|market)|expan(ds?|sion|ding)|launch(es|ed)?|enters?|breaks ground|groundbreaking)\b/i;
 // A dollar campaign or plan in the headline ("plans $100-million ...").
-const CAMPAIGN = /\b(capital campaign|campaign|fundrais\w*|plans?|launch(es)?|aims? to raise|to raise)\b/i;
+// "Fund drive" too (round 15: Homeboy's "$100 million fund drive").
+const CAMPAIGN = /\b(capital campaign|campaign|fundrais\w*|fund drive|plans?|launch(es)?|aims? to raise|to raise)\b/i;
 
 export function ruleOpportunities(bundle: ResearchBundle, names: string[], now = Date.now()): RuleOpportunity[] {
   const out: RuleOpportunity[] = [];
@@ -195,8 +213,8 @@ export function ruleOpportunities(bundle: ResearchBundle, names: string[], now =
 
   // 2. An expansion announced in the last year.
   const grow = bundle.news.filter((n) => n.url && !n.solicitation && recent(n.date, now) && EXPANSION.test(n.headline) && !CLOSURE.test(n.headline) && about(n));
-  if (grow.length) {
-    const n = grow[0];
+  const n = grow.find((g) => !isFillerOpportunity(g.headline));
+  if (n) {
     out.push({ text: `Expansion under way: ${n.headline.replace(/[.\s]+$/, "")}${when(n)}.`, urls: [n.url!], key: "expansion" });
   }
 

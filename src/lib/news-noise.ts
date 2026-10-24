@@ -56,14 +56,43 @@ export function outletFromUrl(url: string): string | undefined {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/** A date in the article's address: /2026/09/02/, /2026-10-20/, /20260803cg.... */
+function urlDate(url: string): Date | undefined {
+  let path = "";
+  try { path = new URL(url).pathname; } catch { return undefined; }
+  const m = path.match(/\/((?:19|20)\d{2})\/(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])(?:\/|$)/)
+    ?? path.match(/\/(?:[a-z-]*-)?((?:19|20)\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(?=[/-]|$)/i)
+    ?? path.match(/\/((?:19|20)\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?=[a-z]|\/|$)/i);
+  return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : undefined;
+}
+
 /**
- * Best-effort publish date as "Aug 19, 2026": the search engine's own
- * date first, then a /YYYY/MM/DD/ path. Relative dates ("3 days ago")
- * are resolved against `now`. Undefined when neither gives one, rather
- * than a guess.
+ * The publish date the article's own page states: its article meta tag or
+ * structured data. Undefined when the page doesn't say.
+ */
+export function publishedDate(html: string | null | undefined): string | undefined {
+  if (!html) return undefined;
+  const head = html.slice(0, 200_000);
+  const tags = "article:published_time|og:article:published_time|datePublished|pubdate|publishdate|parsely-pub-date|sailthru\\.date|dc\\.date\\.issued";
+  const found = head.match(new RegExp(`<meta[^>]+(?:property|name|itemprop)=["'](?:${tags})["'][^>]*content=["']([^"']+)["']`, "i"))?.[1]
+    ?? head.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name|itemprop)=["'](?:${tags})["']`, "i"))?.[1]
+    ?? head.match(/"datePublished"\s*:\s*"([^"]+)"/)?.[1]
+    ?? head.match(/<time[^>]+(?:itemprop=["']datePublished["']|pubdate)[^>]*datetime=["']([^"']+)["']/i)?.[1];
+  const t = found ? new Date(found) : undefined;
+  return t && !isNaN(t.getTime()) ? `${MONTHS[t.getUTCMonth()]} ${t.getUTCDate()}, ${t.getUTCFullYear()}` : undefined;
+}
+
+/**
+ * Best-effort publish date as "Aug 19, 2026": a date in the article's
+ * address first, then the search engine's date (round 15: its "5 months
+ * ago" put a May 12 story at May 27). Relative dates ("3 days ago") are
+ * resolved against `now`. Undefined when neither gives one, rather than a
+ * guess. The page's own date (publishedDate) beats both where it was read.
  */
 export function newsDate(searchDate: string | undefined, url: string, now = new Date()): string | undefined {
   const fmt = (d: Date) => `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  const inUrl = urlDate(url);
+  if (inUrl && inUrl.getTime() <= now.getTime() + 86_400_000) return fmt(inUrl);
   if (searchDate) {
     const rel = searchDate.match(/^(\d+)\s+(hour|day|week|month)s?\s+ago$/i);
     if (rel) {
@@ -74,11 +103,24 @@ export function newsDate(searchDate: string | undefined, url: string, now = new 
     const parsed = new Date(`${searchDate} UTC`);
     if (!isNaN(parsed.getTime())) return fmt(parsed);
   }
-  try {
-    const m = new URL(url).pathname.match(/\/(20\d{2})\/(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])(\/|$)/);
-    if (m) return fmt(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))));
-  } catch { /* fall through */ }
   return undefined;
+}
+
+// A place that shares the company's name (round 15: Patagonia's news led
+// with "Patagonia's New 231-Mile Lodge-to-Lodge Trek", and AI data centers
+// in glacier-strewn Patagonia).
+const PLACE_WORDS = /\b(trek\w*|hik(e|es|ing)|glacier\w*|lodge-to-lodge|itinerar\w+|travel\w*|trips?|tourism|tourists?|cruises?|expeditions?|national park|wildlife|penguins?|whales?|region|province|data cent(er|re)s?)\b/i;
+const BUSINESS_WORDS = /\b(ceo|founder|company|brand|retailer|maker|apparel|clothing|jackets?|gear|stores?|employees|workers|sues|sued|lawsuit|acquires|acquisition|earnings|revenue|sales?|launch\w*|appoints|names|campaign|donat\w+|repair)\b/i;
+
+/** The headline is about a place named like the company, not the company. */
+export function isPlaceNamesake(title: string, snippet: string | undefined, name: string): boolean {
+  const n = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!n) return false;
+  // "de la Patagonia", "across Patagonia": the name as a place. Not "in" or
+  // "to", which a deal headline uses ("sold to Limbach Holdings").
+  const asPlace = new RegExp(`\\b(?:de la|del|across|around|visit\\w*|explor\\w*)\\s+${n}\\b(?!['’]s\\b|,?\\s+inc\\b|\\s+(?:stores?|brand|employees|ceo|founder|workers)\\b)`, "i");
+  if (asPlace.test(title)) return true;
+  return PLACE_WORDS.test(title) && !BUSINESS_WORDS.test(title) && !BUSINESS_WORDS.test(snippet ?? "");
 }
 
 // A bare date ("February 6, 2026", "Feb 6 2026", "2026-02-06", "02/06/2026").

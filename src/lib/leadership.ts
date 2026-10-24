@@ -267,7 +267,11 @@ export function checkFoundersAgainst(entries: LeadershipEntry[], founders: strin
 // Case-insensitive by hand: the "i" flag would let a name's [A-Z] match
 // any lowercase word.
 const ci = (p: string) => p.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`);
-const NEWS_TITLE = `(${ci("president|chief executive officer|ceo|chief operating officer|coo|chief financial officer|cfo|chief technology officer|cto|executive chairman|executive chair|chairman of the board|chairman|chairwoman|chair")})`;
+// Senior and executive VPs with their remit (round 15: Graybar's April 2026
+// changes named "Senior Vice President – North American Subsidiaries").
+const NEWS_TITLE = `((?:${ci("senior vice president|executive vice president|president|chief executive officer|ceo|chief operating officer|coo|chief financial officer|cfo|chief technology officer|cto|executive chairman|executive chair|chairman of the board|chairman|chairwoman|chair")})(?:\\s+${ci("and general manager")}|\\s+[–—-]\\s+[A-Z][\\w]+(?:\\s+[A-Z][\\w]+){0,4})?)`;
+// A headline about leadership whose article names the people.
+const LEADERSHIP_NEWS = /\b(leadership (changes?|transition|appointments?)|executive (changes?|appointments?|promotions?)|names|appoints|promotes|promotions?|new (ceo|president|cfo|coo))\b/i;
 
 /**
  * Appointments the news reports, as dated leadership entries (launch fix
@@ -275,16 +279,19 @@ const NEWS_TITLE = `(${ci("president|chief executive officer|ceo|chief operating
  * report still listed Jeffrey Marrs as president). Dated, so the title-
  * conflict check prefers them over an undated page.
  */
-export function appointmentsFromNews(news: { headline: string; summary?: string; date?: string; url?: string }[]): LeadershipEntry[] {
+export function appointmentsFromNews(news: { headline: string; summary?: string; articleText?: string; date?: string; url?: string }[]): LeadershipEntry[] {
   const out: LeadershipEntry[] = [];
   // ci() only on plain words: it would turn "\\w" into "\\[wW]".
   const succeed = `(?:${ci("to succeed|succeeds")}\\s+[A-Z][\\w'’-]+(?:\\s+[A-Z][\\w'’-]+)?\\s+${ci("as")})`;
   const verbs = `(?:${ci("has been |was |is |will be ")})?(?:${ci("named|promoted to|appointed|elevated to|tapped as|selected as|becomes|to become")}|${succeed})`;
-  const after = new RegExp(`${PERSON},?\\s+${verbs}\\s+(?:${ci("as")}\\s+)?(?:${ci("the")}\\s+)?(?:${ci("company's|its|new")}\\s+)*${NEWS_TITLE}\\b`, "g");
+  // "David A. Bender, who currently serves as ..., has been named ..."
+  const who = `(?:\\s+${ci("who")}\\b[^.;]{0,120}?,)?`;
+  const after = new RegExp(`${PERSON},?${who}\\s+${verbs}\\s+(?:${ci("as")}\\s+)?(?:${ci("the")}\\s+)?(?:${ci("company's|its|new")}\\s+)*${NEWS_TITLE}\\b`, "g");
   const names = new RegExp(`\\b${ci("(?:names|appoints|promotes|taps|elevates)")}\\s+${PERSON}\\s+(?:${ci("as|to")}\\s+)?(?:${ci("its|new")}\\s+)*${NEWS_TITLE}\\b`, "g");
   for (const n of news) {
     if (!n.date || !n.url) continue;
-    const text = `${n.headline}. ${n.summary ?? ""}`;
+    // The article itself when the headline names no one ("Graybar Announces Leadership Changes").
+    const text = `${n.headline}. ${n.summary ?? ""}${n.articleText && LEADERSHIP_NEWS.test(n.headline) ? ` ${n.articleText}` : ""}`;
     for (const re of [after, names]) {
       for (const m of text.matchAll(re)) {
         const name = m[1].trim();
@@ -310,7 +317,7 @@ export function applyAppointments(entries: LeadershipEntry[], appointments: Lead
   return entries;
 }
 
-const STEPPED_DOWN = "(?:steps?|stepped|stepping|to step|will step) down|resign(?:s|ed|ing)?|retir(?:es|ed|ing)|depart(?:s|ed|ing)|exit(?:s|ed|ing)|(?:is |was )?ousted";
+const STEPPED_DOWN = "(?:steps?|stepped|stepping|to step|will step) (?:down|away)|resign(?:s|ed|ing)?|retir(?:es|ed|ing)|depart(?:s|ed|ing)|exit(?:s|ed|ing)|(?:is |was )?ousted";
 const REMAINS = /\b(remains?|remaining|stays? on|will stay|continues? as|will continue as)\b/i;
 
 /**
@@ -318,16 +325,19 @@ const REMAINS = /\b(remains?|remaining|stays? on|will stay|continues? as|will co
  * (round 15: Crumbl listed Jason McGowan as CEO while its own news said the
  * founders stepped down in May 2026). A founder stays a founder; a board
  * seat the story says they keep stays; any other title goes, and so does
- * anyone left with none. An undated source counts as older than the news.
+ * anyone left with none. An undated source counts as older than the news,
+ * and so does a social post: its date isn't when the title was given
+ * (round 15: McGowan's "CEO" came from an Oct 2026 Facebook post).
  */
 export function applyDepartures(entries: LeadershipEntry[], news: { headline: string; summary?: string; date?: string }[]): LeadershipEntry[] {
   const out: LeadershipEntry[] = [];
   for (const e of entries) {
+    const asOf = e.asOf && !(e.sourceUrl && sourceTier(e.sourceUrl) === "forum") ? e.asOf : undefined;
     const last = personKey(e.name).split(" ").pop() ?? "";
     const who = [e.name, ...(last.length >= 4 ? [last] : []), ...(/founder/i.test(e.title) ? ["(?:co-?)?founders?"] : [])]
       .map((w) => (w.startsWith("(") ? w : w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     const left = new RegExp(`\\b(?:${who.join("|")})\\b[^.;]{0,80}?\\b(?:${STEPPED_DOWN})\\b[^.;]*`, "i");
-    const story = news.find((n) => n.date && !isNaN(Date.parse(n.date)) && (!e.asOf || Date.parse(n.date) > Date.parse(e.asOf))
+    const story = news.find((n) => n.date && !isNaN(Date.parse(n.date)) && (!asOf || Date.parse(n.date) > Date.parse(asOf))
       && left.test(`${n.headline}. ${n.summary ?? ""}`));
     if (!story) { out.push(e); continue; }
     const said = `${story.headline}. ${story.summary ?? ""}`.match(left)![0];

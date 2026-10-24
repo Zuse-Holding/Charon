@@ -1,6 +1,6 @@
 import { WebsiteAgent, stockListingFor } from "../website-agent/index.js";
 import { NewsAgent } from "../news-agent/index.js";
-import { CompetitorAgent } from "../competitor-agent/index.js";
+import { CompetitorAgent, type PeerProfile } from "../competitor-agent/index.js";
 import { CorporateAgent } from "../corporate-agent/index.js";
 import { PeopleAgent } from "../people-agent/index.js";
 import { ProductAgent } from "../product-agent/index.js";
@@ -204,23 +204,25 @@ export class ResearchOrchestrator {
     // nothing found by name alone stands in for it. A listing linking to the
     // site settles who it is, so news and peers still run (Crumbl, fix 25).
     const unreadable = !!siteResult.company.siteUnreadable && !!siteResult.company.thin;
+    const peerProfile: PeerProfile = {
+      role: siteResult.company.role,
+      industry: siteResult.company.industry,
+      description: siteResult.company.description,
+      headquarters: siteResult.company.headquarters ?? anchor.location,
+      // Matched on a city or its own site, and not national in scale:
+      // a local or regional business, whose peers are the ones near it.
+      local: !national && !!(anchor.location || anchor.website),
+      products: siteResult.products.map((p) => p.name),
+      filed: sec?.competitors?.length && sec.tenKUrl ? { names: sec.competitors, url: sec.tenKUrl } : undefined,
+      listed: !!sec || !!siteResult.company.stockListing,
+    };
 
     const [newsResult, competitorResult, corporateResult, spendingResult] =
       await Promise.all([
         unreadable ? Promise.resolve({ news: [], sources: [] })
           : cov.run("news", () => this.newsAgent.run(companyName, tieAnchor, subject.domain, { aliases: subject.aliases, profileTerms }), { news: [], sources: [] }, (r) => r.news.length),
         unreadable ? Promise.resolve({ competitors: [], sources: [] })
-          : cov.run("competitors", () => this.competitorAgent.run(companyName, subject, {
-            role: siteResult.company.role,
-            industry: siteResult.company.industry,
-            description: siteResult.company.description,
-            headquarters: siteResult.company.headquarters ?? anchor.location,
-            // Matched on a city or its own site, and not national in scale:
-            // a local or regional business, whose peers are the ones near it.
-            local: !national && !!(anchor.location || anchor.website),
-            products: siteResult.products.map((p) => p.name),
-            filed: sec?.competitors?.length && sec.tenKUrl ? { names: sec.competitors, url: sec.tenKUrl } : undefined,
-          }), { competitors: [], sources: [] }, (r) => r.competitors.length),
+          : cov.run("competitors", () => this.competitorAgent.run(companyName, subject, peerProfile), { competitors: [], sources: [] }, (r) => r.competitors.length),
         cov.run("sec", () => this.corporateAgent.run(companyName, subject), { funding: [], insiderActivity: [], sources: [] },
           (r) => r.funding.length + r.insiderActivity.length + (r.ownership ? 1 : 0)),
         // Free public API, no tier gating — every research run gets this.
@@ -357,7 +359,8 @@ export class ResearchOrchestrator {
       // Most material first (launch fix 21). Government actions from agency
       // sites join them (launch fix 62).
       courtCases: (() => {
-        const all = [...courtResult.cases, ...nlrbResult.cases, ...enforcementCases(newsResult.news, entityNames)];
+        const dockets = [...courtResult.cases, ...nlrbResult.cases];
+        const all = [...dockets, ...enforcementCases(newsResult.news, entityNames), ...reportedSuits(newsResult.news, entityNames, dockets)];
         return all.length ? rankCases(all) : undefined;
       })(),
       secFilings: sec,
@@ -455,6 +458,24 @@ export class ResearchOrchestrator {
     bundle.company.stockListing ??= corporateResult.stockListing
       ?? bundle.news.map((n) => stockListingFor(`${n.headline}. ${n.summary ?? ""}`, [companyName, ...entityNames])).find(Boolean);
     applyEntityType(bundle, franchisor);
+    // Peers searched as a local business turn out to be a listed company's:
+    // search again by industry and scale (round 15: Limbach's peers were
+    // local mechanical shops, not EMCOR or Comfort Systems).
+    if (bundle.company.entityType === "public" && peerProfile.local && !unreadable) {
+      try {
+        const wider = await this.competitorAgent.run(companyName, subject, { ...peerProfile, local: false, listed: true });
+        const kept = wider.competitors.filter((c) => !acquiredBy(ownTexts, c.name) && !actions.some((a) => a.name.toLowerCase() === c.name.toLowerCase()));
+        if (kept.length >= 2) {
+          console.log(`[competitors] "${companyName}": public, peers by scale: ${kept.map((c) => c.name).join(", ")}`);
+          const oldUrls = new Set(bundle.competitors.map((c) => c.url));
+          bundle.sources = bundle.sources.filter((s) => !(s.usedFor.length === 1 && s.usedFor[0] === "competitors" && oldUrls.has(s.url)));
+          bundle.competitors = kept;
+          bundle.sources.push(...wider.sources.filter((s) => !bundle.sources.some((x) => x.url === s.url)));
+        }
+      } catch (err) {
+        console.error(`[competitors] "${companyName}": peer search by scale failed:`, err instanceof Error ? err.message : err);
+      }
+    }
     const ceilings = contractCeilings(bundle.federalSpending ?? [], bundle.news);
     if (ceilings.length) bundle.contractCeilings = ceilings;
     // The NPI's authorized official is a named owner (fix 14).
@@ -950,6 +971,34 @@ export function enforcementCases(news: NewsEntry[], names: string[]): CaseRecord
       caseType: inspection ? "OSHA inspection" : "Government enforcement",
     };
   });
+}
+
+/**
+ * A suit the news reports and no docket search found, as a case record
+ * (round 15: "Patagonia Sues Trump Over Reduction of Bears Ears National
+ * Monument" appeared only as a headline). Its status isn't known from a
+ * headline, so it never counts as an open case on its own.
+ */
+export function reportedSuits(news: NewsEntry[], names: string[], dockets: CaseRecord[]): CaseRecord[] {
+  const out: CaseRecord[] = [];
+  const verb = "(?:sues|sued|files (?:a )?(?:suit|lawsuit) against)";
+  for (const n of news) {
+    if (!n.url || n.enforcement || n.solicitation) continue;
+    for (const name of names) {
+      const nm = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const brought = n.headline.match(new RegExp(`^${nm}(?:,? inc\\.?)?\\s+${verb}\\s+(.+?)(?:\\s+(?:over|for|in|after|to)\\b|[,:]|$)`, "i"));
+      const against = n.headline.match(new RegExp(`^(.+?)\\s+${verb}\\s+${nm}\\b`, "i"));
+      const other = (brought ?? against)?.[1]?.trim();
+      if (!other) continue;
+      // A docket already on record with that party is the same suit.
+      const key = other.split(/\s+/).find((w) => w.length >= 4)?.toLowerCase();
+      if (key && dockets.some((d) => d.caption.toLowerCase().includes(key))) break;
+      out.push({ caption: n.headline, court: "Reported in the news", filed: n.date, url: n.url, role: brought ? "plaintiff" : "defendant",
+        caseType: "Lawsuit (reported)", status: "status unverified" });
+      break;
+    }
+  }
+  return out;
 }
 
 const AGENCY_NAMES: Record<string, string> = {

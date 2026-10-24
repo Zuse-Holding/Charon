@@ -1,7 +1,7 @@
 import { CompanyAnchor, NewsAgentResult, NewsEntry, Source } from "../../types/research.js";
-import { FetchProvider, SearchProvider, fetchPageText } from "../../lib/providers.js";
+import { FetchProvider, SearchProvider, extractBestChunk, htmlToText } from "../../lib/providers.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
-import { brandName, isEnforcementAction, isEnforcementSource, isLawFirmSolicitation, isPersonalLifeNews, isShoppingOrQuote, namesItself, isNewsIndexPage, isNewsNoise, isUsableHeadline, mentionsCompany, newsDate, outletFromUrl } from "../../lib/news-noise.js";
+import { brandName, isEnforcementAction, isEnforcementSource, isLawFirmSolicitation, isPersonalLifeNews, isPlaceNamesake, publishedDate, isShoppingOrQuote, namesItself, isNewsIndexPage, isNewsNoise, isUsableHeadline, mentionsCompany, newsDate, outletFromUrl } from "../../lib/news-noise.js";
 
 export { brandName };
 
@@ -75,7 +75,9 @@ export class NewsAgent {
         // An agency page that isn't an action against this company (its own
         // filings, speeches, research) is dropped (launch fix 76).
         .filter(r => !isEnforcementSource(r.url) || isEnforcementAction(r, partyNames))
-        .filter(r => !isPersonalLifeNews(r.title, r.snippet, r.url) && !isShoppingOrQuote(r.title, r.url));
+        .filter(r => !isPersonalLifeNews(r.title, r.snippet, r.url) && !isShoppingOrQuote(r.title, r.url))
+        // A place that shares the name (round 15: Patagonia's trek and data centers).
+        .filter(r => !partyNames.some((n) => isPlaceNamesake(r.title, r.snippet, n)));
       console.log(`[news] "${companyName}"${where}: ${web.length} web + ${press.length} news result(s), ${filtered.length} about the company`);
       return filtered;
     };
@@ -110,31 +112,39 @@ export class NewsAgent {
     // inspections had crowded out ACCO's DOJ case (launch fix 84).
     const seenAgency = new Set<string>();
     const agency = [...merged, ...enforcementRaw].filter((r) => isEnforcementAction(r, partyNames) && isUsableHeadline(r.title) && aboutIt(r)
-      && !seenAgency.has(r.url) && !!seenAgency.add(r.url));
+      && !partyNames.some((n) => isPlaceNamesake(r.title, r.snippet, n)) && !seenAgency.has(r.url) && !!seenAgency.add(r.url));
     const inspection = (r: { url: string }) => /osha\.gov/i.test(r.url) && /establishment|inspection/i.test(r.url);
     const enforcement = [...agency.filter((r) => !inspection(r)).slice(0, 3), ...agency.filter(inspection).slice(0, 3)];
     if (enforcement.length) console.log(`[news] "${companyName}": ${enforcement.length} enforcement item(s) from agency sites`);
     const top = [...filtered.slice(0, 5), ...enforcement];
 
-    // Fetch full text for top 2 articles in parallel — gives the LLM
-    // real article content instead of snippet fragments
-    const fetchedTexts = await Promise.all(
-      top.slice(0, 2).map(r => fetchPageText(r.url, this.fetcher, 2000))
-    );
+    // Every article is read, in parallel: its page states when it was
+    // published (round 15: a 2017 Bears Ears story showed as Sep 2026, the
+    // crawl date), and its text names the people a "leadership changes"
+    // headline doesn't. Agency pages are records, not articles.
+    const pages = await Promise.all(top.map((r) => (isEnforcementSource(r.url) ? Promise.resolve(null) : this.fetcher.fetchText(r.url))));
+    const fetchedTexts = pages.map((html) => {
+      const text = html ? htmlToText(html) : "";
+      return text.length >= 120 ? extractBestChunk(text, 2000) : undefined;
+    });
 
     // The report shows headline · outlet · date · link. The fetched text
-    // only feeds synthesis: it's raw extraction (nav, "Ja nuary"-style
-    // breaks), not something to print.
-    const news: NewsEntry[] = top.map((r, i) => ({
+    // only feeds synthesis and leadership: it's raw extraction (nav, "Ja
+    // nuary"-style breaks), not something to print.
+    const items: NewsEntry[] = top.map((r, i) => ({
       headline: r.title,
       outlet: outletFromUrl(r.url),
-      date: newsDate(r.date, r.url),
+      date: publishedDate(pages[i]) ?? newsDate(r.date, r.url),
       summary: r.snippet,
-      articleText: fetchedTexts[i]?.slice(0, 600) || undefined,
+      articleText: fetchedTexts[i]?.slice(0, 1500) || undefined,
       url: r.url,
       solicitation: isLawFirmSolicitation(r.title, r.snippet) || undefined,
       enforcement: isEnforcementAction(r, partyNames) || undefined,
     }));
+    // Articles newest first again, by the dates they state; agency items stay last.
+    const time = (n: NewsEntry) => { const t = Date.parse(n.date ?? ""); return isNaN(t) ? -Infinity : t; };
+    const articles = items.length - enforcement.length;
+    const news = [...items.slice(0, articles).sort((a, b) => time(b) - time(a)), ...items.slice(articles)];
 
     const sources: Source[] = top.map((r) => ({
       url: r.url,
