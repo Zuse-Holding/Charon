@@ -149,7 +149,7 @@ export function isSaleRisk(text: string): boolean {
 
 // Opportunities that only restate what it offers, praise it, or note an
 // event with no business consequence (round 10: Promise, ACCO, Andersen).
-const FILLER_OPPORTUNITY = /\b(engag\w* (with )?the community|annual (5k|gala|event|fundraiser|walk|run)|brings? thousands together|comprehensive offerings?|broad (market )?reach|diverse (service )?(capabilities|offerings)|cater to a broad|by offering both|expand its reach by offering|community (engagement|relations)|brand visibility|positive (public )?feedback|indicates? (ongoing )?leadership development|strategic planning within|demonstrates? (ongoing )?(commitment|engagement)|(\d+\s?%|significant(ly)?)\s?(off|discount)|below retail|discount(ed|s)?\b)/i;
+const FILLER_OPPORTUNITY = /\b(engag\w* (with )?the community|annual (5k|gala|event|fundraiser|walk|run)|brings? thousands together|comprehensive offerings?|broad (market )?reach|diverse (service )?(capabilities|offerings)|cater to a broad|by offering both|expand its reach by offering|community (engagement|relations)|brand visibility|positive (public )?feedback|indicates? (ongoing )?leadership development|strategic planning within|demonstrates? (ongoing )?(commitment|engagement)|(\d+\s?%|significant(ly)?)\s?(off|discount)|below retail|discount(ed|s)?\b|scheduled to (release|report|hold)|conference call|earnings call|leadership stability|potential for (continued )?strategic direction)/i;
 
 export function isFillerOpportunity(text: string): boolean {
   return FILLER_OPPORTUNITY.test(text);

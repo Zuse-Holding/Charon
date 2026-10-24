@@ -984,6 +984,13 @@ export function applyEntityType(bundle: ResearchBundle, franchisor: boolean, now
   const tag = (match: (url: string) => boolean) => {
     for (const s of bundle.sources) if (match(s.url) && !s.usedFor.includes("funding")) s.usedFor.push("funding");
   };
+  // A nonprofit or a listed company has no owner a report should name; a
+  // note found by search is a misread (round 13: Homeboy "owned by Richard
+  // Cabral and Jose Arellano", Limbach "owned by FdG"). Employee ownership stays.
+  if ((type === "nonprofit" || type === "public") && bundle.ownership && !/employee/i.test(bundle.ownership)) {
+    console.log(`[entity-type] "${bundle.company.name}": ${type}, dropped ownership note "${bundle.ownership}"`);
+    bundle.ownership = undefined;
+  }
   if (type === "nonprofit") {
     if (bundle.funding.length) console.log(`[entity-type] "${bundle.company.name}": nonprofit, dropped ${bundle.funding.length} funding round(s)`);
     bundle.funding = [];

@@ -1,5 +1,10 @@
 import type { ResearchBundle } from "../types/research.js";
 import { seniority } from "./leadership.js";
+import { isPersonalLifeNews, isShoppingOrQuote } from "./news-noise.js";
+
+// A sale or deal story says nothing about the business (round 13: Patagonia's
+// summary quoted "Selling Its Best Active Layers for Way, Way Below Retail").
+const PROMO = /\b(\d+\s?% off|below retail|on sale|sales? to shop|deals?|discount\w*|best \w+ to buy|gift guide|coupon)\b/i;
 
 /**
  * A plain executive summary built from the report's own facts (round 12).
@@ -76,7 +81,8 @@ export function composeSummary(bundle: ResearchBundle, now = Date.now()): string
 
   // The latest development: an acquisition, or the newest dated news item.
   const action = (bundle.corporateActions ?? []).filter((a) => a.kind === "Acquisition" && a.date && Date.parse(a.date) >= now - 2 * 365 * 86_400_000)[0];
-  const news = bundle.news.filter((n) => n.date && !n.solicitation && Date.parse(n.date) >= now - 180 * 86_400_000 && quotableHeadline(n.headline))
+  const news = bundle.news.filter((n) => n.date && !n.solicitation && Date.parse(n.date) >= now - 180 * 86_400_000 && quotableHeadline(n.headline)
+    && !PROMO.test(n.headline) && !isShoppingOrQuote(n.headline, n.url) && !isPersonalLifeNews(n.headline, n.summary, n.url))
     .sort((a, b) => Date.parse(b.date!) - Date.parse(a.date!))[0];
   if (action) parts.push(`It acquired ${action.name} (${action.date}).`);
   else if (news) parts.push(`Most recent coverage: "${quotableHeadline(news.headline)}" (${news.date}).`);

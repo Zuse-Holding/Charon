@@ -4,7 +4,8 @@ import { insiderSelling, saleValue } from "./insiders.js";
 import { addDevelopments, aboutCompany, findGaps, hasCurrentChief, gapQueries, isTotalRaised, mergeGaps, needsFunding, snippetStates, type GapExtraction, type GapSnippet } from "./gap-fill.js";
 import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleOpportunities, mergeRuleRisks, ruleOpportunities, ruleRisks } from "./risk-rules.js";
 import { contractCeilings } from "./contract-ceilings.js";
-import { ownershipFrom, restsOnClosedCases, sameRecordOnce } from "../agents/orchestrator/index.js";
+import { applyEntityType, ownershipFrom, restsOnClosedCases, sameRecordOnce } from "../agents/orchestrator/index.js";
+import { corporateActions } from "./corporate-actions.js";
 import { isValuation } from "./gap-fill.js";
 import { applyProfile, profileFrom, suspiciousFounded } from "./profile-cache.js";
 import { applyCompanyConsistency } from "./consistency.js";
@@ -449,5 +450,47 @@ describe("round 13: what Round 12 got wrong", () => {
 
   it("doesn't turn a participle into a noun phrase", () => {
     assert.equal(whatItDoes("Patagonia", "Founded in 1973, it makes outdoor clothing."), "Patagonia: Founded in 1973, it makes outdoor clothing.");
+  });
+});
+
+describe("round 14: what Round 13 got wrong", () => {
+  it("a nonprofit or listed company names no owner, unless employee-owned", () => {
+    const np = base({ company: { name: "Homeboy Industries", website: "https://homeboyindustries.org" }, ownership: "Owned by Richard Cabral and Jose Arellano",
+      nonprofitFinancials: { url: "https://p", years: [{ year: "2023", revenue: 47.2e6 }] } as any });
+    applyEntityType(np, false);
+    assert.equal(np.ownership, undefined);
+    const pub = base({ company: { name: "Limbach Holdings", stockListing: "NASDAQ: LMB" }, ownership: "Owned by FdG" });
+    applyEntityType(pub, false);
+    assert.equal(pub.ownership, undefined);
+    const esop = base({ company: { name: "Graybar", stockListing: "none" }, ownership: "Employee owned" });
+    applyEntityType(esop, false);
+    assert.equal(esop.ownership, "Employee owned");
+  });
+
+  it("never quotes a sale story in the summary", () => {
+    const bundle = base({ company: { name: "Patagonia", description: "Designs outdoor clothing.", founded: "1973", headquarters: "Ventura, CA" },
+      leadership: [{ name: "Ryan Gellert", title: "CEO" }],
+      news: [{ headline: "Patagonia Is Selling Its Best Active Layers for Way, Way Below Retail", url: "https://gearpatrol.com/x", date: "Oct 23, 2026" },
+        { headline: "Patagonia Sues Trump Over Utah National Monument", url: "https://nytimes.com/y", date: "Sep 24, 2026" }] as any });
+    assert.match(composeSummary(bundle, Date.parse("2026-10-23"))!, /Sues Trump Over Utah National Monument/);
+  });
+
+  it("drops old agency releases and personal-life items from news", () => {
+    const bundle = base({ company: { name: "Patagonia" }, news: [
+      { headline: "Four Patagonia Drug Traffickers Sentenced To Serve A ...", url: "https://www.justice.gov/x", date: "Jul 2, 2013", enforcement: true },
+      { headline: "Did Crumbl's Sawyer Hemsley get TikToker who outed him banned from Grindr ball?", url: "https://out.com/y", date: "Oct 23, 2026" },
+    ] as any });
+    applyCompanyConsistency(bundle, { name: "Patagonia", anchor: {}, aliases: [] } as any);
+    assert.equal(bundle.news.length, 0);
+  });
+
+  it("cuts a garbled acquisition label at the first sentence", () => {
+    const a = corporateActions([{ text: "Limbach acquired Pioneer Power. Limbach Company. 1y", url: "https://x" }], ["Limbach Holdings", "Limbach"]);
+    assert.equal(a[0]?.name, "Pioneer Power");
+  });
+
+  it("calls an earnings-call date or a promotion filler, not an opportunity", () => {
+    assert.ok(isFillerOpportunity("Limbach is scheduled to release its Third Quarter 2026 results and hold a conference call."));
+    assert.ok(isFillerOpportunity("The promotion of Chuck Darway to President indicates leadership stability and potential for strategic direction."));
   });
 });
