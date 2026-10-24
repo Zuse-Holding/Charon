@@ -44,9 +44,22 @@ This is a `claude -p` headless-CLI integration, not the Agent SDK — check
 https://code.claude.com/docs/en/headless and https://code.claude.com/docs/en/mcp before
 changing how `agents/selene.py` invokes `claude` or how `agents/mcp_tools.py` is
 configured; CLI flag names/behavior can shift between versions. Preserve the structure:
-personas, allowlists, gate, job-per-invocation. Also verify: Gmail MCP config (read-only
-scopes for v1 — `run_inbox`/`run_finance` fail loudly until `GMAIL_MCP_URL` is set), CA
-LLC deadline dates against actual filing dates before trusting the seeded values.
+personas, allowlists, gate, job-per-invocation. Also verify: CA LLC deadline dates
+against actual filing dates before trusting the seeded values.
+
+## Gmail + the executor
+- No agent job gets a Gmail tool. `agents/gmail.py` reads mail in plain Python with a
+  `gmail.readonly` token and passes it into the prompt as `<untrusted_email>` data.
+  `run_inbox`/`run_finance` fail loudly until `GMAIL_READ_REFRESH_TOKEN` is set.
+- `agents/gmail_send.py` (separate `gmail.send` token) is imported only by
+  `agents/executor.py`, which runs approved `approval_queue` rows on cron. Nothing the
+  model can reach may import either; `tests/test_executor.py` enforces it.
+- Approve/reject/undo go through `dashboard/app/api/ops/queue` behind the dashboard
+  login (`dashboard/middleware.ts`). The anon key has no update on `approval_queue`.
+- Invoices: `send_invoice` is an approval-queue action. `agents/executor.py` sends it
+  through Stripe with `STRIPE_INVOICE_KEY` (restricted, idempotency key per step);
+  `agents/invoices.py` syncs status with the read-only key and logs payments to the
+  ledger once (`ledger.source_ref`). Full `sk_` keys are refused everywhere.
 
 ## Build order
 Follow spec §7 exactly. Phase 1 (schema + dashboard shell + compliance clock + manual

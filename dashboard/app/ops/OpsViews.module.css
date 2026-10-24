@@ -1,0 +1,332 @@
+/* Shared by the Usage, Memory and Contracts tabs. Same card language as
+   DeadlinesView / ApprovalQueue: surface cards, 2px status edge, mono data. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.subTitle {
+  margin-top: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.empty {
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 8px 0;
+}
+
+.hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.error {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+/* ── Stat tiles ─────────────────────────────────────────── */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.tileLabel {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.tileValue {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tileValue.bad {
+  color: var(--danger);
+}
+
+.tileValue.good {
+  color: var(--ok);
+}
+
+/* ── Tables ─────────────────────────────────────────────── */
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  vertical-align: top;
+}
+
+.table tr:last-child td {
+  border-bottom: 0;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.bad {
+  color: var(--danger);
+}
+
+.good {
+  color: var(--ok);
+}
+
+.warn {
+  color: var(--ember);
+}
+
+/* ── Cards / rows ───────────────────────────────────────── */
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.row.edgeBad {
+  border-left-color: var(--danger);
+}
+
+.row.edgeWarn {
+  border-left-color: var(--ember);
+}
+
+.row.edgeOk {
+  border-left-color: var(--ok);
+}
+
+.row.edgeSelene {
+  border-left-color: var(--selene);
+}
+
+.row.dim {
+  opacity: 0.55;
+}
+
+.rowBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: 13px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.rowMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.rowMeta .mono {
+  font-family: var(--font-mono);
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.logLine {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+/* ── Buttons + forms ────────────────────────────────────── */
+
+.btn {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--selene);
+  color: var(--selene);
+}
+
+.btn.danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btnPrimary {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 0;
+  background: var(--ember);
+  color: #1a0b02;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btnPrimary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field.wide {
+  grid-column: 1 / -1;
+}
+
+.field label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+
+.field input[type="date"],
+.field input[type="number"] {
+  font-family: var(--font-mono);
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: 2px solid var(--selene);
+  outline-offset: 0;
+}
+
+.formActions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

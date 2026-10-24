@@ -1,0 +1,21 @@
+# Selene OS schedule (SELENE_OS_SPEC.md §6). Install on the agent box with:
+#   crontab deploy/crontab
+# after replacing /home/nick/selene-os with where the repo lives there.
+# Times are the box's local time — set it to Pacific first:
+#   sudo timedatectl set-timezone America/Los_Angeles
+SELENE=/home/nick/selene-os/deploy/run-job.sh
+
+# inbox: every 2h, 7am-9pm
+0 7-21/2 * * *   $SELENE inbox
+# enrichment: 30 min after each inbox run, so new leads get picked up
+30 7-21/2 * * *  $SELENE enrichment
+# finance sweep: daily 8pm
+0 20 * * *       $SELENE finance
+# compliance clock: daily 7am, pure code
+0 7 * * *        $SELENE compliance
+# weekly brief: Sunday 6pm
+0 18 * * 0       $SELENE brief
+# executor: carries out what Nick approved, every 2 minutes
+*/2 * * * *      $SELENE executor
+# invoices: pull paid/void status from Stripe, log payments to the ledger
+*/15 * * * *     $SELENE invoices
