@@ -167,7 +167,7 @@ export class ResearchOrchestrator {
     const secOn = secEnabled();
     if (!secOn) for (const id of ["edgar", "formd"]) cov.skip(id, SEC_OFF_REASON);
     const runSec = (name: string) => secOn
-      ? cov.run("edgar", () => new SecFilingsAgent().run(name), secEmpty, (r) => (r.filings ? 1 : 0))
+      ? cov.run("edgar", () => new SecFilingsAgent().run(name, hostOf(queryAnchor.website)), secEmpty, (r) => (r.filings ? 1 : 0))
       : Promise.resolve(secEmpty);
     const secEarly = queryAnchor.nameFromSite ? undefined : runSec(queryName);
     const siteResult = await cov.run("website", () => this.websiteAgent.run(queryName, queryAnchor),
@@ -463,6 +463,7 @@ export class ResearchOrchestrator {
     if (cacheOn && domain) {
       const carried = carryForward(bundle, earlierRuns, domain);
       if (carried.length) console.log(`[profile-cache] "${companyName}": carried from earlier runs: ${carried.join("; ")}`);
+      if (bundle.courtCases?.length) bundle.courtCases = rankCases(bundle.courtCases);
     }
     applyEntityType(bundle, franchisor);
     // Peers searched as a local business turn out to be a listed company's:
@@ -1092,8 +1093,8 @@ export function applySecFilings(bundle: ResearchBundle, sec: SecFilings): void {
   }
   if (!c.headquarters && sec.businessAddress) c.headquarters = sec.businessAddress;
   for (const o of sec.executiveOfficers) {
-    const key = personKey(o.name);
-    const known = bundle.leadership.find((l) => personKey(l.name) === key);
+    // "K. M. Mazzarella" in the 10-K is the listed Kathleen M. Mazzarella (round 17).
+    const known = bundle.leadership.find((l) => samePerson(l.name, o.name));
     if (known) {
       // The 10-K's title is the current one, as filed.
       if (sec.tenKUrl) { known.title = o.title; known.sourceUrl = sec.tenKUrl; known.asOf = sec.tenKDate; }

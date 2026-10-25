@@ -72,13 +72,20 @@ export function composeSummary(bundle: ResearchBundle, now = Date.now()): string
   if (chiefs.length) parts.push(`Led by ${chiefs.map((l) => `${l.name} (${l.title})`).join(" and ")}.`);
 
   // Scale: filed revenue, 990 revenue, the latest rounds, or ownership.
-  const fin = bundle.secFilings?.financials?.filter((y) => y.revenue !== undefined).sort((a, b) => b.year.localeCompare(a.year))[0];
+  // Only a recent fiscal year (round 17: Patagonia's summary gave a 2019
+  // figure from another filer's 10-K).
+  const fin = bundle.secFilings?.financials?.filter((y) => y.revenue !== undefined && Number(y.year) >= new Date(now).getUTCFullYear() - 2)
+    .sort((a, b) => b.year.localeCompare(a.year))[0];
   const np = bundle.nonprofitFinancials?.years?.filter((y) => y.revenue !== undefined).sort((a, b) => b.year.localeCompare(a.year))[0];
   if (fin) parts.push(`Revenue was ${money(fin.revenue!)} in FY${fin.year}.`);
   else if (np) parts.push(`A nonprofit with ${money(np.revenue!)} in revenue (${np.year} Form 990).`);
   else if (bundle.funding.length) {
     // Equity rounds only; a credit line isn't "funding" (round 14: Graybar's "Debt ($750M)").
-    const rounds = bundle.funding.filter((f) => f.round && f.amount && !/\(target\)$/.test(f.round) && !/\b(debt|loan|credit|notes?|bond)\b/i.test(f.round)).slice(0, 2);
+    // Priced rounds, largest-and-latest first; never a Form D line (round 17:
+    // an investor's fund and ACCO's 2010 filing read as "funding on record").
+    const dollars = (a?: string) => { const m = a?.match(/\$\s?([\d.,]+)\s*(B|M|K|billion|million)?/i); if (!m) return 0; const u = (m[2] ?? "").toLowerCase(); return Number(m[1].replace(/,/g, "")) * (u.startsWith("b") ? 1e9 : u.startsWith("m") ? 1e6 : u.startsWith("k") ? 1e3 : 1); };
+    const rounds = bundle.funding.filter((f) => f.round && f.amount && !/^Form D:/.test(f.round) && !/\(target\)$/.test(f.round) && !/\b(debt|loan|credit|notes?|bond)\b/i.test(f.round))
+      .sort((a, b) => dollars(b.amount) - dollars(a.amount)).slice(0, 2);
     const target = bundle.funding.find((f) => /\(target\)$/.test(f.round ?? ""));
     if (rounds.length) parts.push(`Funding on record includes ${rounds.map((f) => `${f.round} (${f.amount}${f.date ? `, ${f.date}` : ""})`).join(" and ")}.`);
     else if (target) parts.push(`It is raising a fund with a ${target.amount} target.`);

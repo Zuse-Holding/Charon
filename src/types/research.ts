@@ -183,6 +183,8 @@ export interface CompetitorEntry {
   name: string;
   note?: string;
   url?: string;
+  /** Brought forward from an earlier run (round 17). */
+  carried?: boolean;
 }
 
 export interface CompetitorAgentResult {

@@ -139,9 +139,10 @@ export function mergeRuleRisks(risks: string[], citations: Record<string, string
     || (r.key === "990" && /\bexpenses?\b/.test(said))
     || (r.key === "closure" && CLOSURE.test(said));
   for (const r of rules) {
-    // A change at the top is worth one over the cap (round 15: Crumbl's six
-    // case risks left its founders' exit as a headline only).
-    if (out.length >= cap && !(r.key === "leadership" && out.length === cap)) continue;
+    // A change at the top is always kept, over the cap (round 15: Crumbl's six
+    // case risks left its founders' exit as a headline only; round 17: the
+    // model gave seven, already over it).
+    if (out.length >= cap && r.key !== "leadership") continue;
     if (covered(r)) continue;
     out.push(r.text);
     cites[r.text] = r.urls;

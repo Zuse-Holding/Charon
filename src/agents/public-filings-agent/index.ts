@@ -35,6 +35,8 @@ export interface CaseRecord {
   /** A bankruptcy case in which the company isn't the debtor: usually a
    *  routine collection or preference matter, not a risk. */
   routine?: boolean;
+  /** Brought forward from an earlier run (round 17). */
+  carried?: boolean;
 }
 
 /**
@@ -184,6 +186,20 @@ export function fundTargets(items: { text: string; url?: string; date?: string }
 /** "Gecko Robotics, Inc." -> "Gecko Robotics". */
 export function bareName(companyName: string): string {
   return companyName.replace(/,?\s+(inc\.?|llc|corp\.?|corporation|co\.?|company|ltd\.?)$/i, "").trim() || companyName;
+}
+
+/**
+ * The Form D's issuer is the company itself, or for a fund sponsor one of
+ * its own funds ("MJW ... Fund, LLC"), never a vehicle that invests in it
+ * (round 17: "HII Gecko Robotics Series I, a Series of Gecko Robotics, LLC"
+ * and "Soma Capital Gecko Robotics SPV, LP" listed as Gecko raises).
+ */
+export function issuerIsCompany(issuer: string, names: string[], prefix?: string): boolean {
+  const key = (n: string) => bareName(n.replace(/\s*\(CIK[^)]*\)/i, "")).toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, " ").trim();
+  if (names.some((n) => n && key(n) === key(issuer))) return true;
+  if (!prefix || prefix.length < 3) return false;
+  const own = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s.*\\b(fund|lp|l\\.p\\.)\\b`, "i");
+  return own.test(issuer) && !/\b(spv|a series of)\b/i.test(issuer);
 }
 
 export function nameVariants(companyName: string): string[] {
@@ -379,8 +395,13 @@ Omit anything not stated. Never estimate.`,
   }
 
   async nlrbCases(companyName: string, names: string[] = []): Promise<{ cases: CaseRecord[]; sources: Source[] }> {
-    const results = await this.searcher.search(`site:nlrb.gov/case "${companyName}"`, 8);
-    const cases = results.map((r) => nlrbCase(r, companyName, names)).filter((c): c is CaseRecord => !!c);
+    // The legal name too: one search by the short name found Graybar's two
+    // cases in one run and none in the next (round 17).
+    const queries = [...new Set([companyName, ...names.filter((n) => n.length > companyName.length)].slice(0, 2))];
+    const batches = await Promise.all(queries.map((q) => this.searcher.search(`site:nlrb.gov/case "${q}"`, 8)));
+    const seen = new Set<string>();
+    const cases = batches.flat().filter((r) => !seen.has(r.url) && !!seen.add(r.url))
+      .map((r) => nlrbCase(r, companyName, names)).filter((c): c is CaseRecord => !!c);
     return { cases, sources: cases.map((c) => source(c.url, `NLRB case ${c.docketNumber}`, "court-records")) };
   }
 
@@ -425,6 +446,7 @@ Omit anything not stated. Never estimate.`,
         const xml = await secText(`${folder}/primary_doc.xml`);
         const d = xml ? parseFormD(xml) : {};
         const issuer = d.issuer ?? s?.display_names?.[0]?.replace(/\s*\(CIK.*$/, "") ?? name;
+        if (!issuerIsCompany(issuer, names, prefix)) { console.log(`[form-d] skipped "${issuer}": not the company as issuer`); continue; }
         funding.push({
           round: `Form D: ${issuer}`,
           amount: d.sold ? `${d.sold} sold${d.offered ? ` of ${d.offered} offered` : ""}` : d.offered ? `${d.offered} offered` : undefined,

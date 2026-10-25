@@ -417,11 +417,11 @@ export class ReportAgent {
         const parts = [y.revenue !== undefined ? `revenue ${money(y.revenue)}` : "", y.netIncome !== undefined ? `net income ${money(y.netIncome)}` : ""].filter(Boolean);
         if (parts.length) lines.push(`- **FY${y.year}:** ${parts.join(" · ")} (see SEC Filings)`);
       }
-      for (const f of bundle.funding) lines.push(fundingLine(f));
+      for (const f of fundingOrder(bundle.funding)) lines.push(fundingLine(f));
     } else if (bundle.funding.length === 0) {
       lines.push(`_No public funding records found._`);
     } else {
-      for (const f of bundle.funding) lines.push(fundingLine(f));
+      for (const f of fundingOrder(bundle.funding)) lines.push(fundingLine(f));
     }
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["funding"]);
@@ -1010,6 +1010,13 @@ export class ReportAgent {
 /** $12,880,000,000 -> "$12.88B". */
 function citeLink(urls: string[] | undefined): string {
   return urls?.length ? ` (${urls.slice(0, 2).map((u, i) => `[source${urls.length > 1 ? ` ${i + 1}` : ""}](${u})`).join(", ")})` : "";
+}
+
+/** Priced rounds first, then Form D filings, each newest first (round 16: carried rounds landed after the Form Ds). */
+export function fundingOrder<T extends { round?: string; date?: string }>(funding: T[]): T[] {
+  const t = (d?: string) => { const x = Date.parse(/^\d{4}$/.test(d ?? "") ? `${d}-07-01` : d ?? ""); return isNaN(x) ? 0 : x; };
+  const formD = (f: T) => /^Form D:/.test(f.round ?? "");
+  return [...funding].sort((a, b) => Number(formD(a)) - Number(formD(b)) || t(b.date) - t(a.date));
 }
 
 function fundingLine(f: { round?: string; amount?: string; date?: string; investors?: string[]; url?: string }): string {
