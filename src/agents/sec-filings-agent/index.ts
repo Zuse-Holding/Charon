@@ -174,16 +174,18 @@ const legalKey = (n: string) => n.toLowerCase().replace(/&/g, " and ").replace(/
  * A filer the site names as itself (round 18: Graybar, employee-owned with
  * no ticker, lost its 10-K data under the website check). Its legal name
  * must be the site's legal name ("Graybar Electric Company" and "GRAYBAR
- * ELECTRIC CO INC") and its business address the site's headquarters city
- * and state (Clayton, MO). A name alone never confirms: Patagonia, Inc. is
- * not Patagonia Gold Corp.
+ * ELECTRIC CO INC") and its business address in the site's headquarters
+ * state. Not the city: the SEC's record can give the mailing city of a
+ * suburb (round 19: Graybar is in Clayton, MO, its filings' city may read
+ * St. Louis). A name alone never confirms: Patagonia, Inc. is not Patagonia
+ * Gold Corp (Buenos Aires).
  */
 export function filerMatchesSite(c: SecCandidate, legalName: string | undefined, headquarters: string | undefined, states: Record<string, string>): boolean {
-  if (!legalName || !headquarters || !c.city || !c.state || legalKey(legalName) !== legalKey(c.name)) return false;
+  if (!legalName || !headquarters || !c.state || legalKey(legalName) !== legalKey(c.name)) return false;
   const parts = headquarters.split(",").map((p) => p.trim().toLowerCase());
   const abbr = (x: string) => Object.entries(states).find(([k, v]) => k.toLowerCase() === x || v.toLowerCase() === x)?.[0].toLowerCase();
   const state = parts.slice(1).map(abbr).find(Boolean);
-  return parts[0] === c.city.toLowerCase() && !!state && state === c.state.toLowerCase();
+  return !!state && state === c.state.toLowerCase();
 }
 
 /** The year a 10-K says the company was incorporated, unless it's the report's own year: a misread (round 18: Limbach "2025, DE"). */

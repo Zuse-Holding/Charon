@@ -16,7 +16,9 @@ describe("round eighteen: Graybar's filer, headquarters, carried facts", () => {
     const graybar = { cik: "205402", name: "GRAYBAR ELECTRIC CO INC", city: "CLAYTON", state: "MO" };
     assert.equal(filerMatchesSite(graybar, "Graybar Electric Company", "Clayton, MO", STATES), true);
     assert.equal(filerMatchesSite(graybar, "Graybar Electric Company, Inc.", "Clayton, Missouri", STATES), true);
-    assert.equal(filerMatchesSite(graybar, "Graybar Electric Company", "St. Louis, MO", STATES), false);
+    // Round 19: the state, not the city (the SEC's record may read St. Louis).
+    assert.equal(filerMatchesSite({ ...graybar, city: "ST LOUIS" }, "Graybar Electric Company", "Clayton, MO", STATES), true);
+    assert.equal(filerMatchesSite(graybar, "Graybar Electric Company", "Chicago, IL", STATES), false);
     assert.equal(filerMatchesSite(graybar, undefined, "Clayton, MO", STATES), false);
     const gold = { cik: "1551206", name: "Patagonia Gold Corp.", city: "BUENOS AIRES", state: "C1" };
     assert.equal(filerMatchesSite(gold, "Patagonia, Inc.", "Ventura, California", STATES), false);
@@ -37,9 +39,9 @@ describe("round eighteen: Graybar's filer, headquarters, carried facts", () => {
     assert.equal(headquartersFromNews([{ headline: "Rival moves headquarters to Austin", date: "Mar 2, 2026" }], "Limbach Holdings"), undefined);
   });
 
-  it("never saves a filing's business address to the profile cache", () => {
-    const rec = profileFrom(bundleOf({ company: { name: "Limbach", headquarters: "Warrendale, PA", headquartersFromFiling: true, founded: "1901", foundedSource: "https://x.example" } }), "limbachinc.com");
-    assert.equal(rec?.headquarters, null);
+  it("saves the headquarters the run settled on", () => {
+    const rec = profileFrom(bundleOf({ company: { name: "Limbach", headquarters: "Tampa, FL", founded: "1901", foundedSource: "https://x.example" } }), "limbachinc.com");
+    assert.equal(rec?.headquarters, "Tampa, FL");
   });
 
   it("carries no SEC officer, and a few recent stories", () => {

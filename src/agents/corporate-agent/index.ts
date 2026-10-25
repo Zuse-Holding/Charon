@@ -11,7 +11,7 @@ import { isValuation } from "../../lib/gap-fill.js";
 import { FundingExtractionSchema, extractStructured } from "../../lib/llm.js";
 import { Form4Agent } from "../form4-agent/index.js";
 import { stockListingFor } from "../website-agent/index.js";
-import { staleParent } from "../../lib/entity-type.js";
+import { isOwnershipNote, parentOnlyInOtherFilings, staleParent } from "../../lib/entity-type.js";
 import { findOverride, isRejectedDomain, appendDomainExclusions } from "../../entity-validation.js";
 
 /**
@@ -200,14 +200,10 @@ export class CorporateAgent {
       }
     }
 
-    if (!ownership) {
-      const ownershipSignal = results.find((r) =>
-        /\b(subsidiary of|owned by|parent company|acquired by)\b/i.test(
-          `${r.title} ${r.snippet ?? ""}`
-        )
-      );
-      ownership = ownershipSignal?.snippet;
-    }
+    // No raw snippet stands in for an ownership note when the model gives
+    // none (round 19: ACCO's summary quoted Argan's filing, "…a wholly owned
+    // subsidiary of Argan) from ACCO Engineered Systems… $663,000"). The
+    // orchestrator's own reading of the site, news and saved profile fills it.
 
     // A parent only old sources name is gone; a ticker of its own means it
     // has none (round 15: Limbach and its 2016 SPAC, 1347 Capital).
@@ -217,6 +213,13 @@ export class CorporateAgent {
       console.log(`[corporate] "${companyName}": dropped ownership note "${ownership}" (only older sources name it)`);
       ownership = undefined;
     }
+    // A parent only another company's SEC filing names is that filer's
+    // business, not this company's (round 19: Argan's 10-K mentions ACCO).
+    if (ownership && parentOnlyInOtherFilings(ownership, read)) {
+      console.log(`[corporate] "${companyName}": dropped ownership note "${ownership}" (only another company's filing names it)`);
+      ownership = undefined;
+    }
+    if (ownership && !isOwnershipNote(ownership)) ownership = undefined;
 
     return {
       funding: cleanFunding(funding),
