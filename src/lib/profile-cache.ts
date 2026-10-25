@@ -101,8 +101,7 @@ export function profileFrom(bundle: ResearchBundle, domain: string, prior?: Comp
     legal_name: c.legalName ?? prior?.legal_name ?? null,
     founded: keepPriorYear ? prior!.founded : (year && foundedSource ? year : prior?.founded ?? null),
     founded_source: keepPriorYear ? prior!.founded_source : (year && foundedSource ? foundedSource : prior?.founded_source ?? null),
-    // Never a filing's business address: it goes stale (Limbach's Warrendale).
-    headquarters: c.headquarters && !c.headquartersUnverified && !c.headquartersFromFiling ? c.headquarters : prior?.headquarters ?? null,
+    headquarters: c.headquarters && !c.headquartersUnverified ? c.headquarters : prior?.headquarters ?? null,
     ownership: bundle.ownership && ownershipSource ? bundle.ownership : prior?.ownership ?? null,
     ownership_source: bundle.ownership && ownershipSource ? ownershipSource : prior?.ownership_source ?? null,
     updated_at: new Date().toISOString(),

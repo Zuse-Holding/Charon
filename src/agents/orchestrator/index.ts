@@ -395,11 +395,20 @@ export class ResearchOrchestrator {
     const savedProfile = cacheOn ? await loadProfile(domain) : undefined;
     const earlierRuns = cacheOn ? await loadEarlierRuns(domain) : [];
     const fromCache = applyProfile(bundle, savedProfile);
-    // A headquarters the site, its listing and the saved profile all missed:
-    // the newest dated relocation story, else the SEC filing's business address.
+    // Headquarters from the newest dated source: a relocation story, then a
+    // recent filing's business address, before the site's undated pages and
+    // the profile saved from them (round 19: Limbach's contact page still
+    // says Warrendale, PA; its SEC record says Tampa, FL).
     const moved = headquartersFromNews(bundle.news, bundle.company.name);
+    // A different state is a move; the same state is a suburb or mailing city
+    // (Graybar: Clayton or St. Louis, MO), and the site's city stands.
+    const stateOf = (hq?: string) => hq?.split(",").slice(1).map((p) => p.trim().toLowerCase())
+      .map((x) => Object.entries(STATES).find(([k, v]) => k.toLowerCase() === x || v.toLowerCase() === x)?.[0]).find(Boolean);
     if (moved && (!sec?.tenKDate || Date.parse(moved.date) > Date.parse(sec.tenKDate))) bundle.company.headquarters = moved.city;
-    else if (!bundle.company.headquarters && sec?.businessAddress) { bundle.company.headquarters = sec.businessAddress; bundle.company.headquartersFromFiling = true; }
+    else if (sec?.businessAddress && (!bundle.company.headquarters || (recentFiling(sec.tenKDate) && stateOf(sec.businessAddress) !== stateOf(bundle.company.headquarters)))) {
+      if (bundle.company.headquarters && bundle.company.headquarters !== sec.businessAddress) console.log(`[headquarters] "${companyName}": ${sec.businessAddress} (SEC, ${sec.tenKDate}) over ${bundle.company.headquarters}`);
+      bundle.company.headquarters = sec.businessAddress;
+    }
     if (fromCache.length) console.log(`[profile-cache] "${companyName}": ${fromCache.join("; ")}`);
     // A company it bought is not a competitor (launch fix 65: Graybar listed
     // Metro Electric Supply, acquired in 2021, in the same report).

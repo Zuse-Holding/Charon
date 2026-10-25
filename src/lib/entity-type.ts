@@ -31,12 +31,35 @@ export function sourceTime(src: { url: string; date?: string }, now = Date.now()
  * merged with in 2016). Stale when every dated source naming the parent is
  * over about two years old; undated sources don't count either way.
  */
+const ownerOf = (note: string) => note.match(/\b(?:of|by)\s+(.+)$/i)?.[1].replace(/[.,;]+$/, "").trim().toLowerCase();
+
 export function staleParent(note: string, sources: { url: string; text: string; date?: string }[], now = Date.now()): boolean {
-  const owner = note.match(/\b(?:of|by)\s+(.+)$/i)?.[1].replace(/[.,;]+$/, "").trim().toLowerCase();
+  const owner = ownerOf(note);
   if (!owner || owner.length < 3) return false;
   const times = sources.filter((s) => s.text.toLowerCase().includes(owner))
     .map((s) => sourceTime(s, now)).filter((t): t is number => t !== undefined);
   return times.length > 0 && Math.max(...times) < now - MAX_PARENT_AGE;
+}
+
+/**
+ * Every source naming the parent is an SEC filing: another filer's report
+ * that mentions this company, not a record of who owns it (round 19:
+ * Argan's 10-K and ACCO).
+ */
+export function parentOnlyInOtherFilings(note: string, sources: { url: string; text: string }[]): boolean {
+  const owner = ownerOf(note);
+  if (!owner || owner.length < 3) return false;
+  const naming = sources.filter((s) => s.text.toLowerCase().includes(owner));
+  return naming.length > 0 && naming.every((s) => /(^|[/.])sec\.gov\//i.test(s.url.replace(/^https?:\/\//, "")));
+}
+
+/**
+ * A short ownership note ("Owned by X", "Subsidiary of X", "Employee-owned"),
+ * never a pasted passage (round 19: ACCO).
+ */
+export function isOwnershipNote(note: string): boolean {
+  return note.length <= 100 && !/\.\.\.|…|\$\d/.test(note)
+    && /^(owned by|(a )?(wholly[- ]owned )?subsidiary of|(a )?division of|part of|employee[- ]owned|privately held by|family[- ]owned)\b/i.test(note.trim());
 }
 
 export function entityTypeOf(input: {

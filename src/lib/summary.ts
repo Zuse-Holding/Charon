@@ -1,5 +1,6 @@
 import type { ResearchBundle } from "../types/research.js";
 import { seniority } from "./leadership.js";
+import { isOwnershipNote } from "./entity-type.js";
 import { isPersonalLifeNews, isShoppingOrQuote } from "./news-noise.js";
 
 // A sale or deal story says nothing about the business (round 13: Patagonia's
@@ -90,7 +91,8 @@ export function composeSummary(bundle: ResearchBundle, now = Date.now()): string
     if (rounds.length) parts.push(`Funding on record includes ${rounds.map((f) => `${f.round} (${f.amount}${f.date ? `, ${f.date}` : ""})`).join(" and ")}.`);
     else if (target) parts.push(`It is raising a fund with a ${target.amount} target.`);
   }
-  if (bundle.ownership) parts.push(`${bundle.ownership.replace(/^Owned by/, "It is owned by")}.`.replace(/\.\.$/, "."));
+  // A short note only, never a pasted passage (round 19: ACCO quoted Argan's filing).
+  if (bundle.ownership && isOwnershipNote(bundle.ownership)) parts.push(`${bundle.ownership.replace(/^Owned by/, "It is owned by")}.`.replace(/\.\.$/, "."));
   if ((c.locations?.length ?? 0) >= 3) parts.push(`It lists ${c.locations!.length} locations, including ${c.locations!.slice(0, 3).join(", ")}.`);
 
   // The latest development: an acquisition, or the newest dated news item.
