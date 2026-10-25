@@ -49,7 +49,10 @@ export function samePerson(a: string, b: string): boolean {
   // Last names one letter apart in six are one spelling slip ("Agadganian"
   // and "Agadjanian"), with the same start to the first name.
   const lastSame = (a: string, b: string) => a === b || (a.length >= 6 && b.length >= 6 && a[0] === b[0] && typoOf(a, b));
-  const match = (x: string[], y: string[]) => lastSame(x[x.length - 1], y[y.length - 1]) && x[0].slice(0, 3) === y[0].slice(0, 3);
+  // An initial matches the name it stands for (round 17: Graybar listed
+  // "Kathleen M. Mazzarella" and the 10-K's "K. M. Mazzarella").
+  const firstSame = (a: string, b: string) => a.slice(0, 3) === b.slice(0, 3) || (a.length === 1 && b.startsWith(a)) || (b.length === 1 && a.startsWith(b));
+  const match = (x: string[], y: string[]) => lastSame(x[x.length - 1], y[y.length - 1]) && firstSame(x[0], y[0]);
   return match(ka, kb) || match(ka, [...kb].reverse());
 }
 

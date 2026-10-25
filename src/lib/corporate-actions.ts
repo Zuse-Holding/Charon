@@ -1,4 +1,5 @@
 import { isNewsNoise } from "./news-noise.js";
+import { sourceTier } from "./source-quality.js";
 /**
  * Acquisitions, subsidiaries and brands a company's news and own pages
  * state (launch fix 80: ChatGPT listed Andersen's Bright Wood and
@@ -20,6 +21,16 @@ const SUFFIX = "(?:,?\\s+(?:Inc\\.?|LLC|Corp\\.?|Corporation|Co\\.?|Company|Hold
 const TRAILING = /\s+(?:of|and|&|by)$/i;
 
 /** @param names The company's name and short names ("Graybar" for Graybar Electric Company). */
+/** A social or forum page: never the record of a deal. */
+export function isSocialSource(url: string): boolean {
+  return /^https?:\/\//i.test(url) && sourceTier(url) === "forum";
+}
+
+/** A deal's date, never a relative one ("4 years ago" is when the post was crawled, not the deal). */
+export function dealDate(date: string | undefined): string | undefined {
+  return date && !/\bago\b|^(today|yesterday)$/i.test(date.trim()) ? date : undefined;
+}
+
 export function corporateActions(items: { text: string; url: string; date?: string }[], names: string[]): CorporateAction[] {
   const cores = [...new Set(names.map((x) => x.replace(/,?\s+(inc\.?|llc|corp\.?|corporation|co\.?|company|ltd\.?)$/i, "").trim()).filter((x) => x.length >= 3))];
   if (!cores.length) return [];
@@ -35,12 +46,14 @@ export function corporateActions(items: { text: string; url: string; date?: stri
     // Never the company itself, and never a bare generic word.
     if (!name || name.split(/\s+/).length > 6 || cores.some((c) => key === c.toLowerCase()) || /^(the|its|a|an|company|business)$/i.test(name) || seen.has(key)) return;
     seen.add(key);
-    out.push({ kind, name, date: it.date, url: it.url });
+    out.push({ kind, name, date: dealDate(it.date), url: it.url });
   };
   for (const it of items) {
     // A social post isn't a record of a deal (round 13: MJW's "Atlanta"
     // acquisition came from a Facebook post).
-    if (/^https?:\/\//i.test(it.url) && isNewsNoise(it.url)) continue;
+    // Nor any social or forum page, on any path (round 17: Limbach's Pioneer
+    // Power from a Facebook post, gap-fill and carried runs included).
+    if (/^https?:\/\//i.test(it.url) && (isNewsNoise(it.url) || isSocialSource(it.url))) continue;
     // "Pioneer Power and 1901 Group" is two.
     for (const m of it.text.matchAll(bought)) for (const part of m[1].split(/\s+and\s+/)) add("Acquisition", part, it);
     for (const m of it.text.matchAll(unit)) add("Subsidiary or brand", m[1], it);

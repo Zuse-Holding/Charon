@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { FundingEntry, LeadershipEntry, ProductEntry, ResearchBundle } from "../types/research.js";
-import type { CorporateAction } from "./corporate-actions.js";
+import type { CompetitorEntry, FundingEntry, LeadershipEntry, ProductEntry, ResearchBundle } from "../types/research.js";
+import type { CaseRecord } from "../agents/public-filings-agent/index.js";
+import { dealDate, isSocialSource, type CorporateAction } from "./corporate-actions.js";
 import { samePerson } from "./leadership.js";
 
 /**
@@ -125,6 +126,8 @@ export interface EarlierRun {
   products?: ProductEntry[] | null;
   funding?: FundingEntry[] | null;
   corporateActions?: CorporateAction[] | null;
+  courtCases?: CaseRecord[] | null;
+  competitors?: CompetitorEntry[] | null;
 }
 
 const CARRY_RUNS = 3;
@@ -140,7 +143,7 @@ export async function loadEarlierRuns(domain: string | undefined, now = Date.now
   if (!db || !domain) return [];
   try {
     const { data, error } = await db.from("research_runs")
-      .select("leadership:bundle->leadership, products:bundle->products, funding:bundle->funding, corporateActions:bundle->corporateActions")
+      .select("leadership:bundle->leadership, products:bundle->products, funding:bundle->funding, corporateActions:bundle->corporateActions, courtCases:bundle->courtCases, competitors:bundle->competitors")
       .eq("status", "completed").ilike("subject", `%· ${domain}`)
       .gte("generated_at", new Date(now - CARRY_DAYS * 86_400_000).toISOString())
       .order("generated_at", { ascending: false }).limit(CARRY_RUNS);
@@ -153,7 +156,7 @@ export async function loadEarlierRuns(domain: string | undefined, now = Date.now
 }
 
 /**
- * Facts an earlier run found and this one missed (leaders, products, rounds, acquisitions), brought forward (round 16:
+ * Facts an earlier run found and this one missed (leaders, products, rounds, acquisitions, dockets, and peers when few), brought forward (round 16:
  * the site's own leaders page gave Homeboy's co-CEO Shirley Torres in 3 of 7
  * runs and MJW's Brian Benson in 2 of 7). Only what a run found itself
  * counts, never what it carried, so nothing outlives its last real sighting
@@ -186,9 +189,26 @@ export function carryForward(bundle: ResearchBundle, runs: EarlierRun[], domain:
       added.push(`${f.round} ${f.amount}`);
     }
     for (const a of run.corporateActions ?? []) {
-      if (a.carried || !a.url || (bundle.corporateActions ?? []).some((x) => x.name.toLowerCase() === a.name.toLowerCase())) continue;
-      bundle.corporateActions = [...(bundle.corporateActions ?? []), { ...a, carried: true }];
+      // Never a social post, and never its relative date (round 17: MJW's "Atlanta, 4 years ago").
+      if (a.carried || !a.url || isSocialSource(a.url) || (bundle.corporateActions ?? []).some((x) => x.name.toLowerCase() === a.name.toLowerCase())) continue;
+      bundle.corporateActions = [...(bundle.corporateActions ?? []), { ...a, date: dealDate(a.date), carried: true }];
       added.push(`${a.kind} ${a.name}`);
+    }
+    // Court and agency dockets don't stop existing between runs (round 17:
+    // Graybar's two NLRB cases in R16, none in R17). Not a suit known only
+    // from a headline.
+    for (const c of run.courtCases ?? []) {
+      if (c.carried || !c.url || c.court === "Reported in the news" || (bundle.courtCases ?? []).some((x) => x.url === c.url)) continue;
+      bundle.courtCases = [...(bundle.courtCases ?? []), { ...c, carried: true }];
+      added.push(`case ${c.docketNumber ?? c.caption}`);
+    }
+    // Peers only when this run found few (round 17: Promise had six, then one).
+    if (bundle.competitors.length < 3) {
+      for (const p of run.competitors ?? []) {
+        if (p.carried || !p.url || isSocialSource(p.url) || bundle.competitors.some((x) => x.name.toLowerCase() === p.name.toLowerCase())) continue;
+        bundle.competitors.push({ ...p, carried: true });
+        added.push(`peer ${p.name}`);
+      }
     }
   }
   return added;

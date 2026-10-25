@@ -144,10 +144,30 @@ export function cikFromBrowse(text: string, companyName: string): string | undef
 
 interface Submissions {
   name?: string;
+  website?: string;
+  investorWebsite?: string;
   stateOfIncorporation?: string;
   addresses?: { business?: { city?: string; stateOrCountry?: string } };
   filings?: { recent?: { form?: string[]; accessionNumber?: string[]; filingDate?: string[]; primaryDocument?: string[]; items?: string[] } };
 }
+
+/**
+ * The filer is the business at this domain (round 17: Patagonia's report
+ * read the 10-K of Patagonia Gold Corp, an Argentine miner, matched by
+ * name). The SEC's own record of its website, or the domain in its 10-K,
+ * which states the company's internet address.
+ */
+export function filerIsDomain(domain: string, sub: Pick<Submissions, "website" | "investorWebsite">, tenKHtml?: string | null): boolean {
+  const d = domain.toLowerCase().replace(/^www\./, "");
+  const host = (u?: string) => { try { return new URL(/^https?:/i.test(u ?? "") ? u! : `https://${u}`).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; } };
+  if ([sub.website, sub.investorWebsite].some((u) => { const h = host(u); return !!h && (h === d || h.endsWith(`.${d}`)); })) return true;
+  return !!tenKHtml && new RegExp(`(^|[^a-z0-9-])${d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9-])`, "i").test(tenKHtml);
+}
+
+// "Latest results" and summary facts come only from recent filings (round
+// 17: Graybar's 2019-2020 results showed as its latest).
+const RECENT_MS = 2 * 365 * 86_400_000;
+export const recentFiling = (date: string | undefined, now = Date.now()) => { const t = Date.parse(date ?? ""); return !isNaN(t) && t >= now - RECENT_MS; };
 
 /** Newest 8-K reporting results (item 2.02): its folder and date. */
 export function latestEarnings8K(sub: Submissions, cik: string): { folder: string; date: string } | undefined {
@@ -329,7 +349,10 @@ export class SecFilingsAgent {
    * with it; the CIK comes from whichever of three lookups answers; and
    * each step logs what it got.
    */
-  async run(companyName: string): Promise<{ filings?: SecFilings; sources: Source[] }> {
+  /** @param domain The business's own website: the CIK must be confirmed
+   *  against it (round 17). Without one, only an exact name on the SEC's
+   *  ticker list counts. */
+  async run(companyName: string, domain?: string): Promise<{ filings?: SecFilings; sources: Source[] }> {
     const deadline = Date.now() + SEC_BUDGET_MS;
     const within = <T>(p: Promise<T>, fallback: T): Promise<T> => {
       const left = deadline - Date.now();
@@ -346,19 +369,29 @@ export class SecFilingsAgent {
     const viaSearch = cikFromSearch(search?.hits?.hits ?? [], companyName);
     const viaBrowse = browse ? cikFromBrowse(browse, companyName) : undefined;
     const viaTickers = tickers ? cikFromTickers(Object.values(tickers), companyName) : undefined;
-    // The ticker list is an exact name-to-CIK table, so it goes first.
-    const cik = viaTickers ?? viaSearch ?? viaBrowse;
     console.log(`[sec-filings] "${companyName}": CIK by full-text ${search ? (viaSearch ?? "none") : "failed"}, by company search ${browse ? (viaBrowse ?? "none") : "failed"}, by ticker list ${tickers ? (viaTickers ?? "none") : "failed"}`);
     // Every lookup refused or failed: an error for the coverage table, never
     // "no filings" (launch fix 54).
     if (!search && !browse && !tickers) throw new Error("SEC EDGAR refused or failed every lookup");
-    if (!cik) return { sources: [] };
 
-    const [sub, facts] = await Promise.all([
-      secJson<Submissions>(`https://data.sec.gov/submissions/CIK${pad(cik)}.json`),
-      secJson<CompanyFacts>(`https://data.sec.gov/api/xbrl/companyfacts/CIK${pad(cik)}.json`),
-    ]);
-    if (!sub) throw new Error(`SEC submissions for CIK ${cik} couldn't be read`);
+    // Each candidate is confirmed before anything is read from it, the ticker
+    // list's exact name first; none confirmed means no SEC data, never
+    // another company's (round 17: Patagonia read Patagonia Gold Corp's 10-K).
+    const candidates = [...new Set([viaTickers, viaSearch, viaBrowse].filter((c): c is string => !!c).map((c) => c.replace(/^0+/, "")))];
+    let found: { cik: string; sub: Submissions; facts: CompanyFacts | null; tenKFiling?: { url: string; date: string }; tenKHtml: string | null } | undefined;
+    for (const cik of candidates) {
+      const [sub, facts] = await Promise.all([
+        secJson<Submissions>(`https://data.sec.gov/submissions/CIK${pad(cik)}.json`),
+        secJson<CompanyFacts>(`https://data.sec.gov/api/xbrl/companyfacts/CIK${pad(cik)}.json`),
+      ]);
+      if (!sub) throw new Error(`SEC submissions for CIK ${cik} couldn't be read`);
+      const tenKFiling = latestFiling(sub, cik, ["10-K", "10-K405"]);
+      const tenKHtml = domain && tenKFiling && !filerIsDomain(domain, sub) ? await within(secText(tenKFiling.url), null) : null;
+      if (domain ? filerIsDomain(domain, sub, tenKHtml) : cik === viaTickers?.replace(/^0+/, "")) { found = { cik, sub, facts, tenKFiling, tenKHtml }; break; }
+      console.log(`[sec-filings] "${companyName}": CIK ${cik} (${sub.name ?? "?"}) not confirmed against ${domain ?? "the ticker list's exact name"}`);
+    }
+    if (!found) return { sources: [] };
+    const { cik, sub, facts, tenKFiling, tenKHtml } = found;
 
     const biz = sub.addresses?.business;
     const filings: SecFilings = {
@@ -367,7 +400,7 @@ export class SecFilingsAgent {
       stateOfIncorporation: sub.stateOfIncorporation || undefined,
       businessAddress: biz?.city ? `${biz.city.replace(/\b\w+/g, (w) => w[0] + w.slice(1).toLowerCase())}${biz.stateOrCountry ? `, ${biz.stateOrCountry}` : ""}` : undefined,
       financials: facts ? fiscalYears(facts) : [],
-      latestQuarter: facts ? latestQuarter(facts) : undefined,
+      latestQuarter: facts ? [latestQuarter(facts)].find((q) => q && recentFiling(q.end)) : undefined,
       riskFactors: [],
       executiveOfficers: [],
     };
@@ -377,9 +410,9 @@ export class SecFilingsAgent {
       sources.push({ url: `https://data.sec.gov/api/xbrl/companyfacts/CIK${pad(cik)}.json`, title: `SEC XBRL financial data — ${filings.name}`, retrievedAt: new Date().toISOString(), usedFor: ["sec-filings"] });
     }
 
-    const tenK = latestFiling(sub, cik, ["10-K", "10-K405"]);
+    const tenK = tenKFiling;
     const proxy = latestFiling(sub, cik, ["DEF 14A", "DEF 14C"]);
-    const release = latestEarnings8K(sub, cik);
+    const release = [latestEarnings8K(sub, cik)].find((r) => r && recentFiling(r.date));
     if (tenK) {
       filings.tenKUrl = tenK.url;
       filings.tenKDate = tenK.date;
@@ -389,7 +422,7 @@ export class SecFilingsAgent {
     // The three reads run side by side, each fetching its document and
     // asking the model once; whatever isn't back by the deadline is left out.
     const readTenK = async () => {
-      const html = tenK ? await secText(tenK.url) : null;
+      const html = tenK ? tenKHtml ?? await secText(tenK.url) : null;
       if (!tenK || !html) return;
       const x = tenKExcerpts(html);
       const input = [
