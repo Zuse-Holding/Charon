@@ -1,6 +1,6 @@
 import { WebsiteAgent, stockListingFor } from "../website-agent/index.js";
 import { NewsAgent } from "../news-agent/index.js";
-import { CompetitorAgent, type PeerProfile } from "../competitor-agent/index.js";
+import { CompetitorAgent, STATES, type PeerProfile } from "../competitor-agent/index.js";
 import { CorporateAgent } from "../corporate-agent/index.js";
 import { PeopleAgent } from "../people-agent/index.js";
 import { ProductAgent } from "../product-agent/index.js";
@@ -21,7 +21,7 @@ import { RelatedEntitiesAgent } from "../related-entities-agent/index.js";
 import { PublicFilingsAgent, caseRole, fundNames, fundTargets, isHealthcare, nameVariants, rankCases, type CaseRecord } from "../public-filings-agent/index.js";
 
 const INVESTMENT_FIRM = /\b(invest\w*|capital|equity|fund|sponsor|asset management|real estate investment|private equity|holdings)\b/i;
-import { SecFilingsAgent, type SecFilings } from "../sec-filings-agent/index.js";
+import { SecFilingsAgent, filerMatchesSite, recentFiling, type SecFilings } from "../sec-filings-agent/index.js";
 import { applyAppointments, applyDepartures, appointmentsFromNews, titlesFromNews, checkFoundersAgainst, cleanLeadership, foundedBy, personKey, samePerson } from "../../lib/leadership.js";
 import { officersFromFilings } from "../../lib/insiders.js";
 import { entityTypeOf } from "../../lib/entity-type.js";
@@ -166,8 +166,8 @@ export class ResearchOrchestrator {
     const secEmpty = { filings: undefined, sources: [] } as Awaited<ReturnType<SecFilingsAgent["run"]>>;
     const secOn = secEnabled();
     if (!secOn) for (const id of ["edgar", "formd"]) cov.skip(id, SEC_OFF_REASON);
-    const runSec = (name: string) => secOn
-      ? cov.run("edgar", () => new SecFilingsAgent().run(name, hostOf(queryAnchor.website)), secEmpty, (r) => (r.filings ? 1 : 0))
+    const runSec = (name: string, cik?: string) => secOn
+      ? cov.run("edgar", () => new SecFilingsAgent().run(name, hostOf(queryAnchor.website), cik), secEmpty, (r) => (r.filings ? 1 : 0))
       : Promise.resolve(secEmpty);
     const secEarly = queryAnchor.nameFromSite ? undefined : runSec(queryName);
     const siteResult = await cov.run("website", () => this.websiteAgent.run(queryName, queryAnchor),
@@ -177,7 +177,20 @@ export class ResearchOrchestrator {
     // anchors every later source (round 2, Fix 1).
     const companyName = siteResult.company.name || queryName;
     const anchor: CompanyAnchor = siteResult.company.anchor ?? queryAnchor;
-    const secResult = await (secEarly ?? runSec(companyName));
+    let secResult = await (secEarly ?? runSec(companyName));
+    // A filer the website check couldn't confirm, whose legal name and
+    // headquarters are the site's own (round 18: Graybar, no ticker and its
+    // domain not found in the filing, lost its 10-K data).
+    // The saved profile fills a legal name or headquarters this read missed.
+    const saved = !secResult.filings && secResult.unconfirmed?.length && isEnabled("fact_cache") && (!siteResult.company.legalName || !siteResult.company.headquarters)
+      ? await loadProfile(hostOf(siteResult.company.website ?? queryAnchor.website)) : undefined;
+    const sameFiler = secResult.filings ? undefined
+      : secResult.unconfirmed?.find((c) => filerMatchesSite(c, siteResult.company.legalName ?? saved?.legal_name ?? undefined,
+        siteResult.company.headquarters ?? saved?.headquarters ?? undefined, STATES));
+    if (sameFiler) {
+      console.log(`[sec-filings] "${companyName}": CIK ${sameFiler.cik} (${sameFiler.name}) confirmed by legal name and headquarters`);
+      secResult = await runSec(companyName, sameFiler.cik);
+    }
     const sec = secResult.filings;
     // A national company (an SEC filer, or one with many locations) isn't
     // tied to its HQ city (launch fixes 22, 23): news needn't name Clayton
@@ -382,6 +395,11 @@ export class ResearchOrchestrator {
     const savedProfile = cacheOn ? await loadProfile(domain) : undefined;
     const earlierRuns = cacheOn ? await loadEarlierRuns(domain) : [];
     const fromCache = applyProfile(bundle, savedProfile);
+    // A headquarters the site, its listing and the saved profile all missed:
+    // the newest dated relocation story, else the SEC filing's business address.
+    const moved = headquartersFromNews(bundle.news, bundle.company.name);
+    if (moved && (!sec?.tenKDate || Date.parse(moved.date) > Date.parse(sec.tenKDate))) bundle.company.headquarters = moved.city;
+    else if (!bundle.company.headquarters && sec?.businessAddress) { bundle.company.headquarters = sec.businessAddress; bundle.company.headquartersFromFiling = true; }
     if (fromCache.length) console.log(`[profile-cache] "${companyName}": ${fromCache.join("; ")}`);
     // A company it bought is not a competitor (launch fix 65: Graybar listed
     // Metro Electric Supply, acquired in 2021, in the same report).
@@ -959,6 +977,20 @@ export function ownershipFrom(items: { text: string; url: string }[], names: str
 }
 
 /**
+ * The newest dated story that the company moved its headquarters, and where
+ * to (round 18: "Limbach Announces Relocation of Corporate Headquarters to
+ * Tampa", Mar 2026, while its 10-K cover still gave Warrendale, PA).
+ */
+export function headquartersFromNews(news: NewsEntry[], name: string): { city: string; date: string } | undefined {
+  const first = name.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`\\b${first}\\b[^.]{0,80}?\\b(?:relocat\\w*|mov\\w*)\\s+(?:of\\s+)?(?:its\\s+|the\\s+company'?s\\s+)?(?:corporate\\s+|global\\s+)?headquarters\\s+(?:from\\s+[^.]{1,40}?\\s+)?to\\s+([A-Z][a-z]+(?:\\s[A-Z][a-z]+)?(?:,\\s+[A-Z][a-zA-Z.]+)?)`, "i");
+  return news.filter((n) => n.date && !isNaN(Date.parse(n.date)))
+    .sort((a, b) => Date.parse(b.date!) - Date.parse(a.date!))
+    .map((n) => ({ m: `${n.headline}. ${n.summary ?? ""}`.match(re), date: n.date! }))
+    .filter((x) => x.m).map((x) => ({ city: x.m![1].trim(), date: x.date }))[0];
+}
+
+/**
  * DOJ, SEC, FTC, EPA, OSHA and DOL items as case records (launch fix 62):
  * "United States v. ACCO Engineered Systems, Inc." is a suit against it.
  */
@@ -1091,8 +1123,11 @@ export function applySecFilings(bundle: ResearchBundle, sec: SecFilings): void {
   if (sec.incorporatedYear || sec.stateOfIncorporation) {
     c.incorporated = [sec.incorporatedYear, sec.stateOfIncorporation].filter(Boolean).join(", ");
   }
-  if (!c.headquarters && sec.businessAddress) c.headquarters = sec.businessAddress;
-  for (const o of sec.executiveOfficers) {
+  // The filing's business address is only a last resort, after the saved
+  // profile (round 18: Limbach's 10-K cover still said Warrendale, PA after
+  // its March 2026 move to Tampa); see the fill after applyProfile.
+  // Officers only from a recent 10-K (round 18: Graybar).
+  for (const o of recentFiling(sec.tenKDate) ? sec.executiveOfficers : []) {
     // "K. M. Mazzarella" in the 10-K is the listed Kathleen M. Mazzarella (round 17).
     const known = bundle.leadership.find((l) => samePerson(l.name, o.name));
     if (known) {

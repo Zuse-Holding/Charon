@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { CompetitorEntry, FundingEntry, LeadershipEntry, ProductEntry, ResearchBundle } from "../types/research.js";
+import type { CompetitorEntry, FundingEntry, LeadershipEntry, NewsEntry, ProductEntry, ResearchBundle } from "../types/research.js";
 import type { CaseRecord } from "../agents/public-filings-agent/index.js";
 import { dealDate, isSocialSource, type CorporateAction } from "./corporate-actions.js";
 import { samePerson } from "./leadership.js";
@@ -101,7 +101,8 @@ export function profileFrom(bundle: ResearchBundle, domain: string, prior?: Comp
     legal_name: c.legalName ?? prior?.legal_name ?? null,
     founded: keepPriorYear ? prior!.founded : (year && foundedSource ? year : prior?.founded ?? null),
     founded_source: keepPriorYear ? prior!.founded_source : (year && foundedSource ? foundedSource : prior?.founded_source ?? null),
-    headquarters: c.headquarters && !c.headquartersUnverified ? c.headquarters : prior?.headquarters ?? null,
+    // Never a filing's business address: it goes stale (Limbach's Warrendale).
+    headquarters: c.headquarters && !c.headquartersUnverified && !c.headquartersFromFiling ? c.headquarters : prior?.headquarters ?? null,
     ownership: bundle.ownership && ownershipSource ? bundle.ownership : prior?.ownership ?? null,
     ownership_source: bundle.ownership && ownershipSource ? ownershipSource : prior?.ownership_source ?? null,
     updated_at: new Date().toISOString(),
@@ -128,9 +129,14 @@ export interface EarlierRun {
   corporateActions?: CorporateAction[] | null;
   courtCases?: CaseRecord[] | null;
   competitors?: CompetitorEntry[] | null;
+  news?: NewsEntry[] | null;
 }
 
-const CARRY_RUNS = 3;
+// Ten runs: the site's own team page gave Homeboy's Torres and MJW's Benson
+// in fewer than half of runs, so three runs back often held no real sighting (round 18).
+const CARRY_RUNS = 10;
+const CARRY_NEWS_DAYS = 60;
+const CARRY_NEWS_MAX = 3;
 const CARRY_DAYS = 30;
 
 /**
@@ -143,7 +149,7 @@ export async function loadEarlierRuns(domain: string | undefined, now = Date.now
   if (!db || !domain) return [];
   try {
     const { data, error } = await db.from("research_runs")
-      .select("leadership:bundle->leadership, products:bundle->products, funding:bundle->funding, corporateActions:bundle->corporateActions, courtCases:bundle->courtCases, competitors:bundle->competitors")
+      .select("leadership:bundle->leadership, products:bundle->products, funding:bundle->funding, corporateActions:bundle->corporateActions, courtCases:bundle->courtCases, competitors:bundle->competitors, news:bundle->news")
       .eq("status", "completed").ilike("subject", `%· ${domain}`)
       .gte("generated_at", new Date(now - CARRY_DAYS * 86_400_000).toISOString())
       .order("generated_at", { ascending: false }).limit(CARRY_RUNS);
@@ -164,13 +170,14 @@ export async function loadEarlierRuns(domain: string | undefined, now = Date.now
  * story name. Runs before the entity type and leadership checks, so they
  * still apply to what's carried. Pure; returns what it added.
  */
-export function carryForward(bundle: ResearchBundle, runs: EarlierRun[], domain: string): string[] {
+export function carryForward(bundle: ResearchBundle, runs: EarlierRun[], domain: string, now = Date.now()): string[] {
   const added: string[] = [];
   const own = (url?: string) => { try { const h = new URL(url ?? "").hostname.replace(/^www\./, ""); return h === domain || h.endsWith(`.${domain}`); } catch { return false; } };
   const roundKey = (f: FundingEntry) => (f.round ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\b(round|funding)\b/g, "").trim();
   for (const run of runs) {
     for (const l of run.leadership ?? []) {
-      if (l.carried || l.lowConfidence || !(own(l.sourceUrl) || l.asOf)) continue;
+      // Never an officer from an SEC filing: the filing is read again each run (round 18: Graybar's 10-K officers).
+      if (l.carried || l.lowConfidence || /[/.]sec\.gov\//i.test(l.sourceUrl ?? "") || !(own(l.sourceUrl) || l.asOf)) continue;
       if (bundle.leadership.some((x) => samePerson(x.name, l.name))) continue;
       bundle.leadership.push({ ...l, carried: true });
       added.push(`${l.name} (${l.title})`);
@@ -202,6 +209,16 @@ export function carryForward(bundle: ResearchBundle, runs: EarlierRun[], domain:
       bundle.courtCases = [...(bundle.courtCases ?? []), { ...c, carried: true }];
       added.push(`case ${c.docketNumber ?? c.caption}`);
     }
+    // Recent dated stories, a few at most (round 18: Limbach's "Schedules
+    // Third Quarter 2026 Results" was in R16 and gone in R18).
+    for (const n of run.news ?? []) {
+      if (added.filter((a) => a.startsWith("news ")).length >= CARRY_NEWS_MAX) break;
+      const t = Date.parse(n.date ?? "");
+      if (n.carried || !n.url || n.solicitation || n.enforcement || isSocialSource(n.url) || isNaN(t) || t < now - CARRY_NEWS_DAYS * 86_400_000) continue;
+      if (bundle.news.some((x) => x.url === n.url || x.headline.toLowerCase() === n.headline.toLowerCase())) continue;
+      bundle.news.push({ ...n, carried: true });
+      added.push(`news ${n.headline}`);
+    }
     // Peers only when this run found few (round 17: Promise had six, then one).
     if (bundle.competitors.length < 3) {
       for (const p of run.competitors ?? []) {
@@ -211,5 +228,8 @@ export function carryForward(bundle: ResearchBundle, runs: EarlierRun[], domain:
       }
     }
   }
+  // Stories newest first again, agency items last.
+  const time = (n: NewsEntry) => { const t = Date.parse(n.date ?? ""); return isNaN(t) ? -Infinity : t; };
+  if (added.some((a) => a.startsWith("news "))) bundle.news.sort((a, b) => Number(!!a.enforcement) - Number(!!b.enforcement) || time(b) - time(a));
   return added;
 }
