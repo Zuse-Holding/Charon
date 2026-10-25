@@ -112,6 +112,8 @@ export interface LeadershipEntry {
   /** Titles a weaker source gives them while the company's own pages
    *  give them to someone else (launch fix 37). */
   disputedTitles?: string[];
+  /** Brought forward from an earlier run (round 16), never counted as found again. */
+  carried?: boolean;
 }
 
 export interface ProductEntry {
@@ -122,6 +124,8 @@ export interface ProductEntry {
   description?: string;
   pricingModel?: string;
   targetCustomer?: string;
+  /** Brought forward from an earlier run (round 16). */
+  carried?: boolean;
 }
 
 export interface NewsEntry {
@@ -148,6 +152,10 @@ export interface FundingEntry {
   /** A search result names this company raising this amount (gap-fill,
    *  round 11): never dropped as out of scale. */
   verified?: boolean;
+  /** The filing or page that states this entry (a Form D's own filing folder). */
+  url?: string;
+  /** Brought forward from an earlier run (round 16). */
+  carried?: boolean;
 }
 
 export interface WebsiteAgentResult {
