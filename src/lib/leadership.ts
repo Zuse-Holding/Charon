@@ -304,6 +304,27 @@ export function appointmentsFromNews(news: { headline: string; summary?: string;
 }
 
 /**
+ * A title the news gives someone already listed, in apposition: "Troy
+ * Demmer, company president and co-founder" (round 16: Gecko listed him as
+ * "Cofounder" only). Never a former title, and never adds a person.
+ */
+export function titlesFromNews(entries: LeadershipEntry[], news: { headline: string; summary?: string; articleText?: string; date?: string; url?: string }[]): LeadershipEntry[] {
+  for (const e of entries) {
+    const name = e.name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`\\b${name},\\s+(?:${ci("the")}\\s+)?(?:(?:${ci("company")}|${ci("its")}|[A-Z][\\w&.'’-]*(?:'s|’s))\\s+)?(${ci("former")}\\s+)?${NEWS_TITLE}`);
+    for (const n of news) {
+      if (!n.date || !n.url) continue;
+      const m = `${n.headline}. ${n.summary ?? ""} ${n.articleText ?? ""}`.match(re);
+      if (!m || m[1]) continue;
+      const title = tidyTitle(m[2]);
+      if (!roles(e.title).some((r) => r.toLowerCase() === title.toLowerCase())) e.title = mergeTitles(e.title, title);
+      break;
+    }
+  }
+  return entries;
+}
+
+/**
  * News appointments joined into the list: a person already listed gets the
  * new title and the news date; anyone else is added.
  */

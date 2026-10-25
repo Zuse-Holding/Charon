@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { ResearchBundle } from "../types/research.js";
+import type { FundingEntry, LeadershipEntry, ProductEntry, ResearchBundle } from "../types/research.js";
+import type { CorporateAction } from "./corporate-actions.js";
+import { samePerson } from "./leadership.js";
 
 /**
  * Verified company profile, kept per domain (round 10). Each run re-derived
@@ -115,4 +117,79 @@ export async function saveProfile(rec: CompanyProfileRecord | undefined): Promis
   } catch (err) {
     console.error("[profile-cache] save failed:", err instanceof Error ? err.message : err);
   }
+}
+
+/** What one earlier report for the site found itself, with sources (round 16). */
+export interface EarlierRun {
+  leadership?: LeadershipEntry[] | null;
+  products?: ProductEntry[] | null;
+  funding?: FundingEntry[] | null;
+  corporateActions?: CorporateAction[] | null;
+}
+
+const CARRY_RUNS = 3;
+const CARRY_DAYS = 30;
+
+/**
+ * The site's last few finished reports, newest first: only the sections
+ * carryForward reads, never the whole bundle. Same flag and client as the
+ * profile cache; fails open.
+ */
+export async function loadEarlierRuns(domain: string | undefined, now = Date.now()): Promise<EarlierRun[]> {
+  const db = domain ? getClient() : null;
+  if (!db || !domain) return [];
+  try {
+    const { data, error } = await db.from("research_runs")
+      .select("leadership:bundle->leadership, products:bundle->products, funding:bundle->funding, corporateActions:bundle->corporateActions")
+      .eq("status", "completed").ilike("subject", `%· ${domain}`)
+      .gte("generated_at", new Date(now - CARRY_DAYS * 86_400_000).toISOString())
+      .order("generated_at", { ascending: false }).limit(CARRY_RUNS);
+    if (error) { console.error("[profile-cache] earlier runs:", error.message); return []; }
+    return (data as EarlierRun[] | null) ?? [];
+  } catch (err) {
+    console.error("[profile-cache] earlier runs failed:", err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+/**
+ * Facts an earlier run found and this one missed (leaders, products, rounds, acquisitions), brought forward (round 16:
+ * the site's own leaders page gave Homeboy's co-CEO Shirley Torres in 3 of 7
+ * runs and MJW's Brian Benson in 2 of 7). Only what a run found itself
+ * counts, never what it carried, so nothing outlives its last real sighting
+ * by more than a few runs; and only leaders the site's own pages or a dated
+ * story name. Runs before the entity type and leadership checks, so they
+ * still apply to what's carried. Pure; returns what it added.
+ */
+export function carryForward(bundle: ResearchBundle, runs: EarlierRun[], domain: string): string[] {
+  const added: string[] = [];
+  const own = (url?: string) => { try { const h = new URL(url ?? "").hostname.replace(/^www\./, ""); return h === domain || h.endsWith(`.${domain}`); } catch { return false; } };
+  const roundKey = (f: FundingEntry) => (f.round ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\b(round|funding)\b/g, "").trim();
+  for (const run of runs) {
+    for (const l of run.leadership ?? []) {
+      if (l.carried || l.lowConfidence || !(own(l.sourceUrl) || l.asOf)) continue;
+      if (bundle.leadership.some((x) => samePerson(x.name, l.name))) continue;
+      bundle.leadership.push({ ...l, carried: true });
+      added.push(`${l.name} (${l.title})`);
+    }
+    // What it offers, from its own pages (MJW listed 1 to 5 products run to run).
+    for (const p of run.products ?? []) {
+      if (p.carried || !own(p.sourceUrl) || bundle.products.some((x) => x.name.toLowerCase() === p.name.toLowerCase())) continue;
+      bundle.products.push({ ...p, carried: true });
+      added.push(`product ${p.name}`);
+    }
+    for (const f of run.funding ?? []) {
+      // Form D comes from the SEC each run; a fund target is the site's own claim.
+      if (f.carried || !f.round || !f.amount || /^Form D:|\(target\)$/.test(f.round)) continue;
+      if (bundle.funding.some((x) => roundKey(x) === roundKey(f))) continue;
+      bundle.funding.push({ ...f, carried: true });
+      added.push(`${f.round} ${f.amount}`);
+    }
+    for (const a of run.corporateActions ?? []) {
+      if (a.carried || !a.url || (bundle.corporateActions ?? []).some((x) => x.name.toLowerCase() === a.name.toLowerCase())) continue;
+      bundle.corporateActions = [...(bundle.corporateActions ?? []), { ...a, carried: true }];
+      added.push(`${a.kind} ${a.name}`);
+    }
+  }
+  return added;
 }

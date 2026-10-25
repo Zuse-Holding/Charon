@@ -11,6 +11,8 @@ export interface CorporateAction {
   name: string;
   date?: string;
   url: string;
+  /** Brought forward from an earlier run (round 16). */
+  carried?: boolean;
 }
 
 const NAME = "([A-Z0-9][\\w&'’.-]*(?:\\s+(?:[A-Z0-9][\\w&'’.-]*|of|and|&|by)){0,5})";

@@ -22,7 +22,7 @@ import { PublicFilingsAgent, caseRole, fundNames, fundTargets, isHealthcare, nam
 
 const INVESTMENT_FIRM = /\b(invest\w*|capital|equity|fund|sponsor|asset management|real estate investment|private equity|holdings)\b/i;
 import { SecFilingsAgent, type SecFilings } from "../sec-filings-agent/index.js";
-import { applyAppointments, applyDepartures, appointmentsFromNews, checkFoundersAgainst, cleanLeadership, foundedBy, personKey, samePerson } from "../../lib/leadership.js";
+import { applyAppointments, applyDepartures, appointmentsFromNews, titlesFromNews, checkFoundersAgainst, cleanLeadership, foundedBy, personKey, samePerson } from "../../lib/leadership.js";
 import { officersFromFilings } from "../../lib/insiders.js";
 import { entityTypeOf } from "../../lib/entity-type.js";
 import { strongNameMatch } from "../../lib/name-match.js";
@@ -61,8 +61,8 @@ import { SEC_OFF_REASON, secEnabled } from "../../lib/sec-http.js";
 import { lookupStatewideExecutive } from "../../database/statewide-executives.js";
 import { fillGaps } from "../../lib/gap-fill.js";
 import { composeSummary } from "../../lib/summary.js";
-import { applyProfile, loadProfile, profileFrom, saveProfile, suspiciousFounded } from "../../lib/profile-cache.js";
-import { aboutNamesake, isFillerOpportunity, isNonRisk, isSaleRisk, isTabloidRisk, mergeRuleOpportunities, mergeRuleRisks, ruleOpportunities, ruleRisks } from "../../lib/risk-rules.js";
+import { applyProfile, carryForward, loadEarlierRuns, loadProfile, profileFrom, saveProfile, suspiciousFounded } from "../../lib/profile-cache.js";
+import { aboutNamesake, isFillerOpportunity, isNonRisk, isOfferingRisk, isSaleRisk, isTabloidRisk, mergeRuleOpportunities, mergeRuleRisks, ruleOpportunities, ruleRisks } from "../../lib/risk-rules.js";
 
 /**
  * Research Orchestrator
@@ -380,6 +380,7 @@ export class ResearchOrchestrator {
     // Saved, sourced basics from earlier runs (round 10).
     const cacheOn = isEnabled("fact_cache") && !!domain;
     const savedProfile = cacheOn ? await loadProfile(domain) : undefined;
+    const earlierRuns = cacheOn ? await loadEarlierRuns(domain) : [];
     const fromCache = applyProfile(bundle, savedProfile);
     if (fromCache.length) console.log(`[profile-cache] "${companyName}": ${fromCache.join("; ")}`);
     // A company it bought is not a competitor (launch fix 65: Graybar listed
@@ -457,6 +458,12 @@ export class ResearchOrchestrator {
     // NASDAQ: LMB, read as a subsidiary of 1347 Capital).
     bundle.company.stockListing ??= corporateResult.stockListing
       ?? bundle.news.map((n) => stockListingFor(`${n.headline}. ${n.summary ?? ""}`, [companyName, ...entityNames])).find(Boolean);
+    // Leaders, rounds and acquisitions an earlier run found and this one
+    // missed; the checks below still apply to them (round 16).
+    if (cacheOn && domain) {
+      const carried = carryForward(bundle, earlierRuns, domain);
+      if (carried.length) console.log(`[profile-cache] "${companyName}": carried from earlier runs: ${carried.join("; ")}`);
+    }
     applyEntityType(bundle, franchisor);
     // Peers searched as a local business turn out to be a listed company's:
     // search again by industry and scale (round 15: Limbach's peers were
@@ -494,7 +501,7 @@ export class ResearchOrchestrator {
     if (appointed.length) console.log(`[leadership] "${companyName}": ${appointed.map((a) => `${a.name} (${a.title})`).join(", ")} from news`);
     // Officers the insider filings name (launch fix 83: Limbach's CFO).
     const filers = officersFromFilings(bundle.insiderActivity ?? []).filter((o) => !bundle.leadership.some((l) => samePerson(l.name, o.name)));
-    bundle.leadership = cleanLeadership(applyAppointments([...bundle.leadership, ...filers], appointed), subject.domain, national);
+    bundle.leadership = cleanLeadership(applyAppointments(titlesFromNews([...bundle.leadership, ...filers], bundle.news), appointed), subject.domain, national);
     bundle.leadership = checkFoundersAgainst(bundle.leadership, foundedBy([
       bundle.company.description ?? "", sec?.description ?? "",
       ...bundle.leadership.map((l) => l.bio ?? ""), ...bundle.news.map((n) => `${n.headline}. ${n.summary ?? ""}`),
@@ -532,7 +539,7 @@ export class ResearchOrchestrator {
     if (synthesis) {
       // Personal-life items and discount sales are never risks; restated
       // offerings, praise and the namesake region are never opportunities (round 10).
-      bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts).filter((r) => !isTabloidRisk(r) && !isSaleRisk(r) && !isNonRisk(r)
+      bundle.risks = plausibleAnalysis(synthesis.risks, bundle, synthesis.facts).filter((r) => !isTabloidRisk(r) && !isSaleRisk(r) && !isNonRisk(r) && !isOfferingRisk(r)
         && !restsOnClosedCases(synthesis.citations[r] ?? [], bundle.courtCases ?? []));
       bundle.opportunities = sameRecordOnce(plausibleAnalysis(synthesis.opportunities, bundle, synthesis.facts).filter((o) => !isFillerOpportunity(o) && !aboutNamesake(o, nameSet)), synthesis.citations);
       console.log(`[synthesis] "${companyName}": ${bundle.risks.length} risk(s), ${bundle.opportunities.length} opportunit(ies) after the consistency check`);

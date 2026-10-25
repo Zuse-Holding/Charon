@@ -429,6 +429,7 @@ Omit anything not stated. Never estimate.`,
           round: `Form D: ${issuer}`,
           amount: d.sold ? `${d.sold} sold${d.offered ? ` of ${d.offered} offered` : ""}` : d.offered ? `${d.offered} offered` : undefined,
           date: s?.file_date,
+          url: `${folder}/`,
         });
         sources.push(source(`${folder}/`, `SEC Form D — ${issuer}${s?.file_date ? ` (${s.file_date})` : ""}`, "funding"));
       }

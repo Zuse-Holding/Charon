@@ -184,6 +184,15 @@ export function aboutNamesake(text: string, names: string[]): boolean {
 // most recent property acquisition mentioned" (MJW, round 11) names nothing.
 const ADVERSE = /\b(defendant|lawsuit|suit|case|charge[ds]?|enforcement|violation|penalt|fine[ds]?|settle|investigat|fell|falls?|fall(ing)?|declin|drop|los(s|ses|t|ing)|sold|selling|clos(e|ed|es|ing|ure)|shutter|layoff|bankrupt|default|debt|lien|recall|depend|concentrat|relian|reliance|lean(s)? on|exposure|risk|uncertain|delay|dispute|turnover|resign|depart|exit|down|weak|slow|pressure|squeeze|shortfall|deficit|negative|warn|cut|terminat|lapse|expir|unverified|outdated|no longer|failed|fail)\w*/i;
 
+/**
+ * A Form D that sold less than it offered (round 16: Gecko's top risk was
+ * "$9,126,888 sold of $9,133,300 offered"). The offered amount is a ceiling
+ * the company registers, not a target it missed.
+ */
+export function isOfferingRisk(text: string): boolean {
+  return /\bForm D\b/i.test(text) && /\b(sold|offered|not (all|fully)|unsold|under-?subscrib\w*|shortfall|fell short|secured)\b/i.test(text);
+}
+
 export function isNonRisk(text: string): boolean {
   return !ADVERSE.test(text);
 }

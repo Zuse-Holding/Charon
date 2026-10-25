@@ -1012,8 +1012,8 @@ function citeLink(urls: string[] | undefined): string {
   return urls?.length ? ` (${urls.slice(0, 2).map((u, i) => `[source${urls.length > 1 ? ` ${i + 1}` : ""}](${u})`).join(", ")})` : "";
 }
 
-function fundingLine(f: { round?: string; amount?: string; date?: string; investors?: string[] }): string {
-  return `- ${f.round ?? "Round"}: ${f.amount ?? "Undisclosed"}${f.date ? ` (${f.date})` : ""}${f.investors?.length ? ` — ${f.investors.join(", ")}` : ""}`;
+function fundingLine(f: { round?: string; amount?: string; date?: string; investors?: string[]; url?: string }): string {
+  return `- ${f.round ?? "Round"}: ${f.amount ?? "Undisclosed"}${f.date ? ` (${f.date})` : ""}${f.investors?.length ? ` — ${f.investors.join(", ")}` : ""}${f.url ? ` ([filing](${f.url}))` : ""}`;
 }
 
 export function money(n: number): string {

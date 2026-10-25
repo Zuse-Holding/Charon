@@ -107,7 +107,8 @@ export function lockedFacts(bundle: ResearchBundle): Fact[] {
   }
   const fundingSource = bundle.sources.find((s) => s.usedFor.includes("funding"))?.url;
   for (const f of bundle.funding) {
-    facts.push({ text: `Funding: ${[f.round, f.amount, f.date, f.investors?.join(", ")].filter(Boolean).join(", ")}`, url: fundingSource, when: f.date, kind: "funding" });
+    // Each Form D cites its own filing (round 16: a 2019 filing's risk linked the 2025 one).
+    facts.push({ text: `Funding: ${[f.round, f.amount, f.date, f.investors?.join(", ")].filter(Boolean).join(", ")}`, url: f.url ?? fundingSource, when: f.date, kind: "funding" });
   }
   // A plaintiff firm's "investigation" release is routine after a share-
   // price drop and never a risk on its own (launch fix 46).
@@ -389,6 +390,7 @@ RULES — these are non-negotiable:
 - Order risks by how much they matter now: an open case against the company, a recent filing or financial decline first; a case the company brought, or an old closed one, last or not at all.
 - Every risk must name something specific to this business from the facts: a location, a person, a contract, a filing, a figure, a date, a named competitor. Never a risk any company has ("faces competition from larger companies", "economic downturns", "regulatory changes").
 - A funding round more than 18 months old is history, never a current opportunity.
+- A Form D that sold less than it offered is routine, never a risk: the offered amount is a ceiling the company registers, not a target it missed.
 - An opportunity is ahead of the business: an expansion under way, a contract vehicle with room left under its ceiling, a new market, a campaign in progress. A past federal award, grant or round is history, never an opportunity, and never call a past grant "scheduled".
 - Connect facts instead of listing them: related cases filed together are one risk; a "Case pattern" or "trend" fact beats several single facts. Say what changed and by how much.
 - State case status and the company's side exactly as the facts give them. A suit the company brought is never a risk.

@@ -72,10 +72,12 @@ export function pageYears(html: string): NonprofitYear[] {
   for (const p of parts) {
     const year = p.match(/^Fiscal year ending\s+(?:[A-Z][a-z]{2,8}\.?\s+(?:\d{1,2},?\s+)?)?(\d{4})/i)?.[1];
     const block = p.slice(0, 3000);
-    const num = (label: RegExp) => dollars(block.match(new RegExp(`${label.source}\\s*\\$?\\s*(-?[\\d,]{4,})`, "i"))?.[1]);
-    const revenue = num(/Total Revenue/);
+    const num = (label: RegExp) => dollars(block.match(new RegExp(`(?:${label.source})\\s*\\$?\\s*(-?[\\d,]{4,})`, "i"))?.[1]);
+    // The page now reads "Revenue $46,951,306 Expenses $41,682,660" (round
+    // 15: Homeboy's 2024 return was on the page but never read).
+    const revenue = num(/(?:Total )?Revenue/);
     if (!year || revenue === undefined || out.some((y) => y.year === year)) continue;
-    out.push({ year, revenue, expenses: num(/Total Functional Expenses|Total Expenses/), assets: num(/Total Assets/),
+    out.push({ year, revenue, expenses: num(/Total Functional Expenses|(?:Total )?Expenses/), assets: num(/Total Assets/),
       contributions: num(/Contributions(?:,? Gifts,? Grants)?|Contributions Received/) });
   }
   return out;
