@@ -68,7 +68,8 @@ describe("SEC filings, parsed (launch fix 19)", () => {
     applySecFilings(bundle, sec);
     assert.equal(bundle.company.founded, "1869");
     assert.equal(bundle.company.incorporated, "1925, NY");
-    assert.equal(bundle.company.headquarters, "Clayton, MO");
+    // The filing's business address is a last resort after the saved profile, set later (round 18).
+    assert.equal(bundle.company.headquarters, undefined);
     assert.equal(bundle.leadership[0].title, "Chairman, President and Chief Executive Officer");
     const md = new ReportAgent().generate(bundle);
     assert.match(md, /## SEC Filings[\s\S]*FY2025:\*\* revenue \$12\.88B · gross margin 19\.3%[\s\S]*FY2024[\s\S]*20\.1%/);

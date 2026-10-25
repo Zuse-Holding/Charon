@@ -52,6 +52,8 @@ export interface CompanyProfile {
   headquarters?: string;
   /** headquarters is the location the user typed, not found in any source. */
   headquartersUnverified?: boolean;
+  /** Headquarters came from an SEC filing's business address: never saved to the profile cache (round 18). */
+  headquartersFromFiling?: boolean;
   industry?: string;
   /** What kind of business, naming its peers' role too ("commercial
    *  mechanical contractor"). Drives the competitor search (launch fix 3). */
@@ -142,6 +144,8 @@ export interface NewsEntry {
   solicitation?: boolean;
   /** From a government enforcement site: DOJ, SEC, FTC, EPA, OSHA (launch fix 62). */
   enforcement?: boolean;
+  /** Brought forward from an earlier run (round 18). */
+  carried?: boolean;
 }
 
 export interface FundingEntry {

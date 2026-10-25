@@ -164,6 +164,34 @@ export function filerIsDomain(domain: string, sub: Pick<Submissions, "website" |
   return !!tenKHtml && new RegExp(`(^|[^a-z0-9-])${d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9-])`, "i").test(tenKHtml);
 }
 
+/** A filer the website check couldn't confirm, for the caller to check against the site. */
+export interface SecCandidate { cik: string; name: string; city?: string; state?: string }
+
+const LEGAL_SUFFIX = /\b(inc|incorporated|co|company|corp|corporation|llc|ltd|plc)\b\.?/g;
+const legalKey = (n: string) => n.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9\s]/g, " ").replace(LEGAL_SUFFIX, " ").replace(/\s+/g, " ").trim();
+
+/**
+ * A filer the site names as itself (round 18: Graybar, employee-owned with
+ * no ticker, lost its 10-K data under the website check). Its legal name
+ * must be the site's legal name ("Graybar Electric Company" and "GRAYBAR
+ * ELECTRIC CO INC") and its business address the site's headquarters city
+ * and state (Clayton, MO). A name alone never confirms: Patagonia, Inc. is
+ * not Patagonia Gold Corp.
+ */
+export function filerMatchesSite(c: SecCandidate, legalName: string | undefined, headquarters: string | undefined, states: Record<string, string>): boolean {
+  if (!legalName || !headquarters || !c.city || !c.state || legalKey(legalName) !== legalKey(c.name)) return false;
+  const parts = headquarters.split(",").map((p) => p.trim().toLowerCase());
+  const abbr = (x: string) => Object.entries(states).find(([k, v]) => k.toLowerCase() === x || v.toLowerCase() === x)?.[0].toLowerCase();
+  const state = parts.slice(1).map(abbr).find(Boolean);
+  return parts[0] === c.city.toLowerCase() && !!state && state === c.state.toLowerCase();
+}
+
+/** The year a 10-K says the company was incorporated, unless it's the report's own year: a misread (round 18: Limbach "2025, DE"). */
+export function plausibleIncorporated(year: string | undefined, tenKDate: string): string | undefined {
+  const filed = Number(tenKDate.slice(0, 4));
+  return year && Number(year) < filed - 1 ? year : undefined;
+}
+
 // "Latest results" and summary facts come only from recent filings (round
 // 17: Graybar's 2019-2020 results showed as its latest).
 const RECENT_MS = 2 * 365 * 86_400_000;
@@ -352,7 +380,7 @@ export class SecFilingsAgent {
   /** @param domain The business's own website: the CIK must be confirmed
    *  against it (round 17). Without one, only an exact name on the SEC's
    *  ticker list counts. */
-  async run(companyName: string, domain?: string): Promise<{ filings?: SecFilings; sources: Source[] }> {
+  async run(companyName: string, domain?: string, confirmedCik?: string): Promise<{ filings?: SecFilings; sources: Source[]; unconfirmed?: SecCandidate[] }> {
     const deadline = Date.now() + SEC_BUDGET_MS;
     const within = <T>(p: Promise<T>, fallback: T): Promise<T> => {
       const left = deadline - Date.now();
@@ -377,7 +405,10 @@ export class SecFilingsAgent {
     // Each candidate is confirmed before anything is read from it, the ticker
     // list's exact name first; none confirmed means no SEC data, never
     // another company's (round 17: Patagonia read Patagonia Gold Corp's 10-K).
-    const candidates = [...new Set([viaTickers, viaSearch, viaBrowse].filter((c): c is string => !!c).map((c) => c.replace(/^0+/, "")))];
+    // A CIK the caller already confirmed (by legal name and headquarters) is read as is.
+    const candidates = confirmedCik ? [confirmedCik.replace(/^0+/, "")]
+      : [...new Set([viaTickers, viaSearch, viaBrowse].filter((c): c is string => !!c).map((c) => c.replace(/^0+/, "")))];
+    const unconfirmed: SecCandidate[] = [];
     let found: { cik: string; sub: Submissions; facts: CompanyFacts | null; tenKFiling?: { url: string; date: string }; tenKHtml: string | null } | undefined;
     for (const cik of candidates) {
       const [sub, facts] = await Promise.all([
@@ -386,11 +417,13 @@ export class SecFilingsAgent {
       ]);
       if (!sub) throw new Error(`SEC submissions for CIK ${cik} couldn't be read`);
       const tenKFiling = latestFiling(sub, cik, ["10-K", "10-K405"]);
-      const tenKHtml = domain && tenKFiling && !filerIsDomain(domain, sub) ? await within(secText(tenKFiling.url), null) : null;
-      if (domain ? filerIsDomain(domain, sub, tenKHtml) : cik === viaTickers?.replace(/^0+/, "")) { found = { cik, sub, facts, tenKFiling, tenKHtml }; break; }
+      const tenKHtml = !confirmedCik && domain && tenKFiling && !filerIsDomain(domain, sub) ? await within(secText(tenKFiling.url), null) : null;
+      if (confirmedCik || (domain ? filerIsDomain(domain, sub, tenKHtml) : cik === viaTickers?.replace(/^0+/, ""))) { found = { cik, sub, facts, tenKFiling, tenKHtml }; break; }
+      const biz = sub.addresses?.business;
+      unconfirmed.push({ cik, name: sub.name ?? "", city: biz?.city, state: biz?.stateOrCountry });
       console.log(`[sec-filings] "${companyName}": CIK ${cik} (${sub.name ?? "?"}) not confirmed against ${domain ?? "the ticker list's exact name"}`);
     }
-    if (!found) return { sources: [] };
+    if (!found) return { sources: [], unconfirmed };
     const { cik, sub, facts, tenKFiling, tenKHtml } = found;
 
     const biz = sub.addresses?.business;
@@ -440,7 +473,7 @@ Only what the excerpts state. Omit a field the excerpts don't give.`,
         input, TenKExtractionSchema);
       if (r) {
         Object.assign(filings, {
-          description: r.description, founded: r.founded, incorporatedYear: r.incorporatedYear, employees: r.employees,
+          description: r.description, founded: r.founded, incorporatedYear: plausibleIncorporated(r.incorporatedYear, tenK.date), employees: r.employees,
           riskFactors: r.riskFactors.slice(0, 8), legalProceedings: r.legalProceedings, executiveOfficers: r.executiveOfficers,
           competitors: r.competitors.slice(0, 10),
         });
