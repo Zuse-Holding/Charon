@@ -32,7 +32,10 @@ export default function Hub() {
 
       <section className={styles.products} aria-label="Products">
         <article className={styles.card}>
-          <div className={styles.eyebrow}>Metis Intelligence</div>
+          <div className={styles.cardHead}>
+            <div className={styles.eyebrow}>Metis Intelligence</div>
+            <span className={styles.status}>Live</span>
+          </div>
           <h2 className={styles.cardTitle}>Research a company, a person or a product</h2>
           <p className={styles.cardBody}>
             Seven agents work on it at the same time, covering the website, news, competitors, corporate filings,
@@ -45,7 +48,10 @@ export default function Hub() {
         </article>
 
         <article className={styles.card}>
-          <div className={styles.eyebrow}>Metis Diligence</div>
+          <div className={styles.cardHead}>
+            <div className={styles.eyebrow}>Metis Diligence</div>
+            <span className={styles.status}>Invite-only pilot</span>
+          </div>
           <h2 className={styles.cardTitle}>Red-team a CIM before you sign the LOI</h2>
           <p className={styles.cardBody}>
             Upload the CIM, the P&amp;Ls and the tax returns. Four AI analysts check the seller&apos;s numbers against the
@@ -58,7 +64,10 @@ export default function Hub() {
         </article>
 
         <article className={styles.card}>
-          <div className={styles.eyebrow}>Metis Committee</div>
+          <div className={styles.cardHead}>
+            <div className={styles.eyebrow}>Metis Committee</div>
+            <span className={styles.status}>Free · paper trading</span>
+          </div>
           <h2 className={styles.cardTitle}>Watch five AI analysts argue a stock call, then see it graded</h2>
           <p className={styles.cardBody}>
             Each trading day, five AI analysts (value, growth, macro, risk and technical) debate a stock and a chairman
