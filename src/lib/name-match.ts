@@ -17,7 +17,8 @@ const GENERIC = new Set(["investment", "investments", "holding", "holdings", "gr
   "management", "foundation", "fund", "trust", "america", "american", "usa", "us", "national", "systems", "technologies",
   "technology", "company", "companies", "organization", "inc"]);
 
-const tokens = (name: string) => name.toLowerCase()
+/** A name's words, legal forms dropped ("Bank of America Corp" -> bank, america). */
+export const nameWords = (name: string) => name.toLowerCase()
   .replace(/&/g, " and ")
   .replace(/['’]s\b/g, "")
   .replace(/[^a-z0-9]+/g, " ")
@@ -26,7 +27,7 @@ const tokens = (name: string) => name.toLowerCase()
 
 /** Words that set this name apart; the generic ones if there's nothing else. */
 export function distinctiveWords(name: string): string[] {
-  const all = tokens(name);
+  const all = nameWords(name);
   const own = all.filter((t) => !GENERIC.has(t));
   return own.length ? own : all;
 }
@@ -59,8 +60,8 @@ const DIVISION = new Set(["facility", "facilities", "services", "service", "comp
  */
 export function nameOrDivision(candidate: string, subject: string): boolean {
   const b = distinctiveWords(subject);
-  const own = tokens(subject);
-  const all = tokens(candidate);
+  const own = nameWords(subject);
+  const all = nameWords(candidate);
   if (!b.length || !b.every((y) => all.some((x) => same(x, y)))) return false;
   // The bare core with a legal form ("Homeboy Corporation") is another
   // entity when the subject's name goes on ("Homeboy Industries"), except
@@ -110,8 +111,8 @@ function editDistance(a: string, b: string): number {
  * within one edit per five letters, ignoring case, spacing and legal forms.
  */
 export function typoOf(typed: string, real: string): boolean {
-  const a = tokens(typed).join("");
-  const b = tokens(real).join("");
+  const a = nameWords(typed).join("");
+  const b = nameWords(real).join("");
   if (!a || !b || a === b) return false;
   return editDistance(a, b) <= Math.max(1, Math.floor(Math.max(a.length, b.length) / 5));
 }

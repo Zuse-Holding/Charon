@@ -10,6 +10,7 @@ import { extractRoleAndCompany, splitSentences } from "../../lib/nlp.js";
 import { PersonExtractionSchema, extractStructured } from "../../lib/llm.js";
 import { isNewsNoise, isUsableHeadline, mentionsPerson } from "../../lib/news-noise.js";
 import { mentionsAffiliation } from "../../lib/entities/affiliation.js";
+import { applyRoleChange, personNews, roleFromNews, summaryFromSnippet } from "../../lib/person-checks.js";
 
 // Placeholder employers the extractor sometimes fills in ("Actor at
 // Various") instead of leaving the field out.
@@ -220,23 +221,19 @@ RULES:
           }
         }
 
-        if (
-          !person.summary &&
-          r.snippet
-            ?.toLowerCase()
-            .includes(personName.toLowerCase().split(" ")[0])
-        ) {
-          const s = r.snippet.trim();
-          person.summary = s.length <= 500 ? s : s.slice(0, 500).replace(/[^.!?]*$/, "").trim();
-        }
+        // One whole sentence that names this person, never the pasted
+        // snippet (round 20, as ACCO's summary quoting Argan's 10-K).
+        if (!person.summary) person.summary = summaryFromSnippet(r.snippet, personName);
       }
     }
 
-    const news: NewsEntry[] = newsResults.map((r) => ({
-      headline: r.title,
-      summary: r.snippet,
-      url: r.url,
-    }));
+    // Dated and newest first, as company news is (round 20).
+    const news: NewsEntry[] = personNews(newsResults, personName);
+
+    // Bio pages carry no dates: a dated appointment or departure from the
+    // last two years is the newest word on the current role.
+    const changed = applyRoleChange({ person, careerHistory }, roleFromNews(news, personName));
+    if (changed) console.log(`[people-agent] "${personName}": ${changed}`);
 
     return { person, careerHistory, news, sources };
   }

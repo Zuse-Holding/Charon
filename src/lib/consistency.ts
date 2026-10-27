@@ -4,6 +4,7 @@ import { mentionsCompany, normalizeWords, isPersonalLifeNews } from "./news-nois
 import { newsAboutSubject, tiedToSubject, type SubjectRecord } from "./entities/subject.js";
 import { isCitable } from "./source-quality.js";
 import { insiderSelling } from "./insiders.js";
+import { personAnchors, tiedToPerson } from "./person-checks.js";
 
 /**
  * Consistency and plausibility pass, run on a company bundle before
@@ -229,11 +230,25 @@ export function plausibleAnalysis(items: string[], bundle: ResearchBundle, locke
   });
 }
 
-/** Person bundles: news and filings must name the person (and affiliation). */
+/**
+ * Person bundles: a record found by the name alone is the person's only
+ * when it also names an organization they're tied to (round 20, the
+ * company rule that a name never confirms an SEC filer). Officer records
+ * and power-map entries need the affiliation, current or past employer.
+ * Sanctions screening is left whole: a missed match costs more than a
+ * similar name, and it has its own name-and-country test.
+ */
 export function applyPersonConsistency(bundle: PersonResearchBundle): void {
-  const aff = bundle.person.affiliation?.toLowerCase();
-  if (aff && bundle.powerMapConnections) {
-    bundle.powerMapConnections = bundle.powerMapConnections.filter((p) => (p.blurb ?? "").toLowerCase().includes(aff));
-    if (bundle.powerMapConnections.length === 0) bundle.powerMapConnections = undefined;
+  const anchors = personAnchors(bundle);
+  const aff = bundle.person.affiliation;
+  if (bundle.corporateAffiliations) {
+    const kept = bundle.corporateAffiliations.filter((a) => tiedToPerson(a.companyName, anchors, aff));
+    const dropped = bundle.corporateAffiliations.length - kept.length;
+    if (dropped) console.log(`[consistency] "${bundle.person.name}": ${dropped} officer record(s) dropped, no tie to ${anchors.join(", ") || "a known employer"}`);
+    bundle.corporateAffiliations = kept.length ? kept : undefined;
+  }
+  if (bundle.powerMapConnections) {
+    const kept = bundle.powerMapConnections.filter((p) => tiedToPerson(p.blurb ?? "", anchors, aff));
+    bundle.powerMapConnections = kept.length ? kept : undefined;
   }
 }
