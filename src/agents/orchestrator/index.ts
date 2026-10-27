@@ -54,6 +54,7 @@ import {
 import { classifyOfficeType } from "../../lib/office-classifier.js";
 import { isEnabled } from "../../lib/flags.js";
 import { buildCompanyProvenance, buildPersonProvenance, type BuiltProvenance } from "../../lib/provenance/build.js";
+import { findPersonPhoto } from "../../lib/wikimedia-photo.js";
 import { recordSnapshots, type Snapshot } from "../../lib/provenance/snapshots.js";
 import { CoverageRecorder, type ProgressListener } from "../../lib/coverage/recorder.js";
 import { corporateActions } from "../../lib/corporate-actions.js";
@@ -665,7 +666,7 @@ export class ResearchOrchestrator {
   }> {
     if (!deep) for (const id of ["opencorporates", "muckrock"]) cov.skip(id, "Searched automatically on the Charon plan.");
     if (!proAccess) for (const id of ["sanctions", "nonprofits", "littlesis"]) cov.skip(id, "Included with Pro.");
-    const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult] = await Promise.all([
+    const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult, photo] = await Promise.all([
       cov.run("people", () => this.peopleAgent.run(personName, deep, affiliation),
         { person: { name: personName }, careerHistory: [], news: [], sources: [] },
         (r) => r.careerHistory.length + r.news.length + (r.person.currentRole ? 1 : 0)),
@@ -685,6 +686,8 @@ export class ResearchOrchestrator {
         ? cov.run("littlesis", () => this.littleSisAgent.run(personName, "person", deep),
           { matches: [], relationships: [], sources: [] }, (r) => r.matches.length)
         : Promise.resolve({ matches: [], relationships: [], sources: [] }),
+      // Every plan: it only confirms who the report is about.
+      cov.run("wikimedia_photo", () => findPersonPhoto(personName, { affiliation }), null, (r) => (r ? 1 : 0)),
     ]);
 
     const bundle: PersonResearchBundle = {
@@ -705,6 +708,7 @@ export class ResearchOrchestrator {
       sanctionsRuledOut: "ruledOut" in sanctionsResult && sanctionsResult.ruledOut ? sanctionsResult.ruledOut : undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,
+      photo: photo ?? undefined,
     };
 
     applyPersonConsistency(bundle);

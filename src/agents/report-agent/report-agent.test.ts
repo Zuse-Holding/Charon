@@ -49,3 +49,30 @@ describe("report footer", () => {
     for (const [, render] of reports) assert.doesNotMatch(render(), /offshore leaks|ICIJ/i);
   });
 });
+
+describe("person photo", () => {
+  const agent = new ReportAgent();
+  const photo = {
+    imageUrl: "https://upload.wikimedia.org/thumb/x.jpg", filePageUrl: "https://commons.wikimedia.org/wiki/File:X.jpg",
+    wikipediaUrl: "https://en.wikipedia.org/wiki/Jane_Doe", wikipediaTitle: "Jane Doe", wikidataId: "Q1",
+    description: "American executive (born 1970)", artist: "A. Photographer", license: "CC BY 4.0",
+    licenseUrl: "https://creativecommons.org/licenses/by/4.0",
+  };
+
+  it("shows the photo with its Wikipedia link and Commons credit, before About", () => {
+    const md = agent.generatePerson({ ...person, photo });
+    assert.ok(md.includes("## Photo\n![Jane Doe](https://upload.wikimedia.org/thumb/x.jpg)"));
+    assert.ok(md.includes("- **Wikipedia:** [Jane Doe](https://en.wikipedia.org/wiki/Jane_Doe) — American executive (born 1970)"));
+    assert.ok(md.includes("- **Photo:** A. Photographer, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0), via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:X.jpg)"));
+    assert.ok(md.indexOf("## Photo") < md.indexOf("## About"));
+  });
+
+  it("parentheses in Commons URLs don't break the links", () => {
+    const md = agent.generatePerson({ ...person, photo: { ...photo, filePageUrl: "https://commons.wikimedia.org/wiki/File:Jane_(cropped).jpg" } });
+    assert.ok(md.includes("via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Jane_%28cropped%29.jpg)"));
+  });
+
+  it("no Photo section without a photo", () => {
+    assert.ok(!agent.generatePerson(person).includes("## Photo"));
+  });
+});

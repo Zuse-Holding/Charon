@@ -589,8 +589,43 @@ function getPlainText(content: string[]): string {
     .trim();
 }
 
+/** "[text](https://...)" links inside a line become anchors; only https URLs. */
+function renderInlineLinks(text: string) {
+  const parts: React.ReactNode[] = [];
+  const re = /\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(<a key={m.index} href={m[2]} target="_blank" rel="noopener noreferrer">{m[1]}</a>);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+// Wikipedia photo of a public figure (report-agent's "## Photo"): the image,
+// then the Wikipedia link and the Commons credit the license requires.
+function PhotoSection({ content }: { content: string[] }) {
+  const img = content.map((l) => l.match(/^!\[(.*?)\]\((https:\/\/[^)\s]+)\)/)).find(Boolean);
+  if (!img) return null;
+  const facts = parseListItems(content).map((item) => item.replace(/^\*\*(.+?):\*\*\s*/, ""));
+  return (
+    <figure className={styles.photo}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- remote Commons thumbnail, sized by Wikimedia */}
+      <img src={img[2]} alt={`Wikipedia photo of ${img[1]}`} className={styles.photoImg} referrerPolicy="no-referrer" />
+      <figcaption className={styles.photoCaption}>
+        {facts.map((f, i) => <div key={i}>{renderInlineLinks(f)}</div>)}
+        <div className={styles.photoCheck}>Check this is the person you meant.</div>
+      </figcaption>
+    </figure>
+  );
+}
+
 function renderSection(section: Section, onRetry?: () => void) {
   const { title, content } = section;
+
+  if (title === "Photo") return <PhotoSection content={content} />;
 
   if (title === PROVENANCE_TITLE) return <ProvenanceSection content={content} />;
   if (title === COVERAGE_TITLE) return <CoverageSection content={content} onRetry={onRetry} />;
