@@ -322,6 +322,10 @@ export interface PersonAgentResult {
   companyNewsOrg?: string;
   /** The person's own Form 4 filings at a listed employer. */
   insiderTrades?: Form4Entry[];
+  /** Another person the sources name as this organization's CEO. */
+  officerConflicts?: { org: string; ceo: string }[];
+  /** The web search didn't finish: role, career and news are missing. */
+  incomplete?: boolean;
 }
 
 export interface PersonResearchBundle {
@@ -337,6 +341,9 @@ export interface PersonResearchBundle {
   companyNews?: NewsEntry[];
   companyNewsOrg?: string;
   insiderTrades?: Form4Entry[];
+  officerConflicts?: { org: string; ceo: string }[];
+  /** The web search failed or ran out of time: the report says so up top. */
+  incomplete?: boolean;
   // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess).
   sanctionsMatches?: SanctionsMatch[];
   /** The Consolidated Screening List couldn't be checked on this run. */

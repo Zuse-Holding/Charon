@@ -229,3 +229,107 @@ export async function secPersonExcerpts(personName: string, org: string): Promis
 export function sourceOf(url: string, title: string, usedFor: string): Source {
   return { url, title, retrievedAt: new Date().toISOString(), usedFor: [usedFor] };
 }
+
+/** The value, or the fallback once `ms` pass: an optional step never sinks the report. */
+export async function within<T>(p: Promise<T>, ms: number, fallback: T, label?: string): Promise<T> {
+  if (ms <= 0) return fallback;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      if (label) console.warn(`[people-agent] ${label}: no answer in ${Math.round(ms / 1000)}s, going on without it`);
+      resolve(fallback);
+    }, ms);
+  });
+  try {
+    return await Promise.race([p.catch(() => fallback), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// A seat on a board, not an operating job ("Non-Executive Chair", "Director").
+const BOARD_TITLE = /\b(non-?executive|independent|lead) (chair\w*|director)\b|\bboard (member|of directors|chair\w*)\b|^(director|trustee|chair(man|woman|person)?)$/i;
+
+const sameOrg = (a: string | undefined, b: string | undefined) => !!a && !!b && (namesOrg(a, b) || namesOrg(b, a));
+
+/**
+ * The picked organization sets the current role (Oct 28 handoff:
+ * Mazzarella's report led with WM's non-executive chair, not Graybar). Its
+ * newest open role in the career history wins over any other company; a
+ * board seat elsewhere never stands as the current role.
+ */
+export function anchorCurrentRole(person: PersonProfile, careerHistory: CareerEntry[], org: string): string | undefined {
+  if (sameOrg(person.currentCompany, org)) return undefined;
+  const open = careerHistory.find((c) => sameOrg(c.company, org) && c.current !== false && !c.end && !BOARD_TITLE.test(c.title));
+  const was = person.currentRole ? `${person.currentRole}, ${person.currentCompany ?? "?"}` : undefined;
+  if (open) {
+    person.currentRole = open.title;
+    person.currentCompany = open.company;
+    return `current role ${open.title}, ${open.company} (the picked organization) over ${was ?? "none"}`;
+  }
+  if (person.currentRole && BOARD_TITLE.test(person.currentRole)) {
+    delete person.currentRole;
+    person.currentCompany = org;
+    return `${was} is a board seat, not the current role; current company ${org}`;
+  }
+  return undefined;
+}
+
+const SCHOOL_WORD = /\b(university|college|institute|school|academy|polytechnic|conservatory|seminary)\b/i;
+
+/**
+ * Education kept only when a source tied to this person and their
+ * organization names the school near the person's name (Oct 28 handoff: a
+ * namesake's "GCSEs and A-levels, Edwards School" in Loosararian's report).
+ * A degree the source doesn't word that way is dropped and the school kept
+ * (Grove City's "B.A.Sc." for a B.S. in Electrical Engineering).
+ */
+export function verifyEducation(education: string, tied: string[], personName: string): string | undefined {
+  const last = surnameOf(personName);
+  const near = tied.flatMap((t) => {
+    const out: string[] = [];
+    for (const m of t.matchAll(new RegExp(`\\b${last}\\b`, "gi"))) out.push(t.slice(Math.max(0, m.index! - 800), m.index! + 800));
+    return out;
+  });
+  const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const kept: string[] = [];
+  for (const entry of education.split(/\s*;\s*/).filter(Boolean)) {
+    const parts = entry.split(/\s*,\s*/);
+    const schoolAt = parts.findIndex((p) => SCHOOL_WORD.test(p));
+    const school = schoolAt >= 0 ? parts[schoolAt] : parts[parts.length - 1];
+    const initials = distinctiveWords(school).map((w) => w[0]).join("");
+    const window = near.find((w) => namesOrg(w, school) || (initials.length >= 3 && new RegExp(`\\b${initials}\\b`, "i").test(w)));
+    if (!window) continue;
+    // Degree and year only as the source words them.
+    const worded = parts.filter((p) => p !== school && squash(window).includes(squash(p)));
+    kept.push([...worded, school].join(", "));
+  }
+  return kept.length ? kept.join("; ") : undefined;
+}
+
+/**
+ * Someone else the sources name as the organization's CEO ("Thomas Vozzo,
+ * CEO of Homeboy Industries"): the person's own "CEO" title there conflicts.
+ */
+export function otherCeoOf(texts: string[], org: string, personName: string): string | undefined {
+  const NAME = "([A-Z][a-z]+(?: [A-Z]\\.)? [A-Z][a-zA-Z'’-]+)";
+  const ORG = distinctiveWords(org).length ? org.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
+  if (!ORG) return undefined;
+  const CEO = "(?:CEO|chief executive(?: officer)?)";
+  const patterns = [
+    new RegExp(`${NAME},? (?:the |its )?(?:president and )?${CEO} of ${ORG}`, "i"),
+    new RegExp(`${ORG}(?:['’]s)? (?:president and )?${CEO},? ${NAME}`, "i"),
+  ];
+  const last = surnameOf(personName);
+  for (const t of texts) for (const re of patterns) {
+    const name = t.match(re)?.[1];
+    if (name && !words(name).has(last)) return name;
+  }
+  return undefined;
+}
+
+/** "Founder and CEO" -> "Founder" when another person is the CEO; "" when nothing is left. */
+export function withoutCeo(title: string): string {
+  return title.replace(/\s*(?:,|and|&)?\s*\b(?:CEO|chief executive(?: officer)?)\b\s*(?:,|and|&)?\s*/gi, " ")
+    .replace(/\s+/g, " ").replace(/^(and|&|,)\s+|\s+(and|&|,)$/gi, "").trim();
+}

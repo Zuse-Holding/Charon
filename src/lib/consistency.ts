@@ -1,11 +1,11 @@
-import type { PersonResearchBundle, ResearchBundle } from "../types/research.js";
+import type { CorporateAffiliationEntry, PersonResearchBundle, ResearchBundle } from "../types/research.js";
 import { cityOf } from "./closure.js";
 import { mentionsCompany, normalizeWords, isPersonalLifeNews } from "./news-noise.js";
 import { newsAboutSubject, tiedToSubject, type SubjectRecord } from "./entities/subject.js";
 import { isCitable } from "./source-quality.js";
 import { insiderSelling } from "./insiders.js";
-import { personAnchors, tiedToPerson } from "./person-checks.js";
-import { nameWords } from "./name-match.js";
+import { namesOrg, personAnchors, tiedToPerson } from "./person-checks.js";
+import { withoutCeo } from "./person-sources.js";
 
 /**
  * Consistency and plausibility pass, run on a company bundle before
@@ -243,13 +243,25 @@ export function applyPersonConsistency(bundle: PersonResearchBundle): void {
   const anchors = personAnchors(bundle);
   const aff = bundle.person.affiliation;
   if (bundle.corporateAffiliations) {
-    // One row per company and position: officer records repeat across
-    // filings (Oct 27 handoff, fix 8).
-    const seen = new Set<string>();
-    const unique = bundle.corporateAffiliations.filter((a) => {
-      const key = `${nameWords(a.companyName).join(" ")}|${(a.position ?? "").trim().toLowerCase()}`;
-      return !seen.has(key) && !!seen.add(key);
+    // One row per organization (Oct 28 handoff: Homeboy four times, as
+    // Founder and CEO, Founder and Executive Director, Founder, Executive
+    // Director). An open record beats an ended one, then the newest start;
+    // with no dates, the fullest title. A CEO title is dropped where the
+    // sources name someone else as that organization's CEO.
+    const conflicts = bundle.officerConflicts ?? [];
+    const rows = bundle.corporateAffiliations.flatMap((a) => {
+      if (!a.position || !conflicts.some((c) => namesOrg(a.companyName, c.org) || namesOrg(c.org, a.companyName))) return [a];
+      const position = withoutCeo(a.position);
+      return position ? [{ ...a, position }] : [];
     });
+    const better = (x: CorporateAffiliationEntry, y: CorporateAffiliationEntry) =>
+      (!x.endDate !== !y.endDate ? !x.endDate : (x.startDate ?? "") !== (y.startDate ?? "") ? (x.startDate ?? "") > (y.startDate ?? "") : (x.position ?? "").length > (y.position ?? "").length);
+    const unique: CorporateAffiliationEntry[] = [];
+    for (const a of rows) {
+      const i = unique.findIndex((u) => namesOrg(u.companyName, a.companyName) || namesOrg(a.companyName, u.companyName));
+      if (i < 0) unique.push(a);
+      else if (better(a, unique[i])) unique[i] = a;
+    }
     const kept = unique.filter((a) => tiedToPerson(a.companyName, anchors, aff));
     const dropped = unique.length - kept.length;
     if (dropped) console.log(`[consistency] "${bundle.person.name}": ${dropped} officer record(s) dropped, no tie to ${anchors.join(", ") || "a known employer"}`);

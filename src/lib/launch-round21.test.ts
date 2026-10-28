@@ -110,7 +110,7 @@ describe("round twenty-one: person search from the Oct 27 handoff", () => {
     assert.match(out.announcedDeparture!, /May 2026/);
   });
 
-  it("officer records repeat across filings: one row each", () => {
+  it("officer records repeat across filings: one row per organization (Oct 28)", () => {
     const bundle = personOf({
       person: { name: "Jane Doe", currentCompany: "Acme Robotics" },
       corporateAffiliations: [
@@ -120,7 +120,7 @@ describe("round twenty-one: person search from the Oct 27 handoff", () => {
       ],
     });
     applyPersonConsistency(bundle);
-    assert.equal(bundle.corporateAffiliations?.length, 2);
+    assert.equal(bundle.corporateAffiliations?.length, 1);
   });
 
   it("the picker lists one match per organization", async () => {

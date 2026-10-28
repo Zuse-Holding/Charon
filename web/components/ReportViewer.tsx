@@ -651,7 +651,8 @@ function renderSection(section: Section, onRetry?: () => void) {
           const clean = (s: string) => s.replace(/\*\*/g, "").trim();
           const name  = match ? clean(match[1]) : clean(main);
           const role = match ? clean(match[2]) : "";
-          const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+          // Letters only: "Co-founder & CEO" was "C&".
+          const initials = name.split(" ").filter(w => /^[A-Za-z]/.test(w)).map(w => w[0]).join("").slice(0, 2).toUpperCase();
           return (
             <div key={i} className={styles.personCard}>
               <div className={styles.avatar}>{initials}</div>
@@ -866,7 +867,7 @@ function ReportGlance({ sections }: { sections: Section[] }) {
 
 /** Closed or dissolved status (report-agent's "Status" section): a banner
  *  directly under the title, never buried in Risks. */
-function StatusBanner({ section }: { section: Section }) {
+function StatusBanner({ section, onRetry }: { section: Section; onRetry?: () => void }) {
   // One banner per line: closed status, a critical check that didn't run.
   const lines = section.content.filter((l) => l.trim());
   return (
@@ -881,6 +882,7 @@ function StatusBanner({ section }: { section: Section }) {
           <div key={i} className={styles.statusBanner} role="alert">
             {text}
             {href && <> <a href={href} target="_blank" rel="noopener noreferrer">{/Check it by hand/.test(line) ? "Check it by hand" : "See the source"}</a></>}
+            {onRetry && /Results are incomplete/.test(line) && <> <button type="button" className={styles.provCsv} onClick={onRetry}>Run this report again</button></>}
           </div>
         );
       })}
@@ -912,7 +914,7 @@ export default function ReportViewer({ markdown, onRetry, kind }: ReportViewerPr
             : `! Metis doesn't record a source for every finding in ${kind} reports yet. Treat anything without a linked source as unverified.`}
         </div>
       )}
-      {status && <StatusBanner section={status} />}
+      {status && <StatusBanner section={status} onRetry={onRetry} />}
       <ReportGlance sections={sections} />
       {sections.map((section, i) => {
         const { body, sourceLines, unverified } = splitOutSources(section.content);

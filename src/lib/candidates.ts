@@ -182,7 +182,8 @@ export function orgFromTitle(title: string, personName: string): string | undefi
     if (isRoleTitle(part)) continue;
     // Payroll and directory titles: "Real Estate Ofcr 4", "2022".
     if (/\d/.test(part) || /\b(ofcr|officer|analyst|specialist|assistant|coordinator|admin\w*|clerk|technician)\b/i.test(part)) continue;
-    return part;
+    // "Patagonia." made the report's heading "Patagonia. News" (Oct 28 handoff).
+    return part.replace(/[.,;:]+$/, "");
   }
   return undefined;
 }

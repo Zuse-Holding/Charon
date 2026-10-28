@@ -527,6 +527,13 @@ export class ReportAgent {
       lines.push(`*Searched with affiliation: ${bundle.person.affiliation}*`);
     }
     lines.push(``);
+    // A failed web search is said up top, never left to read as a
+    // complete report with nothing in it (Oct 28 handoff).
+    if (bundle.incomplete) {
+      lines.push(`## Status`);
+      lines.push(`**Results are incomplete.** The web search didn't finish, so the summary, current role, career and news are missing. Run this report again.`);
+      lines.push(``);
+    }
 
     lines.push(`## About`);
     lines.push(
@@ -566,6 +573,8 @@ export class ReportAgent {
       lines.push(`- **Company:** ${bundle.person.currentCompany}`);
     } else if (bundle.person.currentRole) {
       lines.push(`- **Role:** ${bundle.person.currentRole}`);
+    } else if (bundle.person.currentCompany) {
+      lines.push(`- **Company:** ${bundle.person.currentCompany}`);
     } else {
       lines.push(`_No current role data collected in this pass._`);
     }

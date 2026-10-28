@@ -44,6 +44,7 @@ import {
   CompanyAnchor,
   CreatorResearchBundle,
   NewsEntry,
+  PersonAgentResult,
   PersonResearchBundle,
   PoliticalResearchBundle,
   ProductResearchBundle,
@@ -656,6 +657,7 @@ export class ResearchOrchestrator {
       this.gatherPerson(personName, deep, affiliation, proAccess, cov));
     const { bundle, littleSisRelationships } = value;
     bundle.coverage = cov.result();
+    reconcilePersonCoverage(bundle);
     const stored = attachProvenance(bundle, snapshots, buildPersonProvenance);
     const report = this.reportAgent.generatePerson(bundle);
     return { bundle, report, littleSisRelationships, snapshots: stored };
@@ -671,9 +673,15 @@ export class ResearchOrchestrator {
     cov.skip("muckrock", "Not searched automatically: MuckRock blocks automated requests.");
     if (!proAccess) for (const id of ["nonprofits", "littlesis"]) cov.skip(id, "Included with Pro.");
     const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult] = await Promise.all([
-      cov.run("people", () => this.peopleAgent.run(personName, deep, affiliation),
-        { person: { name: personName }, careerHistory: [], news: [], sources: [] },
-        (r) => r.careerHistory.length + r.news.length + (r.person.currentRole ? 1 : 0)),
+      // A failed or timed-out web search leaves the report marked
+      // incomplete, never blank as if complete (Oct 28 handoff).
+      cov.run<PersonAgentResult>("people", () => this.peopleAgent.run(personName, deep, affiliation),
+        { person: { name: personName }, careerHistory: [], news: [], sources: [], incomplete: true },
+        (r) => r.careerHistory.length + r.news.length + (r.person.currentRole ? 1 : 0))
+        .catch((err): PersonAgentResult => {
+          console.warn(`[people] "${personName}" failed:`, err instanceof Error ? err.message : err);
+          return { person: { name: personName }, careerHistory: [], news: [], sources: [], incomplete: true };
+        }),
       deep
         ? cov.run("opencorporates", () => this.openCorporatesAgent.run(personName), { affiliations: [], sources: [] }, (r) => r.affiliations.length)
         : Promise.resolve({ affiliations: [], sources: [] }),
@@ -705,6 +713,8 @@ export class ResearchOrchestrator {
       companyNews: result.companyNews,
       companyNewsOrg: result.companyNewsOrg,
       insiderTrades: result.insiderTrades,
+      officerConflicts: result.officerConflicts,
+      incomplete: result.incomplete,
       sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
       sanctionsUnavailable: sanctionsResult.unavailable || undefined,
       sanctionsScreened: !sanctionsResult.unavailable || undefined,
@@ -1160,4 +1170,24 @@ function hostname(url: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A source marked "Results" must show at least one finding (Oct 28
+ * handoff: OpenCorporates and LittleSis said "1 result" on McCann's
+ * report, and neither section appeared). Records dropped for naming no
+ * organization this person is tied to are counted as such, not as results.
+ */
+export function reconcilePersonCoverage(bundle: PersonResearchBundle): void {
+  const kept: Record<string, number> = {
+    opencorporates: bundle.corporateAffiliations?.length ?? 0,
+    littlesis: bundle.powerMapConnections?.length ?? 0,
+  };
+  bundle.coverage = bundle.coverage?.map((e) => {
+    if (!(e.id in kept) || e.status !== "results" || !e.count || kept[e.id] >= e.count) return e;
+    if (kept[e.id] > 0) return { ...e, count: kept[e.id] };
+    const anchor = bundle.person.affiliation ?? bundle.person.currentCompany;
+    return { ...e, status: "no_results", count: undefined, section: undefined,
+      reason: `${e.count} record${e.count === 1 ? "" : "s"} found under this name, none tied to ${anchor ?? "a known employer"}.` };
+  });
 }

@@ -109,7 +109,7 @@ export function newsDate(searchDate: string | undefined, url: string, now = new 
 // A place that shares the company's name (round 15: Patagonia's news led
 // with "Patagonia's New 231-Mile Lodge-to-Lodge Trek", and AI data centers
 // in glacier-strewn Patagonia).
-const PLACE_WORDS = /\b(trek\w*|hik(e|es|ing)|glacier\w*|lodge-to-lodge|itinerar\w+|travel\w*|trips?|tourism|tourists?|cruises?|expeditions?|national park|wildlife|penguins?|whales?|region|province|data cent(er|re)s?)\b/i;
+const PLACE_WORDS = /\b(trek\w*|hik(e|es|ing)|glacier\w*|lodge-to-lodge|itinerar\w+|travel\w*|trips?|tourism|tourists?|cruises?|expeditions?|national park|wildlife|penguins?|whales?|region|province|data cent(er|re)s?|wildfires?|forest fires?|burn(s|ing|ed)?|drought|floods?|earthquakes?|milei|argentin\w*|austerity)\b/i;
 const BUSINESS_WORDS = /\b(ceo|founder|company|brand|retailer|maker|apparel|clothing|jackets?|gear|stores?|employees|workers|sues|sued|lawsuit|acquires|acquisition|earnings|revenue|sales?|launch\w*|appoints|names|campaign|donat\w+|repair)\b/i;
 
 /** The headline is about a place named like the company, not the company. */
