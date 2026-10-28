@@ -28,26 +28,41 @@ const pathOf = (url: string) => { try { return new URL(url).pathname.toLowerCase
 const BIO_PATH = /\/(leadership|team|our-team|about|about-us|who-we-are|people|our-people|bios?|management|executives?|board|directors)(\/|$|-)/;
 
 /**
- * The person's bio on the organization's own site (limbachinc.com/mike-mccann):
- * the host carries the organization's name and the surname is in the URL,
- * title or snippet. The first name may differ ("Mike" for Michael), so the
- * surname alone is enough on the organization's own domain.
+ * The organization's own site: its name in the domain (limbachinc.com), or
+ * its initials for a short brand (wm.com for Waste Management).
  */
-export function officialBioPage(results: SearchResult[], personName: string, org: string): SearchResult | undefined {
+export function orgSite(host: string, org: string): boolean {
+  if (ownSite(host, org)) return true;
+  const words = distinctiveWords(org);
+  const initials = words.map((w) => w[0]).join("");
+  const labels = host.split(".").slice(0, -1);
+  return labels.includes(words.join("")) || (initials.length >= 2 && labels.includes(initials));
+}
+
+/**
+ * Pages on the organization's own site that may hold the person's bio,
+ * best first: limbachinc.com/mike-mccann, or an about or leadership page
+ * (geckorobotics.com/about-us) whose search snippet needn't name them. The
+ * first name may differ ("Mike" for Michael), so the surname is enough on
+ * the organization's own domain; the caller confirms it in the page text.
+ */
+export function officialBioPages(results: SearchResult[], personName: string, org: string): SearchResult[] {
   const last = surnameOf(personName);
-  if (!last) return undefined;
-  let best: SearchResult | undefined;
-  let bestScore = 0;
+  if (!last) return [];
+  const scored: { r: SearchResult; score: number }[] = [];
+  const seen = new Set<string>();
   for (const r of results) {
     const host = hostOf(r.url);
-    if (!host || NOT_A_BUSINESS_SITE.test(host) || !ownSite(host, org)) continue;
+    if (!host || seen.has(r.url) || NOT_A_BUSINESS_SITE.test(host) || !orgSite(host, org)) continue;
+    seen.add(r.url);
     const path = pathOf(r.url);
     const inPath = path.includes(last);
-    if (!inPath && !words(`${r.title} ${r.snippet ?? ""}`).has(last)) continue;
-    const score = 1 + (inPath ? 2 : 0) + (BIO_PATH.test(path) ? 1 : 0) + (mentionsPerson(r.title, personName) ? 1 : 0);
-    if (score > bestScore) { best = r; bestScore = score; }
+    const named = words(`${r.title} ${r.snippet ?? ""}`).has(last);
+    const bioPath = BIO_PATH.test(path);
+    if (!inPath && !named && !bioPath) continue;
+    scored.push({ r, score: (inPath ? 3 : 0) + (named ? 2 : 0) + (bioPath ? 1 : 0) + (mentionsPerson(r.title, personName) ? 1 : 0) });
   }
-  return best;
+  return scored.sort((a, b) => b.score - a.score).map((x) => x.r);
 }
 
 const BIO_CUES = /\b(age|served|serves|serving|since|joined|appointed|named|elected|director|chair(?:man|woman)?|chief|president|founder|co-founder|prior|previously|degree|university|college|institute|graduated|bachelor|master|mba|b\.?s\.?|ph\.?d)\b/gi;
@@ -91,18 +106,31 @@ export function tiedToOrg(text: string, personName: string, org: string): boolea
 
 export interface TiedText { url: string; text: string }
 
+// Wire services carry a company's own press releases.
+const WIRE_HOST = /(^|\.)(businesswire|prnewswire|globenewswire|accessnewswire|newsfilecorp)\.com$/i;
+
 /**
- * Board seats the extraction found, kept only when a source tied to this
- * person names that organization (the model never adds a board on its
- * own). The person's own employer is a role in the career history, not
- * an outside seat.
+ * Board seats the extraction found, kept only with a source that vouches
+ * for them (Oct 28 handoff: an Amnesty International USA election page
+ * read as a seat for Mazzarella). A board page vouches only for the
+ * organization whose own site or press release it is; the person's
+ * official bio and SEC filings vouch for any organization they name. The
+ * person's own employer is a role in the career history, not an outside seat.
  */
-export function confirmBoardSeats(seats: BoardSeatEntry[], tied: TiedText[], employers: string[]): BoardSeatEntry[] {
+export function confirmBoardSeats(
+  seats: BoardSeatEntry[],
+  sources: { boardPages: TiedText[]; vouched: TiedText[] },
+  employers: string[],
+): BoardSeatEntry[] {
   const out: BoardSeatEntry[] = [];
   for (const s of seats) {
     if (employers.some((e) => namesOrg(e, s.organization) || namesOrg(s.organization, e))) continue;
     if (out.some((o) => namesOrg(o.organization, s.organization) || namesOrg(s.organization, o.organization))) continue;
-    const source = tied.find((t) => namesOrg(t.text, s.organization));
+    const official = sources.boardPages.find((t) => {
+      const host = hostOf(t.url);
+      return !!host && (orgSite(host, s.organization) || WIRE_HOST.test(host)) && namesOrg(t.text, s.organization);
+    });
+    const source = official ?? sources.vouched.find((t) => namesOrg(t.text, s.organization));
     if (!source) continue;
     out.push({ ...s, url: source.url });
   }

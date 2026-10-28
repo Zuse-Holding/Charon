@@ -284,6 +284,20 @@ const QUOTE_PAGE = /\b(stock (price|quote)|share price|stock forecast|price targ
 const QUOTE_HOSTS = ["finance.yahoo.com", "marketbeat.com", "stockanalysis.com", "investing.com", "marketwatch.com", "nasdaq.com",
   "zacks.com", "stocktitan.net", "simplywall.st", "macrotrends.net", "tipranks.com", "stockinvest.us", "wallmine.com", "companiesmarketcap.com"];
 
+/** Any page on a stock-quote site (MarketBeat, StockTitan): person reports
+ *  keep them out of news whatever the headline (Oct 28 handoff). */
+export function isQuoteSite(url: string | undefined): boolean {
+  let host = "";
+  try { host = url ? new URL(url).hostname.replace(/^www\./, "").toLowerCase() : ""; } catch { /* no host */ }
+  return QUOTE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+}
+
+/** A site's news or media index by its title ("Limbach News Media."), not an article. */
+export function isIndexTitle(title: string): boolean {
+  const t = title.replace(/\s*[|\-–—]\s*.*$/, "").trim();
+  return t.split(/\s+/).length <= 5 && /\b(news|newsroom|media|press|press releases|blog|updates|in the news)\.?$/i.test(t);
+}
+
 export function isShoppingOrQuote(headline: string, url: string | undefined): boolean {
   let host = "";
   try { host = url ? new URL(url).hostname.replace(/^www\./, "").toLowerCase() : ""; } catch { /* no host */ }

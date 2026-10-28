@@ -539,18 +539,25 @@ export class ReportAgent {
       lines.push(`**Announced departure:** ${bundle.person.announcedDeparture}`);
       lines.push(``);
     }
-    this.pushSectionSources(lines, bundle.sources, ["bio"]);
-    pushCoverageSection(lines, bundle.coverage);
-
-    // Quick facts row
+    // Quick facts belong to About: written after Source Coverage, they were
+    // read as rows of its table and never shown (Oct 28 handoff).
     const facts: string[] = [];
+    if (bundle.person.founding)    facts.push(`**Founded:** ${bundle.person.founding}`);
     if (bundle.person.nationality) facts.push(`**Nationality:** ${bundle.person.nationality}`);
-    if (bundle.person.education)   facts.push(`**Education:** ${bundle.person.education}`);
     if (bundle.person.netWorth)    facts.push(`**Net Worth:** ${bundle.person.netWorth}`);
     if (bundle.person.knownFor)    facts.push(`**Known For:** ${bundle.person.knownFor}`);
     if (facts.length > 0) {
       for (const f of facts) lines.push(`- ${f}`);
       lines.push(``);
+    }
+    this.pushSectionSources(lines, bundle.sources, ["bio"]);
+    pushCoverageSection(lines, bundle.coverage);
+
+    if (bundle.person.education) {
+      lines.push(`## Education`);
+      for (const d of bundle.person.education.split(/\s*;\s*/).filter(Boolean)) lines.push(`- ${d}`);
+      lines.push(``);
+      this.pushSectionSources(lines, bundle.sources, ["bio", "background", "board-seats"]);
     }
 
     lines.push(`## Current Role`);
@@ -637,13 +644,24 @@ export class ReportAgent {
     this.pushSectionSources(lines, bundle.sources, ["news"]);
 
     if (bundle.companyNews && bundle.companyNews.length > 0) {
-      lines.push(`## ${bundle.person.affiliation ?? "Company"} News`);
+      lines.push(`## ${bundle.companyNewsOrg ?? bundle.person.currentCompany ?? "Company"} News`);
       for (const n of bundle.companyNews) {
         const meta = [n.outlet, n.date].filter(Boolean).join(" · ");
         lines.push(`- [${n.headline}](${n.url ?? "#"})${meta ? ` — ${meta}` : ""}`);
       }
       lines.push(``);
       this.pushSectionSources(lines, bundle.sources, ["company-news"]);
+    }
+
+    if (bundle.insiderTrades && bundle.insiderTrades.length > 0) {
+      lines.push(`## Insider Trades`);
+      for (const f of bundle.insiderTrades) {
+        lines.push(`- ${f.transactionType ?? "Filing"}${f.shares ? ` · ${f.shares} shares` : ""}${f.value ? ` · ${f.value}` : ""}${
+          totalOf(f) ? ` · about ${money(totalOf(f)!)} total` : ""
+        }${f.relationship ? ` · ${f.relationship}` : ""}${f.date ? ` (${f.date})` : ""}${f.filingUrl ? ` ([filing](${f.filingUrl}))` : ""}`);
+      }
+      lines.push(``);
+      this.pushSectionSources(lines, bundle.sources, ["insider-activity"]);
     }
 
     this.pushPublicRecordsSection(lines, bundle);

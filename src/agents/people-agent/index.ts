@@ -13,9 +13,13 @@ import { isNewsNoise, isUsableHeadline, mentionsCompany, mentionsPerson } from "
 import { mentionsAffiliation } from "../../lib/entities/affiliation.js";
 import { applyRoleChange, personNews, roleFromNews, summaryFromSnippet } from "../../lib/person-checks.js";
 import {
-  bioExcerpt, clearEndedRole, confirmBoardSeats, isBoardPage, isProfilePage, officialBioPage, secPersonExcerpts,
-  sourceOf, tiedToOrg, type SecExcerpt, type TiedText,
+  bioExcerpt, clearEndedRole, confirmBoardSeats, isBoardPage, isProfilePage, officialBioPages, secPersonExcerpts,
+  sourceOf, surnameOf, tiedToOrg, type SecExcerpt, type TiedText,
 } from "../../lib/person-sources.js";
+import { isRoleTitle } from "../../lib/person-checks.js";
+import { stockListingFor } from "../website-agent/index.js";
+import { Form4Agent } from "../form4-agent/index.js";
+import { samePerson } from "../../lib/leadership.js";
 
 // Placeholder employers the extractor sometimes fills in ("Actor at
 // Various") instead of leaving the field out.
@@ -89,10 +93,11 @@ export class PeopleAgent {
     // With an organization to tie them to (the picked match): the
     // executive bio on its own site, SEC proxy and 8-K text, other
     // companies' board pages, the picker's own search, and the
-    // organization's news (Oct 27 handoff, fixes 2-5 and 8).
-    const org = affiliation;
+    // organization's news (Oct 27 handoff, fixes 2-5 and 8). A job title
+    // ("Board Member") is never that organization (Oct 28 handoff).
+    const org = affiliation && !isRoleTitle(affiliation) ? affiliation : undefined;
     const none = Promise.resolve([]);
-    const [bioResultsRaw, newsResultsRaw, backgroundResultsRaw, profileResultsRaw, execBioResultsRaw, boardResultsRaw, companyNewsRaw, secExcerpts] = await Promise.all([
+    const [bioResultsRaw, newsResultsRaw, backgroundResultsRaw, profileResultsRaw, execBioResultsRaw, boardResultsRaw, secExcerpts] = await Promise.all([
       this.searcher.search(appendDomainExclusions(`${searchSubject} current role position ${currentYear}`, override), resultCount),
       // Twice the results needed: social, forum and tag-index pages are dropped below.
       this.searcher.search(appendDomainExclusions(`${searchSubject} news ${currentYear}`, override), resultCount * 2),
@@ -100,7 +105,6 @@ export class PeopleAgent {
       org ? this.searcher.search(appendDomainExclusions(`"${personName}" ${org}`, override), 10) : none,
       org ? this.searcher.search(`${personName} ${org} leadership bio`, resultCount) : none,
       org ? this.searcher.search(appendDomainExclusions(`"${personName}" board of directors`, override), resultCount * 2) : none,
-      org ? this.searcher.search(`${org} news ${currentYear}`, resultCount * 2) : none,
       org ? secPersonExcerpts(personName, org).catch((err): SecExcerpt[] => {
         console.warn(`[people-agent] SEC lookup failed for "${personName}":`, err instanceof Error ? err.message : err);
         return [];
@@ -130,16 +134,12 @@ export class PeopleAgent {
     // searches can miss: they go to extraction too (fix 5).
     const known = new Set([...bioResults, ...backgroundResults].map((r) => r.url));
     const profileResults = profileResultsRaw.filter((r) => !known.has(r.url) && !isRejectedDomain(r.url, override) && aboutThisPerson(r));
-    const officialBio = org ? officialBioPage([...execBioResultsRaw, ...bioResultsRaw, ...profileResultsRaw], personName, org) : undefined;
+    // The top two pages on the organization's own site; the first whose
+    // text names the person is the official bio (Gecko's about page).
+    const bioPageCandidates = org ? officialBioPages([...execBioResultsRaw, ...bioResultsRaw, ...profileResultsRaw], personName, org).slice(0, 2) : [];
     const boardCandidates = boardResultsRaw
-      .filter((r) => !isRejectedDomain(r.url, override) && r.url !== officialBio?.url && isBoardPage(r, personName))
+      .filter((r) => !isRejectedDomain(r.url, override) && !bioPageCandidates.some((b) => b.url === r.url) && isBoardPage(r, personName))
       .slice(0, deep ? 4 : 3);
-    const seenNews = new Set(newsResults.map((r) => r.url));
-    const companyNewsResults = org
-      ? companyNewsRaw
-        .filter((r) => !seenNews.has(r.url) && !isNewsNoise(r.url) && !isProfilePage(r.url))
-        .filter((r) => isUsableHeadline(r.title) && mentionsCompany(`${r.title}. ${r.snippet ?? ""}`, org))
-      : [];
 
     const sources: Source[] = [
       ...bioResults.map((r) => ({
@@ -176,12 +176,15 @@ export class PeopleAgent {
       const html = await this.fetcher.fetchText(url).catch(() => null);
       return html ? htmlToText(html) : null;
     };
-    const [fetchedBios, officialText, boardTexts] = await Promise.all([
+    const [fetchedBios, bioPageTexts, boardTexts] = await Promise.all([
       Promise.all(bioResults.slice(0, fullTextSourceCount).map(r => fetchPageText(r.url, this.fetcher, fullTextChars))),
-      officialBio ? pageText(officialBio.url) : Promise.resolve(null),
+      Promise.all(bioPageCandidates.map((r) => pageText(r.url))),
       Promise.all(boardCandidates.map((r) => pageText(r.url))),
     ]);
-    const officialExcerpt = officialText && officialBio ? bioExcerpt(officialText, personName, 4000) : undefined;
+    const last = surnameOf(personName);
+    const bioIndex = bioPageTexts.findIndex((t) => !!t && new RegExp(`\\b${last}\\b`, "i").test(t));
+    const officialBio = bioIndex >= 0 ? bioPageCandidates[bioIndex] : undefined;
+    const officialExcerpt = officialBio ? bioExcerpt(bioPageTexts[bioIndex]!, personName, 4000) : undefined;
     // A board page counts only when it also names the picked organization:
     // a name alone never confirms a record.
     const boardPages: TiedText[] = boardCandidates.flatMap((r, i) => {
@@ -228,7 +231,8 @@ Extract these fields:
 - summary: 2-3 sentences describing who this person is, what they're known for, and why they matter. Write it like the opening of a Wikipedia article — specific, confident, factual. No filler.
 - currentRole: their most recent job title as of ${currentYear}
 - currentCompany: the organization they currently work for
-- education: every degree stated, with school and year when given (e.g. "BSME, Worcester Polytechnic Institute; MBA, Drexel University")
+- education: every degree stated, with school and year when given (e.g. "BSME, Worcester Polytechnic Institute; MBA, Drexel University"). Check the OFFICIAL BIO and BOARD PAGE text for it first.
+- founding: one sentence on the company they founded, when the text states it: the year, every co-founder named and any accelerator or program (e.g. "Y Combinator, Winter 2016")
 - netWorth: estimated net worth if publicly available (e.g. "$4.5B as of 2024")
 - knownFor: one sentence on what they're most notable for (invention, company, achievement, controversy)
 - nationality: their nationality or country of origin if mentioned
@@ -238,6 +242,7 @@ Extract these fields:
 
 RULES:
 - currentRole must reflect their position as of ${currentYear}. If a source says "former", do NOT list it as current.
+- Never expand an acronym or abbreviation unless the text spells it out; otherwise keep it exactly as written. Never guess what letters stand for.
 - An OFFICIAL BIO is the person's employer's own page and an SEC filing is sworn: prefer them for titles, dates, prior roles, education and directorships.
 - Take titles and roles only from what the text says about this person. Never infer them from a URL, domain, site name or page section (a profile hosted on a research office's site doesn't make someone that office's head).
 - If you cannot confidently determine a field, omit it rather than guessing.
@@ -259,6 +264,7 @@ RULES:
         if (llmResult.knownFor)       person.knownFor       = llmResult.knownFor;
         if (llmResult.nationality)    person.nationality    = llmResult.nationality;
         if (llmResult.announcedDeparture) person.announcedDeparture = llmResult.announcedDeparture;
+        if (llmResult.founding) person.founding = llmResult.founding;
         if (llmResult.careerHistory) {
           careerHistory = llmResult.careerHistory
             .filter((c) => !isPlaceholderOrg(c.company))
@@ -270,14 +276,13 @@ RULES:
         }
         // Only seats a source tied to this person names (board pages first,
         // so each seat cites its board's own page).
-        const tied: TiedText[] = [
-          ...boardPages,
+        const vouched: TiedText[] = [
           ...(officialExcerpt && officialBio ? [{ url: officialBio.url, text: officialExcerpt }] : []),
           ...secExcerpts.map((e) => ({ url: e.url, text: e.text })),
         ];
         boardSeats = confirmBoardSeats(
           llmResult.boardSeats.filter((b) => !isPlaceholderOrg(b.organization)),
-          tied,
+          { boardPages, vouched },
           [org, person.currentCompany].filter((e): e is string => !!e),
         );
       }
@@ -313,9 +318,19 @@ RULES:
 
     // Dated and newest first, as company news is (round 20).
     const news: NewsEntry[] = personNews(newsResults, personName);
-    // The organization's top stories (Gecko's Navy contract), same filters.
-    const companyNews: NewsEntry[] = org ? personNews(companyNewsResults, org).slice(0, 3) : [];
+    // The employer's top stories (Gecko's Navy contract), same filters, and
+    // the person's own Form 4 filings when it's listed. The employer is the
+    // picked organization, else the extracted one: never a job title.
+    const employer = org ?? (person.currentCompany && !isRoleTitle(person.currentCompany) ? person.currentCompany : undefined);
+    const seenNews = new Set(newsResults.map((r) => r.url));
+    const companyNewsRaw = employer ? await this.searcher.search(`${employer} news ${currentYear}`, resultCount * 2) : [];
+    const companyNews: NewsEntry[] = employer
+      ? personNews(companyNewsRaw
+        .filter((r) => !seenNews.has(r.url) && !isNewsNoise(r.url) && !isProfilePage(r.url))
+        .filter((r) => isUsableHeadline(r.title) && mentionsCompany(`${r.title}. ${r.snippet ?? ""}`, employer)), employer).slice(0, 3)
+      : [];
     for (const n of companyNews) if (n.url) sources.push(sourceOf(n.url, n.headline, "company-news"));
+    const insiderTrades = employer ? await this.insiderTrades(personName, employer, [...companyNewsRaw, ...bioResultsRaw, ...newsResultsRaw, ...profileResultsRaw], sources) : [];
 
     // A role a source says ended isn't current (fix 6).
     const ended = clearEndedRole(person, careerHistory);
@@ -328,7 +343,26 @@ RULES:
     return {
       person, careerHistory, news, sources,
       ...(boardSeats.length ? { boardSeats } : {}),
-      ...(companyNews.length ? { companyNews } : {}),
+      ...(companyNews.length ? { companyNews, companyNewsOrg: employer } : {}),
+      ...(insiderTrades.length ? { insiderTrades } : {}),
     };
+  }
+
+  /**
+   * The person's own Form 4 filings (Oct 28 handoff): the employer's ticker
+   * from a search result that names it ("Limbach Holdings, Inc. (NASDAQ:
+   * LMB)"), then OpenInsider's table for that ticker, kept to rows filed by
+   * this person.
+   */
+  private async insiderTrades(personName: string, employer: string, results: { title: string; snippet?: string }[], sources: Source[]) {
+    const listing = results.map((r) => stockListingFor(`${r.title}. ${r.snippet ?? ""}`, [employer])).find(Boolean);
+    const ticker = listing?.split(/:\s*/)[1];
+    if (!ticker) return [];
+    const form4 = new Form4Agent(this.searcher, this.fetcher);
+    const rows = (await form4.openInsider(ticker).catch(() => null)) ?? [];
+    const mine = rows.filter((f) => samePerson(f.filerName, personName));
+    if (mine.length) sources.push(sourceOf(`https://openinsider.com/screener?s=${encodeURIComponent(ticker)}`, `OpenInsider — ${ticker} insider filings`, "insider-activity"));
+    console.log(`[people-agent] "${personName}": ${listing}, ${mine.length} of ${rows.length} Form 4 row(s) filed by them`);
+    return mine;
   }
 }

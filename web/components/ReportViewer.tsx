@@ -770,20 +770,49 @@ function renderSection(section: Section, onRetry?: () => void) {
     );
   }
 
-  // Default — render as plain text / list
+  // Default — paragraphs and list items in order. Showing only the list
+  // items dropped Public Records' sanctions line whenever the section also
+  // listed nonprofits or power-map entries (Oct 28 handoff).
   const items = parseListItems(content);
   if (items.length > 0) {
+    const blocks: { list: boolean; lines: string[] }[] = [];
+    for (const raw of content) {
+      const line = raw.trim();
+      if (!line) continue;
+      const list = line.startsWith("- ");
+      const text = list ? line.slice(2).trim() : line;
+      const last = blocks[blocks.length - 1];
+      if (last && last.list === list) last.lines.push(text);
+      else blocks.push({ list, lines: [text] });
+    }
     return (
-      <div className={styles.genericList}>
-        {items.map((item, i) => (
-          <div key={i} className={styles.genericItem}>
-            {item.replace(/\*\*(.*?)\*\*/g, "$1")}
+      <>
+        {blocks.map((b, i) => b.list ? (
+          <div key={i} className={styles.genericList}>
+            {b.lines.map((item, j) => <div key={j} className={styles.genericItem}><InlineText text={item} /></div>)}
           </div>
+        ) : (
+          b.lines.map((p, j) => <p key={`${i}-${j}`} className={styles.summaryText}><InlineText text={p} /></p>)
         ))}
-      </div>
+      </>
     );
   }
   return <p className={styles.summaryText}>{getPlainText(content)}</p>;
+}
+
+/** One line of report markdown: "[text](url)" as a link, bold and italic markers off. */
+function InlineText({ text }: { text: string }) {
+  const parts: React.ReactNode[] = [];
+  const re = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
+  let at = 0;
+  const plain = (t: string) => t.replace(/\*\*(.*?)\*\*/g, "$1").replace(/(^|\s)_([^_]+)_(?=\s|$|[.,;:)])/g, "$1$2");
+  for (const m of text.matchAll(re)) {
+    if (m.index! > at) parts.push(plain(text.slice(at, m.index)));
+    parts.push(<a key={m.index} href={m[2]} target="_blank" rel="noopener noreferrer">{plain(m[1])}</a>);
+    at = m.index! + m[0].length;
+  }
+  if (at < text.length) parts.push(plain(text.slice(at)));
+  return <>{parts}</>;
 }
 
 /**

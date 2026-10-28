@@ -83,7 +83,8 @@ export class Form4Agent {
   ) {}
 
   /** Two years of a ticker's insider filings, or null when the table can't be read. */
-  private async openInsider(ticker: string): Promise<Form4Entry[] | null> {
+  /** A listed company's Form 4 filings from OpenInsider's table; null when it can't be read. */
+  async openInsider(ticker: string): Promise<Form4Entry[] | null> {
     const url = `${OPEN_INSIDER}?s=${encodeURIComponent(ticker)}&fd=730&xp=1&xs=1&sortcol=0&cnt=100&page=1`;
     try {
       const res = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (compatible; MetisAnalytics/1.0)" }, signal: AbortSignal.timeout(15_000) });

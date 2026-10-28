@@ -848,6 +848,7 @@ export const PersonExtractionSchema = AnyObject.transform((obj) => ({
     });
   })(),
   announcedDeparture: toStringOrUndefined(obj.announcedDeparture ?? obj.announced_departure),
+  founding: toStringOrUndefined(obj.founding ?? obj.founded ?? obj.foundingDetails),
 }));
 
 /** Several degrees as one line: "BSME, WPI; MBA, Drexel". */

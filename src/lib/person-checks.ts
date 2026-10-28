@@ -1,6 +1,6 @@
 import type { NewsEntry, PersonResearchBundle } from "../types/research.js";
 import type { SearchResult } from "./providers.js";
-import { isLawFirmSolicitation, isPersonalLifeNews, isPlaceNamesake, isShoppingOrQuote, mentionsPerson, newsDate, outletFromUrl } from "./news-noise.js";
+import { isIndexTitle, isLawFirmSolicitation, isNewsIndexPage, isPersonalLifeNews, isPlaceNamesake, isQuoteSite, isShoppingOrQuote, mentionsPerson, newsDate, outletFromUrl } from "./news-noise.js";
 import { mentionsAffiliation } from "./entities/affiliation.js";
 import { nameWords } from "./name-match.js";
 import { splitSentences } from "./nlp.js";
@@ -15,6 +15,16 @@ import { splitSentences } from "./nlp.js";
 export function personAnchors(bundle: Pick<PersonResearchBundle, "person" | "careerHistory">): string[] {
   const all = [bundle.person.affiliation, bundle.person.currentCompany, ...bundle.careerHistory.map((c) => c.company)];
   return [...new Set(all.map((a) => a?.trim()).filter((a): a is string => !!a))];
+}
+
+// Job titles, not organizations: a picker title "Kathleen Mazzarella -
+// Board Member - Cigna" once made "Board Member" the affiliation, and every
+// board page and "Board Member news" story attached to her (Oct 28 handoff).
+const ROLE_TITLE = /^(ceo|cfo|cto|coo|cio|cmo|founder|co-founder|cofounder|owner|president|director|manager|professor|engineer|attorney|partner|member|board member|board of directors|trustee|advisor|adviser|chair(man|woman|person)?|(vice|co|executive|non-executive|independent) (chair\w*|director|president)|(senior|executive|chief|managing|general|lead|principal|associate|assistant) ([\w&-]+ ){0,2}(officer|director|manager|partner|counsel|engineer|president|scientist|analyst)|senior .+|(vice president|evp|svp|vp)\b.*)$/i;
+
+/** "Board Member", "Chief Operating Officer": a role, never an organization to tie records to. */
+export function isRoleTitle(text: string | undefined): boolean {
+  return !!text && ROLE_TITLE.test(text.trim().replace(/[.,]$/, ""));
 }
 
 /** Every word of the organization's name is in the text ("Bank of America", not any bank). */
@@ -57,6 +67,8 @@ export function personNews(results: SearchResult[], personName: string, now = ne
   return results
     .filter((r) => !isPersonalLifeNews(r.title, r.snippet, r.url) && !isShoppingOrQuote(r.title, r.url))
     .filter((r) => !isLawFirmSolicitation(r.title, r.snippet) && !isPlaceNamesake(r.title, r.snippet, personName))
+    // Quote sites and a site's own news index aren't stories (Oct 28 handoff).
+    .filter((r) => !isQuoteSite(r.url) && !isNewsIndexPage(r.url) && !isIndexTitle(r.title))
     .map((r, i) => ({ r, i, date: newsDate(r.date, r.url, now) }))
     .map((x) => ({ ...x, t: Date.parse(x.date ?? "") }))
     .sort((a, b) => (isNaN(b.t) ? -Infinity : b.t) - (isNaN(a.t) ? -Infinity : a.t) || a.i - b.i)

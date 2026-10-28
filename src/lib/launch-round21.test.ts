@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
-  bioExcerpt, clearEndedRole, confirmBoardSeats, eftsDocUrl, filedBy, isBoardPage, isProfilePage, officialBioPage, roleDates, tiedToOrg,
+  bioExcerpt, clearEndedRole, confirmBoardSeats, eftsDocUrl, filedBy, isBoardPage, isProfilePage, officialBioPages, roleDates, tiedToOrg,
 } from "./person-sources.js";
 import { PersonExtractionSchema } from "./llm.js";
 import { applyPersonConsistency } from "./consistency.js";
@@ -21,8 +21,8 @@ describe("round twenty-one: person search from the Oct 27 handoff", () => {
       { title: "Mike McCann | Limbach", url: "https://www.limbachinc.com/mike-mccann/", snippet: "President and CEO" },
       { title: "Leadership | Limbach", url: "https://www.limbachinc.com/leadership/", snippet: "Mike McCann, Jayme Brooks" },
     ];
-    assert.equal(officialBioPage(results, "Michael McCann", "Limbach Holdings")?.url, "https://www.limbachinc.com/mike-mccann/");
-    assert.equal(officialBioPage(results.slice(0, 2), "Michael McCann", "Limbach Holdings"), undefined);
+    assert.deepEqual(officialBioPages(results, "Michael McCann", "Limbach Holdings").map((r) => r.url), ["https://www.limbachinc.com/mike-mccann/", "https://www.limbachinc.com/leadership/"]);
+    assert.deepEqual(officialBioPages(results.slice(0, 2), "Michael McCann", "Limbach Holdings"), []);
   });
 
   it("cuts a long page down to the person's bio", () => {
@@ -54,7 +54,7 @@ describe("round twenty-one: person search from the Oct 27 handoff", () => {
       { organization: "Cigna Group", role: "Director" },
       { organization: "Graybar Electric", role: "Chairman" },
       { organization: "Acme Widgets", role: "Director" },
-    ], tied, ["Graybar"]);
+    ], { boardPages: tied, vouched: [] }, ["Graybar"]);
     assert.deepEqual(seats.map((s) => [s.organization, s.url]), [
       ["WM", "https://www.wm.com/board"],
       ["The Cigna Group", "https://investors.thecignagroup.com/board"],
@@ -141,6 +141,7 @@ describe("round twenty-one: person search from the Oct 27 handoff", () => {
       person: { name: "Jane Doe", affiliation: "Gecko Robotics", announcedDeparture: "Will step down as CEO in May 2026." },
       careerHistory: [{ title: "CEO", company: "Gecko Robotics", start: "2013" }, { title: "CEO", company: "Black Diamond", start: "2012", current: false }],
       boardSeats: [{ organization: "WM", role: "Director", start: "2015", url: "https://www.wm.com/board" }],
+      companyNewsOrg: "Gecko Robotics",
       companyNews: [{ headline: "Gecko wins $300M Navy contract", url: "https://example.com/navy", date: "2026-09-01", outlet: "example.com" }],
       sources: [
         { url: "https://www.geckorobotics.com/about-us", title: "About Gecko", retrievedAt: "2026-10-28", usedFor: ["bio"] },

@@ -665,7 +665,10 @@ export class ResearchOrchestrator {
     bundle: PersonResearchBundle;
     littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
-    if (!deep) for (const id of ["opencorporates", "muckrock"]) cov.skip(id, "Searched automatically on the Charon plan.");
+    if (!deep) cov.skip("opencorporates", "Searched automatically on the Charon plan.");
+    // MuckRock refuses automated requests (403 on every report, Oct 28
+    // handoff): linked for a search by hand instead of shown as failed.
+    cov.skip("muckrock", "Not searched automatically: MuckRock blocks automated requests.");
     if (!proAccess) for (const id of ["nonprofits", "littlesis"]) cov.skip(id, "Included with Pro.");
     const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult] = await Promise.all([
       cov.run("people", () => this.peopleAgent.run(personName, deep, affiliation),
@@ -674,9 +677,7 @@ export class ResearchOrchestrator {
       deep
         ? cov.run("opencorporates", () => this.openCorporatesAgent.run(personName), { affiliations: [], sources: [] }, (r) => r.affiliations.length)
         : Promise.resolve({ affiliations: [], sources: [] }),
-      deep
-        ? cov.run("muckrock", () => this.muckRockAgent.run(personName), { requests: [], sources: [] }, (r) => r.requests.length)
-        : Promise.resolve({ requests: [], sources: [] }),
+      Promise.resolve({ requests: [], sources: [] }),
       cov.run("sanctions", () => this.sanctionsAgent.run(personName), { matches: [], sources: [], unavailable: true }, (r) => r.matches.length)
         .catch(() => ({ matches: [], sources: [], unavailable: true })),
       proAccess
@@ -702,6 +703,8 @@ export class ResearchOrchestrator {
       foiaRequests: foiaResult.requests.length > 0 ? foiaResult.requests : undefined,
       boardSeats: result.boardSeats,
       companyNews: result.companyNews,
+      companyNewsOrg: result.companyNewsOrg,
+      insiderTrades: result.insiderTrades,
       sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
       sanctionsUnavailable: sanctionsResult.unavailable || undefined,
       sanctionsScreened: !sanctionsResult.unavailable || undefined,

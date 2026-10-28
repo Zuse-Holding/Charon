@@ -4,7 +4,7 @@ import { mentionsCompany, mentionsPerson, normalizeWords } from "./news-noise.js
 import { hostOf } from "./entities/subject.js";
 import { mentionsAffiliation } from "./entities/affiliation.js";
 import { looksLikePersonName } from "./nlp.js";
-import { namesOrg } from "./person-checks.js";
+import { isRoleTitle, namesOrg } from "./person-checks.js";
 
 /**
  * Candidate step (Fix 1 item 3, Fix 5): before a report runs, list the
@@ -179,7 +179,7 @@ export function orgFromTitle(title: string, personName: string): string | undefi
   for (const part of parts) {
     if (mentionsPerson(part, personName) || GENERIC_PARTS.test(part) || part.length > 60) continue;
     // A bare job title is the role, not where they work.
-    if (/^(ceo|cfo|cto|coo|founder|co-founder|owner|president|director|manager|professor|engineer|attorney|partner|senior .+|vice president.*)$/i.test(part)) continue;
+    if (isRoleTitle(part)) continue;
     // Payroll and directory titles: "Real Estate Ofcr 4", "2022".
     if (/\d/.test(part) || /\b(ofcr|officer|analyst|specialist|assistant|coordinator|admin\w*|clerk|technician)\b/i.test(part)) continue;
     return part;

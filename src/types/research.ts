@@ -246,6 +246,8 @@ export interface PersonProfile {
   nationality?: string;
   /** An announced but not yet effective departure, with its date. */
   announcedDeparture?: string;
+  /** The company they founded: year, co-founders, accelerator. */
+  founding?: string;
 }
 
 export interface CareerEntry {
@@ -315,8 +317,11 @@ export interface PersonAgentResult {
   corporateAffiliations?: CorporateAffiliationEntry[];
   foiaRequests?: FoiaRequestEntry[];
   boardSeats?: BoardSeatEntry[];
-  /** Top recent news about the person's employer. */
+  /** Top recent news about the person's employer, named by companyNewsOrg. */
   companyNews?: NewsEntry[];
+  companyNewsOrg?: string;
+  /** The person's own Form 4 filings at a listed employer. */
+  insiderTrades?: Form4Entry[];
 }
 
 export interface PersonResearchBundle {
@@ -330,6 +335,8 @@ export interface PersonResearchBundle {
   foiaRequests?: FoiaRequestEntry[];
   boardSeats?: BoardSeatEntry[];
   companyNews?: NewsEntry[];
+  companyNewsOrg?: string;
+  insiderTrades?: Form4Entry[];
   // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess).
   sanctionsMatches?: SanctionsMatch[];
   /** The Consolidated Screening List couldn't be checked on this run. */
