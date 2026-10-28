@@ -349,13 +349,19 @@ function anyCase(text: string): string {
     .replace(/\s+/g, "\\s+");
 }
 
+// A claim about a past CEO ("Former Patagonia CEO Rose Marcario",
+// "Marcario, Patagonia's CEO until 2020", "... to step down").
+const PAST_BEFORE = /\b(former|ex-|previous|then|outgoing|longtime|late|retired|onetime|one-time|founding)\s*$/i;
+const PAST_AFTER = /^[^.;]{0,60}\b(until|stepped down|steps down|step down|stepping down|retired|retires|retire|left|leaves|departed|departs|succeeded by|replaced by|before)\b/i;
+
 /**
- * Someone else the sources name as the organization's CEO ("Thomas Vozzo,
- * Homeboy's CEO"): the person's own "CEO" title there conflicts. Names are
- * matched case-sensitively, two capitalized words that aren't title words
- * (Oct 28 regression: a case-blind match read "and co-founder", "who
- * became" and "its new" as other CEOs and stripped Mazzarella's,
- * Loosararian's and Gellert's titles).
+ * Someone else the sources name as the organization's current CEO
+ * ("Thomas Vozzo, Homeboy's CEO"): the person's own "CEO" title there
+ * conflicts. Names are matched case-sensitively, two capitalized words
+ * that aren't title words (a case-blind match read "its new" as a CEO).
+ * A claim about a past CEO doesn't count (Oct 28: Gellert lost his title
+ * to predecessor Rose Marcario), and someone else must be named CEO more
+ * often than the person is.
  */
 export function otherCeoOf(texts: string[], org: string, personName: string): string | undefined {
   const short = distinctiveWords(org)[0];
@@ -369,14 +375,56 @@ export function otherCeoOf(texts: string[], org: string, personName: string): st
     new RegExp(`${NAME}, ${ORG} ${CEO}`, "g"),
   ];
   const own = words(personName);
+  let ownClaims = 0;
+  const others = new Map<string, number>();
   for (const t of texts) for (const re of patterns) for (const m of t.matchAll(re)) {
     const name = m[1];
     const parts = name.split(/\s+/);
     if (parts.some((w) => NOT_A_NAME.test(w.replace(/[’'.,]/g, "")))) continue;
-    if (parts.some((w) => own.has(normalizeWords(w).trim()))) continue;
-    return name;
+    const before = t.slice(Math.max(0, m.index! - 30), m.index!);
+    const after = t.slice(m.index! + m[0].length);
+    if (PAST_BEFORE.test(before) || PAST_AFTER.test(after)) continue;
+    if (parts.some((w) => own.has(normalizeWords(w).trim()))) ownClaims++;
+    else others.set(name, (others.get(name) ?? 0) + 1);
   }
-  return undefined;
+  const [name, count] = [...others].sort((a, b) => b[1] - a[1])[0] ?? [];
+  return name && count! > ownClaims ? name : undefined;
+}
+
+/**
+ * The person's title and career once extraction is done (Oct 28): a CEO
+ * title is dropped only where someone else is named the current CEO (a
+ * past CEO role keeps it), the fullest title the sources give wins, and
+ * the current role leads the career history with its start date.
+ */
+export function settleTitles(
+  person: PersonProfile,
+  careerHistory: CareerEntry[],
+  orgs: string[],
+  texts: { snippets: string[]; summary?: string },
+): { careerHistory: CareerEntry[]; officerConflicts: { org: string; ceo: string }[]; notes: string[] } {
+  const notes: string[] = [];
+  const officerConflicts: { org: string; ceo: string }[] = [];
+  let career = careerHistory;
+  for (const o of new Set(orgs)) {
+    const ceo = otherCeoOf(texts.snippets, o, person.name);
+    if (!ceo) continue;
+    officerConflicts.push({ org: o, ceo });
+    const at = (c: string | undefined) => sameOrg(c, o);
+    career = career.flatMap((c) => {
+      if (!at(c.company) || c.end || c.current === false || withoutCeo(c.title) === c.title) return [c];
+      const title = withoutCeo(c.title);
+      return title ? [{ ...c, title }] : [];
+    });
+    if (at(person.currentCompany) && person.currentRole && withoutCeo(person.currentRole) !== person.currentRole) {
+      person.currentRole = withoutCeo(person.currentRole) || undefined;
+    }
+    notes.push(`${ceo} is named as ${o}'s CEO; dropped the CEO title there`);
+  }
+  const conflictHere = officerConflicts.some((c) => sameOrg(c.org, person.currentCompany));
+  const fuller = fullerTitle(person, career, [texts.summary ?? "", ...texts.snippets], conflictHere);
+  if (fuller) notes.push(fuller);
+  return { careerHistory: orderCareer(person, career), officerConflicts, notes };
 }
 
 /** "Founder and CEO" -> "Founder" when another person is the CEO; "" when nothing is left. */
@@ -468,4 +516,21 @@ export function verifyNetWorth(netWorth: string, texts: string[], personName: st
 export function recentEnough(date: string | undefined, now = new Date()): boolean {
   const t = Date.parse(date ?? "");
   return !isNaN(t) && now.getTime() - t <= 2 * 365 * 86_400_000 + 86_400_000;
+}
+
+/**
+ * An affiliation row's dates, with what the career history knows (Oct 28:
+ * Black Diamond's officer record said "since 2012" while the career
+ * history has President 2012-2014). The row's own end date wins, then the
+ * career entry's; a role the career history marks past never reads as
+ * "since" alone.
+ */
+export function affiliationDates(org: string, position: string | undefined, start: string | undefined, end: string | undefined, careerHistory: CareerEntry[]): string | undefined {
+  const atOrg = careerHistory.filter((c) => sameOrg(c.company, org));
+  const c = atOrg.find((x) => !!position && (covers(x.title, position) || covers(position, x.title))) ?? (atOrg.length === 1 ? atOrg[0] : undefined);
+  return roleDates({
+    start: start ?? c?.start,
+    end: end ?? c?.end,
+    current: end || c?.end ? false : c?.current,
+  });
 }

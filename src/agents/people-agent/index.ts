@@ -15,7 +15,7 @@ import { applyRoleChange, personNews, roleFromNews, summaryFromSnippet } from ".
 import {
   bioExcerpt, clearEndedRole, confirmBoardSeats, isBoardPage, isProfilePage, officialBioPages, secPersonExcerpts,
   sourceOf, surnameOf, tiedToOrg, type SecExcerpt, type TiedText,
-  anchorCurrentRole, fullerTitle, orderCareer, otherCeoOf, recentEnough, verifyEducation, verifyNetWorth, within, withoutCeo,
+  anchorCurrentRole, recentEnough, settleTitles, verifyEducation, verifyNetWorth, within,
 } from "../../lib/person-sources.js";
 import { hostOf, newsAboutSubject } from "../../lib/entities/subject.js";
 import { isRoleTitle, namesOrg } from "../../lib/person-checks.js";
@@ -379,32 +379,16 @@ RULES:
       if (anchored) console.log(`[people-agent] "${personName}": ${anchored}`);
     }
 
-    // Someone else named as the organization's CEO: the person's "CEO"
-    // title there is dropped (Oct 28 handoff: Boyle and Homeboy's Thomas Vozzo).
-    const officerConflicts: { org: string; ceo: string }[] = [];
-    for (const o of new Set([org, person.currentCompany].filter((x): x is string => !!x))) {
-      const ceo = otherCeoOf([...allSnippets, ...snippetsOf(newsResultsRaw), ...(officialExcerpt ? [officialExcerpt] : [])], o, personName);
-      if (!ceo) continue;
-      officerConflicts.push({ org: o, ceo });
-      const at = (c: string | undefined) => !!c && (namesOrgEither(c, o));
-      careerHistory = careerHistory.flatMap((c) => {
-        // A past CEO role stays: someone else holds the title now.
-        if (!at(c.company) || c.end || c.current === false || withoutCeo(c.title) === c.title) return [c];
-        const title = withoutCeo(c.title);
-        return title ? [{ ...c, title }] : [];
-      });
-      if (at(person.currentCompany) && person.currentRole && withoutCeo(person.currentRole) !== person.currentRole) {
-        person.currentRole = withoutCeo(person.currentRole) || undefined;
-      }
-      console.log(`[people-agent] "${personName}": ${ceo} is named as ${o}'s CEO; dropped the CEO title there`);
-    }
-
-    // The fullest current title the sources give, then the current role
-    // first in the career history and every other open role past (Oct 28).
-    const conflictHere = officerConflicts.some((c) => !!person.currentCompany && namesOrgEither(c.org, person.currentCompany));
-    const fuller = fullerTitle(person, careerHistory, [person.summary ?? "", ...(officialExcerpt ? [officialExcerpt] : []), ...allSnippets], conflictHere);
-    if (fuller) console.log(`[people-agent] "${personName}": ${fuller}`);
-    careerHistory = orderCareer(person, careerHistory);
+    // A CEO title dropped only where someone else is named the current CEO
+    // (Boyle and Homeboy's Thomas Vozzo, never Gellert and his predecessor),
+    // the fullest title the sources give, the current role first (Oct 28).
+    const settled = settleTitles(person, careerHistory, [org, person.currentCompany].filter((x): x is string => !!x), {
+      snippets: [...allSnippets, ...snippetsOf(newsResultsRaw), ...(officialExcerpt ? [officialExcerpt] : [])],
+      summary: person.summary,
+    });
+    careerHistory = settled.careerHistory;
+    const officerConflicts = settled.officerConflicts;
+    for (const n of settled.notes) console.log(`[people-agent] "${personName}": ${n}`);
 
     // A net worth no source states isn't shown (Oct 28: McCann's "$9M").
     if (person.netWorth) {

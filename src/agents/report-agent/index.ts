@@ -6,7 +6,7 @@ import { pushRelatedSection } from "../related-entities-agent/render.js";
 import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle, Source } from "../../types/research.js";
 import type { Form4Entry } from "../../types/research.js";
 import { saleValue } from "../../lib/insiders.js";
-import { roleDates } from "../../lib/person-sources.js";
+import { affiliationDates, roleDates } from "../../lib/person-sources.js";
 import { namesOrg } from "../../lib/person-checks.js";
 
 /**
@@ -614,14 +614,16 @@ export class ReportAgent {
       for (const b of boards) {
         if (seen(b.organization)) continue;
         shown.push(b.organization);
-        const dates = roleDates({ start: b.start, end: b.end });
+        const dates = affiliationDates(b.organization, b.role, b.start, b.end, bundle.careerHistory);
         const org = b.url ? `[**${b.organization}**](${b.url})` : `**${b.organization}**`;
         rows.push(`- ${org} — ${b.role ?? "Board member"}${dates ? ` _(${dates})_` : ""}`);
       }
       for (const a of officers) {
         if (seen(a.companyName)) continue;
         shown.push(a.companyName);
-        const meta = [a.jurisdiction, a.startDate ? `since ${a.startDate}` : null, a.endDate ? `until ${a.endDate}` : null]
+        // Dates from the career history when the record has no end (Oct 28:
+        // Black Diamond's President row read "since 2012").
+        const meta = [a.jurisdiction, affiliationDates(a.companyName, a.position, a.startDate, a.endDate, bundle.careerHistory)]
           .filter(Boolean)
           .join(", ");
         rows.push(
