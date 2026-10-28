@@ -15,7 +15,7 @@ import { applyRoleChange, personNews, roleFromNews, summaryFromSnippet } from ".
 import {
   bioExcerpt, clearEndedRole, confirmBoardSeats, isBoardPage, isProfilePage, officialBioPages, secPersonExcerpts,
   sourceOf, surnameOf, tiedToOrg, type SecExcerpt, type TiedText,
-  anchorCurrentRole, otherCeoOf, verifyEducation, within, withoutCeo,
+  anchorCurrentRole, fullerTitle, orderCareer, otherCeoOf, recentEnough, verifyEducation, verifyNetWorth, within, withoutCeo,
 } from "../../lib/person-sources.js";
 import { hostOf, newsAboutSubject } from "../../lib/entities/subject.js";
 import { isRoleTitle, namesOrg } from "../../lib/person-checks.js";
@@ -235,6 +235,16 @@ export class PeopleAgent {
       `BACKGROUND & NET WORTH:\n${backgroundText}`,
     ].filter(Boolean).join("\n\n").slice(0, 18_000) || snippetText;
 
+    // Pages and snippets that name this person and the picked organization:
+    // what may vouch for a board seat or a school.
+    const tiedSources: TiedText[] = org ? [
+      ...fetchedBios.flatMap((t, i) => (t && tiedToOrg(t, personName, org) ? [{ url: bioResults[i].url, text: t }] : [])),
+      ...[...bioResults, ...backgroundResults, ...profileResults].flatMap((r) => {
+        const text = `${r.title}. ${r.snippet ?? ""}`;
+        return tiedToOrg(text, personName, org) ? [{ url: r.url, text }] : [];
+      }),
+    ] : [];
+
     let usedLLM = false;
     if (combinedText.length > 0) {
       // What's left after the searches, less time for the steps after it.
@@ -296,7 +306,7 @@ RULES:
         ];
         boardSeats = confirmBoardSeats(
           llmResult.boardSeats.filter((b) => !isPlaceholderOrg(b.organization)),
-          { boardPages, vouched },
+          { boardPages, vouched, tied: tiedSources },
           [org, person.currentCompany].filter((e): e is string => !!e),
         );
       }
@@ -341,8 +351,7 @@ RULES:
         ...(officialExcerpt ? [officialExcerpt] : []),
         ...boardPages.map((b) => b.text),
         ...secExcerpts.map((e) => e.text),
-        ...fetchedBios.filter((t): t is string => !!t && tiedToOrg(t, personName, org)),
-        ...allSnippets.filter((t) => tiedToOrg(t, personName, org)),
+        ...tiedSources.map((t) => t.text),
       ];
       const verified = verifyEducation(person.education, tied, personName);
       if (verified !== person.education) console.log(`[people-agent] "${personName}": education "${person.education}" -> "${verified ?? "none"}" (only what a source tied to ${org} states)`);
@@ -351,7 +360,8 @@ RULES:
 
     // Dated and newest first, as company news is (round 20). An undated
     // item (speaker pages) can't be placed in time: dropped.
-    const news: NewsEntry[] = personNews(newsResults, personName).filter((n) => !!n.date);
+    // Older than two years isn't recent news (Oct 28: Dec 2011 for Mazzarella).
+    const news: NewsEntry[] = personNews(newsResults, personName).filter((n) => recentEnough(n.date));
     // The employer's top stories (Gecko's Navy contract), same filters, and
     // the person's own Form 4 filings when it's listed. The employer is the
     // picked organization, else the extracted one: never a job title.
@@ -378,7 +388,8 @@ RULES:
       officerConflicts.push({ org: o, ceo });
       const at = (c: string | undefined) => !!c && (namesOrgEither(c, o));
       careerHistory = careerHistory.flatMap((c) => {
-        if (!at(c.company) || withoutCeo(c.title) === c.title) return [c];
+        // A past CEO role stays: someone else holds the title now.
+        if (!at(c.company) || c.end || c.current === false || withoutCeo(c.title) === c.title) return [c];
         const title = withoutCeo(c.title);
         return title ? [{ ...c, title }] : [];
       });
@@ -386,6 +397,22 @@ RULES:
         person.currentRole = withoutCeo(person.currentRole) || undefined;
       }
       console.log(`[people-agent] "${personName}": ${ceo} is named as ${o}'s CEO; dropped the CEO title there`);
+    }
+
+    // The fullest current title the sources give, then the current role
+    // first in the career history and every other open role past (Oct 28).
+    const conflictHere = officerConflicts.some((c) => !!person.currentCompany && namesOrgEither(c.org, person.currentCompany));
+    const fuller = fullerTitle(person, careerHistory, [person.summary ?? "", ...(officialExcerpt ? [officialExcerpt] : []), ...allSnippets], conflictHere);
+    if (fuller) console.log(`[people-agent] "${personName}": ${fuller}`);
+    careerHistory = orderCareer(person, careerHistory);
+
+    // A net worth no source states isn't shown (Oct 28: McCann's "$9M").
+    if (person.netWorth) {
+      const stated = verifyNetWorth(person.netWorth, [...allSnippets, ...snippetsOf(newsResultsRaw), ...fetchedBios.filter((t): t is string => !!t), ...(officialExcerpt ? [officialExcerpt] : [])], personName);
+      if (!stated) {
+        console.log(`[people-agent] "${personName}": net worth "${person.netWorth}" dropped, no source states it`);
+        delete person.netWorth;
+      }
     }
 
     // The employer's top stories (Gecko's Navy contract) and the person's
@@ -405,7 +432,7 @@ RULES:
       ? personNews(companyNewsRaw
         .filter((r) => !seenNews.has(r.url) && !isNewsNoise(r.url) && !isProfilePage(r.url))
         .filter((r) => isUsableHeadline(r.title) && newsAboutSubject(`${r.title}. ${r.snippet ?? ""}`, r.url, subject)), employer!)
-        .filter((n) => !!n.date).slice(0, 3)
+        .filter((n) => recentEnough(n.date)).slice(0, 3)
       : [];
     for (const n of companyNews) if (n.url) sources.push(sourceOf(n.url, n.headline, "company-news"));
     const insiderTrades = employer

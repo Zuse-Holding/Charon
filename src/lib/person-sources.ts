@@ -106,6 +106,13 @@ export function tiedToOrg(text: string, personName: string, org: string): boolea
 
 export interface TiedText { url: string; text: string }
 
+const BOARD_WORD = /\b(board|directors?|chair\w*|trustees?|governance)\b/i;
+
+/** The organization is named within a sentence's reach of a board word. */
+function boardNear(text: string, org: string): boolean {
+  return text.split(/(?<=[.;!?])\s+/).some((sn) => BOARD_WORD.test(sn) && namesOrg(sn, org));
+}
+
 // Wire services carry a company's own press releases.
 const WIRE_HOST = /(^|\.)(businesswire|prnewswire|globenewswire|accessnewswire|newsfilecorp)\.com$/i;
 
@@ -116,10 +123,13 @@ const WIRE_HOST = /(^|\.)(businesswire|prnewswire|globenewswire|accessnewswire|n
  * organization whose own site or press release it is; the person's
  * official bio and SEC filings vouch for any organization they name. The
  * person's own employer is a role in the career history, not an outside seat.
+ * Any other text naming the person and their employer vouches for a board
+ * it names next to a board word (Oct 28 overcorrection: Mazzarella lost WM,
+ * Cigna and Core & Main once the stricter rule shipped).
  */
 export function confirmBoardSeats(
   seats: BoardSeatEntry[],
-  sources: { boardPages: TiedText[]; vouched: TiedText[] },
+  sources: { boardPages: TiedText[]; vouched: TiedText[]; tied?: TiedText[] },
   employers: string[],
 ): BoardSeatEntry[] {
   const out: BoardSeatEntry[] = [];
@@ -130,7 +140,8 @@ export function confirmBoardSeats(
       const host = hostOf(t.url);
       return !!host && (orgSite(host, s.organization) || WIRE_HOST.test(host)) && namesOrg(t.text, s.organization);
     });
-    const source = official ?? sources.vouched.find((t) => namesOrg(t.text, s.organization));
+    const source = official ?? sources.vouched.find((t) => namesOrg(t.text, s.organization))
+      ?? (sources.tied ?? []).find((t) => boardNear(t.text, s.organization));
     if (!source) continue;
     out.push({ ...s, url: source.url });
   }
@@ -277,6 +288,25 @@ export function anchorCurrentRole(person: PersonProfile, careerHistory: CareerEn
 
 const SCHOOL_WORD = /\b(university|college|institute|school|academy|polytechnic|conservatory|seminary)\b/i;
 
+const FILLER = /^(in|of|and|&|the)$/i;
+// "B.S.", "BSME", "MBA", "B.A.Sc.", "Ph.D.": a degree's letters.
+const ABBREVIATION = /^(?:[A-Z][a-z]?\.){1,4}[A-Za-z]{0,3}\.?$|^[A-Z]{2,5}[a-z]?$/;
+
+/** The words of a degree part the source window has; abbreviations only in a form the source writes. */
+function sourceWords(part: string, window: string): string {
+  const has = (token: string) => {
+    if (ABBREVIATION.test(token)) {
+      const letters = token.replace(/\./g, "").split("").map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      return new RegExp(`(^|[^A-Za-z])${letters.join("\\.?\\s?")}\\.?(?![A-Za-z])`).test(window);
+    }
+    return new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(window);
+  };
+  const tokens = part.split(/\s+/).filter((t) => FILLER.test(t) || has(t.replace(/[,;]$/, "")));
+  while (tokens.length && FILLER.test(tokens[0])) tokens.shift();
+  while (tokens.length && FILLER.test(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.join(" ");
+}
+
 /**
  * Education kept only when a source tied to this person and their
  * organization names the school near the person's name (Oct 28 handoff: a
@@ -291,7 +321,6 @@ export function verifyEducation(education: string, tied: string[], personName: s
     for (const m of t.matchAll(new RegExp(`\\b${last}\\b`, "gi"))) out.push(t.slice(Math.max(0, m.index! - 800), m.index! + 800));
     return out;
   });
-  const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   const kept: string[] = [];
   for (const entry of education.split(/\s*;\s*/).filter(Boolean)) {
     const parts = entry.split(/\s*,\s*/);
@@ -300,30 +329,52 @@ export function verifyEducation(education: string, tied: string[], personName: s
     const initials = distinctiveWords(school).map((w) => w[0]).join("");
     const window = near.find((w) => namesOrg(w, school) || (initials.length >= 3 && new RegExp(`\\b${initials}\\b`, "i").test(w)));
     if (!window) continue;
-    // Degree and year only as the source words them.
-    const worded = parts.filter((p) => p !== school && squash(window).includes(squash(p)));
+    // Degree, field and year as the source words them: an abbreviation the
+    // source doesn't use is dropped ("B.A.Sc." for a B.S.), the field it
+    // names is kept ("Electrical Engineering").
+    const worded = parts.filter((p) => p !== school).map((p) => sourceWords(p, window)).filter(Boolean);
     kept.push([...worded, school].join(", "));
   }
   return kept.length ? kept.join("; ") : undefined;
 }
 
+// Words that start a title or a sentence, never a person's name ("its new
+// president and CEO of Graybar" once read as a CEO named "its new").
+const NOT_A_NAME = /^(president|chief|executive|founder|co-founder|cofounder|chairman|chairwoman|chair|director|officer|ceo|the|its|his|her|their|new|former|interim|acting|and|who|became|named|said|vice|senior|managing|general|today|company|board)$/i;
+
+/** A regex source matching this text in any letter case, spaces flexible. */
+function anyCase(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/[a-z]/gi, (c) => `[${c.toLowerCase()}${c.toUpperCase()}]`)
+    .replace(/\s+/g, "\\s+");
+}
+
 /**
  * Someone else the sources name as the organization's CEO ("Thomas Vozzo,
- * CEO of Homeboy Industries"): the person's own "CEO" title there conflicts.
+ * Homeboy's CEO"): the person's own "CEO" title there conflicts. Names are
+ * matched case-sensitively, two capitalized words that aren't title words
+ * (Oct 28 regression: a case-blind match read "and co-founder", "who
+ * became" and "its new" as other CEOs and stripped Mazzarella's,
+ * Loosararian's and Gellert's titles).
  */
 export function otherCeoOf(texts: string[], org: string, personName: string): string | undefined {
-  const NAME = "([A-Z][a-z]+(?: [A-Z]\\.)? [A-Z][a-zA-Z'’-]+)";
-  const ORG = distinctiveWords(org).length ? org.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
-  if (!ORG) return undefined;
-  const CEO = "(?:CEO|chief executive(?: officer)?)";
+  const short = distinctiveWords(org)[0];
+  const orgs = [org.replace(/[.,;:]+$/, ""), ...(short && short.length >= 4 ? [short] : [])];
+  const ORG = `(?:${orgs.map(anyCase).join("|")})(?:['’]s)?`;
+  const NAME = "([A-Z][a-zA-Z’'-]+(?: [A-Z]\\.)? [A-Z][a-zA-Z’'-]+)";
+  const CEO = "(?:CEO|[Cc]hief [Ee]xecutive(?: [Oo]fficer)?)";
   const patterns = [
-    new RegExp(`${NAME},? (?:the |its )?(?:president and )?${CEO} of ${ORG}`, "i"),
-    new RegExp(`${ORG}(?:['’]s)? (?:president and )?${CEO},? ${NAME}`, "i"),
+    new RegExp(`${NAME},? (?:the |its )?(?:[Pp]resident and )?${CEO} (?:of|at) ${ORG}`, "g"),
+    new RegExp(`${ORG} (?:[Pp]resident and )?${CEO},? ${NAME}`, "g"),
+    new RegExp(`${NAME}, ${ORG} ${CEO}`, "g"),
   ];
-  const last = surnameOf(personName);
-  for (const t of texts) for (const re of patterns) {
-    const name = t.match(re)?.[1];
-    if (name && !words(name).has(last)) return name;
+  const own = words(personName);
+  for (const t of texts) for (const re of patterns) for (const m of t.matchAll(re)) {
+    const name = m[1];
+    const parts = name.split(/\s+/);
+    if (parts.some((w) => NOT_A_NAME.test(w.replace(/[’'.,]/g, "")))) continue;
+    if (parts.some((w) => own.has(normalizeWords(w).trim()))) continue;
+    return name;
   }
   return undefined;
 }
@@ -332,4 +383,89 @@ export function otherCeoOf(texts: string[], org: string, personName: string): st
 export function withoutCeo(title: string): string {
   return title.replace(/\s*(?:,|and|&)?\s*\b(?:CEO|chief executive(?: officer)?)\b\s*(?:,|and|&)?\s*/gi, " ")
     .replace(/\s+/g, " ").replace(/^(and|&|,)\s+|\s+(and|&|,)$/gi, "").trim();
+}
+
+const ROLE_TOKEN = "(?:[A-Z][\\w’'-]*|founder|co-founder|cofounder|chairman|chairwoman|chair|president|chief|executive|operating|financial|technology|officer|director|managing|partner|owner|vice|senior|ceo|coo|cfo|cto|and|&)";
+const TITLE_WORD = /\b(chair\w*|president|ceo|coo|cfo|cto|chief|founder|co-founder|cofounder|director|officer|executive|partner|owner)\b/i;
+const titleWords = (t: string) => new Set(normalizeWords(t.replace(/&/g, " and ")).trim().split(" ").filter((w) => w && w !== "and" && w !== "of" && w !== "the"));
+const covers = (big: string, small: string) => [...titleWords(small)].every((w) => titleWords(big).has(w));
+const titleCase = (t: string) => t.replace(/\b([a-z])([\w’'-]*)/g, (m, a: string, b: string) => (/^(and|of|the)$/.test(m) ? m : a.toUpperCase() + b));
+
+/**
+ * The fullest current title the sources give (Oct 28: Boyle's role read
+ * "Executive Director" while his summary says founder and executive
+ * director of Homeboy Industries). A longer title at the same company
+ * that holds every word of the current one wins, from the career history
+ * or from text naming the title "of"/"at" the company. A CEO title is
+ * never brought back where someone else is named CEO.
+ */
+export function fullerTitle(person: PersonProfile, careerHistory: CareerEntry[], texts: string[], ceoConflict = false): string | undefined {
+  const role = person.currentRole;
+  const company = person.currentCompany;
+  if (!role || !company) return undefined;
+  const short = distinctiveWords(company)[0];
+  const at = new RegExp(`(${ROLE_TOKEN}(?:,?\\s+${ROLE_TOKEN}){0,8})\\s+(?:of|at)\\s+(?:the\\s+)?(?:${[company, ...(short ? [short] : [])].map(anyCase).join("|")})\\b`, "g");
+  const nameWords = titleWords(person.name);
+  const fromText = texts.flatMap((t) => [...t.matchAll(at)].map((m) => {
+    const toks = m[1].split(/\s+/);
+    // Drop the person's name and anything before the first title word.
+    while (toks.length && (nameWords.has(normalizeWords(toks[0]).trim()) || !TITLE_WORD.test(toks[0]))) toks.shift();
+    return titleCase(toks.join(" ").replace(/,$/, ""));
+  }));
+  const fromCareer = careerHistory.filter((c) => sameOrg(c.company, company) && !c.end && c.current !== false).map((c) => c.title);
+  const conflicts = (t: string) => ceoConflict && /\b(ceo|chief executive)\b/i.test(t);
+  const best = [...fromCareer, ...fromText]
+    .filter((t) => t && TITLE_WORD.test(t) && !conflicts(t) && covers(t, role) && titleWords(t).size > titleWords(role).size && titleWords(t).size <= 8)
+    .sort((a, b) => titleWords(b).size - titleWords(a).size)[0];
+  if (!best) return undefined;
+  const was = role;
+  person.currentRole = best;
+  return `current title "${was}" -> "${best}"`;
+}
+
+/**
+ * Career history with the current role first, dated as its sources date it
+ * (Oct 28). Roles at the same company that the current title holds
+ * ("CEO" since 2012 within "Chairman, President and CEO") stay current;
+ * every other role without an end date is past, never "since 2012" alone
+ * (Gellert: Black Diamond's "President (since 2012)" read as current),
+ * except a seat on another board a source says they still hold.
+ */
+export function orderCareer(person: PersonProfile, careerHistory: CareerEntry[]): CareerEntry[] {
+  const role = person.currentRole;
+  if (!role) return careerHistory;
+  const same = (c: CareerEntry) => sameOrg(c.company, person.currentCompany) || (!c.company && !person.currentCompany);
+  const exact = careerHistory.findIndex((c) => same(c) && c.title.toLowerCase() === role.toLowerCase());
+  const within = careerHistory.findIndex((c) => same(c) && !c.end && covers(role, c.title) && !!c.start);
+  const i = exact >= 0 ? exact : within;
+  const match = i >= 0 ? careerHistory[i] : undefined;
+  const first: CareerEntry = {
+    title: role,
+    ...(person.currentCompany ?? match?.company ? { company: person.currentCompany ?? match?.company } : {}),
+    ...(match?.start ? { start: match.start } : {}),
+    current: true,
+  };
+  const rest = careerHistory.filter((_, j) => j !== exact).map((c): CareerEntry => {
+    if (c.end) return c;
+    if (same(c) && covers(role, c.title) && c.current !== false) return { ...c, current: true };
+    if (c.current === true && BOARD_TITLE.test(c.title) && !same(c)) return c;
+    return { ...c, current: false };
+  });
+  return [first, ...rest];
+}
+
+/**
+ * A net worth kept only when a text naming the person states the figure
+ * (Oct 28: McCann's "$9M" had no visible source).
+ */
+export function verifyNetWorth(netWorth: string, texts: string[], personName: string): string | undefined {
+  const figure = netWorth.match(/\d+(?:[.,]\d+)?/)?.[0];
+  if (!figure) return undefined;
+  return texts.some((t) => mentionsPerson(t, personName) && /net worth|worth an estimated|is worth/i.test(t) && t.includes(figure)) ? netWorth : undefined;
+}
+
+/** Dated within the last two years (Oct 28: a Dec 2011 story in Mazzarella's Recent News). */
+export function recentEnough(date: string | undefined, now = new Date()): boolean {
+  const t = Date.parse(date ?? "");
+  return !isNaN(t) && now.getTime() - t <= 2 * 365 * 86_400_000 + 86_400_000;
 }

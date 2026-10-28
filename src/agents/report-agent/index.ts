@@ -7,6 +7,7 @@ import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, P
 import type { Form4Entry } from "../../types/research.js";
 import { saleValue } from "../../lib/insiders.js";
 import { roleDates } from "../../lib/person-sources.js";
+import { namesOrg } from "../../lib/person-checks.js";
 
 /**
  * Report Agent
@@ -595,36 +596,44 @@ export class ReportAgent {
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["bio", "background"]);
 
-    // Other organizations' boards (fix 4), each from a source that ties
-    // the seat to this person.
-    if (bundle.boardSeats && bundle.boardSeats.length > 0) {
-      lines.push(`## Board Seats`);
-      for (const b of bundle.boardSeats) {
+    // One row per organization (Oct 28): the operating role first, then
+    // seats on other boards, then officer records, so anchoring on the
+    // employer never hides an outside board (Mazzarella's WM, Cigna, Core & Main).
+    const boards = bundle.boardSeats ?? [];
+    const officers = bundle.corporateAffiliations ?? [];
+    if (boards.length > 0 || officers.length > 0) {
+      const shown: string[] = [];
+      const seen = (org: string) => shown.some((o) => namesOrg(o, org) || namesOrg(org, o));
+      const rows: string[] = [];
+      const p = bundle.person;
+      if (p.currentCompany && p.currentRole) {
+        const dates = roleDates(bundle.careerHistory[0]?.title === p.currentRole ? bundle.careerHistory[0] : {});
+        rows.push(`- **${p.currentCompany}** — ${p.currentRole}${dates ? ` _(${dates})_` : ""}`);
+        shown.push(p.currentCompany);
+      }
+      for (const b of boards) {
+        if (seen(b.organization)) continue;
+        shown.push(b.organization);
         const dates = roleDates({ start: b.start, end: b.end });
         const org = b.url ? `[**${b.organization}**](${b.url})` : `**${b.organization}**`;
-        lines.push(`- ${org}${b.role ? ` — ${b.role}` : ""}${dates ? ` _(${dates})_` : ""}`);
+        rows.push(`- ${org} — ${b.role ?? "Board member"}${dates ? ` _(${dates})_` : ""}`);
       }
-      lines.push(``);
-      this.pushSectionSources(lines, bundle.sources, ["board-seats"]);
-    }
-
-    // Charon Person Research (Round 3) — only present on deep/internal-tier
-    // runs, so this section is omitted entirely rather than shown empty
-    // for everyone else.
-    if (bundle.corporateAffiliations && bundle.corporateAffiliations.length > 0) {
-      lines.push(`## Corporate Affiliations`);
-      for (const a of bundle.corporateAffiliations) {
+      for (const a of officers) {
+        if (seen(a.companyName)) continue;
+        shown.push(a.companyName);
         const meta = [a.jurisdiction, a.startDate ? `since ${a.startDate}` : null, a.endDate ? `until ${a.endDate}` : null]
           .filter(Boolean)
           .join(", ");
-        lines.push(
+        rows.push(
           `- ${a.companyUrl ? `[**${a.companyName}**](${a.companyUrl})` : `**${a.companyName}**`}${
             a.position ? ` — ${a.position}` : ""
           }${meta ? ` _(${meta})_` : ""}`
         );
       }
+      lines.push(`## Corporate Affiliations`);
+      lines.push(...rows);
       lines.push(``);
-      this.pushSectionSources(lines, bundle.sources, ["corporate-affiliations"]);
+      this.pushSectionSources(lines, bundle.sources, ["corporate-affiliations", "board-seats", "bio"], boards.map((b) => b.url));
     }
 
     if (bundle.foiaRequests && bundle.foiaRequests.length > 0) {

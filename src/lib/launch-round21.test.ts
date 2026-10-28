@@ -151,7 +151,7 @@ describe("round twenty-one: person search from the Oct 27 handoff", () => {
     }));
     assert.match(md, /- CEO at Gecko Robotics _\(since 2013\)_/);
     assert.match(md, /- CEO at Black Diamond _\(2012 – end date not stated\)_/);
-    assert.match(md, /## Board Seats\n- \[\*\*WM\*\*\]\(https:\/\/www\.wm\.com\/board\) — Director _\(since 2015\)_/);
+    assert.match(md, /## Corporate Affiliations\n- \[\*\*WM\*\*\]\(https:\/\/www\.wm\.com\/board\) — Director _\(since 2015\)_/);
     assert.match(md, /\*\*Announced departure:\*\* Will step down/);
     assert.match(md, /## Gecko Robotics News\n- \[Gecko wins \$300M Navy contract\]/);
   });
