@@ -793,7 +793,7 @@ export const PersonExtractionSchema = AnyObject.transform((obj) => ({
   summary: toStringOrUndefined(obj.summary),
   currentRole: toStringOrUndefined(obj.currentRole ?? obj.role ?? obj.current_role),
   currentCompany: toStringOrUndefined(obj.currentCompany ?? obj.company ?? obj.current_company),
-  education: toStringOrUndefined(obj.education ?? obj.academic_background ?? obj.alma_mater),
+  education: educationText(obj.education ?? obj.academic_background ?? obj.alma_mater),
   netWorth: toStringOrUndefined(obj.netWorth ?? obj.net_worth ?? obj.estimated_net_worth),
   knownFor: toStringOrUndefined(obj.knownFor ?? obj.known_for ?? obj.notable_for ?? obj.achievements),
   nationality: toStringOrUndefined(obj.nationality ?? obj.citizenship),
@@ -801,7 +801,7 @@ export const PersonExtractionSchema = AnyObject.transform((obj) => ({
     const raw = obj.careerHistory ?? obj.career_history ?? obj.career;
     if (!raw) return [];
     const items = Array.isArray(raw) ? raw : [raw];
-    return items.flatMap((item: unknown) => {
+    return items.flatMap((item: unknown): { title: string; company?: string; start?: string; end?: string; current?: boolean }[] => {
       if (typeof item === "string") {
         // Whitespace-bounded separators only — a bare hyphen/colon can
         // appear inside a title or company name (e.g. "Co-Founder",
@@ -818,12 +818,53 @@ export const PersonExtractionSchema = AnyObject.transform((obj) => ({
         const title = String(o.title ?? o.role ?? o.position ?? "").replace(/\*\*/g, "").trim();
         const company = toStringOrUndefined(o.company ?? o.organization ?? o.employer);
         const cleanedCompany = company?.replace(/\*\*/g, "")?.trim();
-        return title ? [{ title, company: cleanedCompany }] : [];
+        if (!title) return [];
+        const current = o.current ?? o.isCurrent ?? o.is_current;
+        return [{
+          title,
+          company: cleanedCompany,
+          start: datePart(o.start ?? o.startDate ?? o.start_date ?? o.from),
+          end: datePart(o.end ?? o.endDate ?? o.end_date ?? o.to),
+          current: typeof current === "boolean" ? current : undefined,
+        }];
       }
       return [];
     });
   })(),
+  boardSeats: (() => {
+    const raw = obj.boardSeats ?? obj.board_seats ?? obj.boards ?? obj.directorships;
+    const items = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    return items.flatMap((item: unknown) => {
+      if (typeof item !== "object" || item === null) return [];
+      const o = item as Record<string, unknown>;
+      const organization = toStringOrUndefined(o.organization ?? o.company ?? o.name)?.replace(/\*\*/g, "").trim();
+      if (!organization) return [];
+      return [{
+        organization,
+        role: toStringOrUndefined(o.role ?? o.title ?? o.position),
+        start: datePart(o.start ?? o.startDate ?? o.since),
+        end: datePart(o.end ?? o.endDate ?? o.until),
+      }];
+    });
+  })(),
+  announcedDeparture: toStringOrUndefined(obj.announcedDeparture ?? obj.announced_departure),
 }));
+
+/** Several degrees as one line: "BSME, WPI; MBA, Drexel". */
+function educationText(v: unknown): string | undefined {
+  if (!Array.isArray(v)) return toStringOrUndefined(v);
+  const parts = v.map((d) => (typeof d === "object" && d !== null
+    ? Object.values(d as Record<string, unknown>).filter((x) => typeof x === "string" || typeof x === "number").join(", ")
+    : toStringOrUndefined(d) ?? "")).filter(Boolean);
+  return parts.join("; ") || undefined;
+}
+
+/** A date the model gave for a role: kept only when it carries a year
+ *  ("Mar 2023", "2019"), never "present" or a guess like "recently". */
+function datePart(v: unknown): string | undefined {
+  const s = typeof v === "number" ? String(v) : toStringOrUndefined(v)?.trim();
+  return s && /\b(19|20)\d{2}\b/.test(s) && s.length <= 24 ? s : undefined;
+}
 export type PersonExtraction = z.infer<typeof PersonExtractionSchema>;
 
 // Models sometimes answer with a bare list of items instead of the object

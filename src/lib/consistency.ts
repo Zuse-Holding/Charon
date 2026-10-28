@@ -5,6 +5,7 @@ import { newsAboutSubject, tiedToSubject, type SubjectRecord } from "./entities/
 import { isCitable } from "./source-quality.js";
 import { insiderSelling } from "./insiders.js";
 import { personAnchors, tiedToPerson } from "./person-checks.js";
+import { nameWords } from "./name-match.js";
 
 /**
  * Consistency and plausibility pass, run on a company bundle before
@@ -242,8 +243,15 @@ export function applyPersonConsistency(bundle: PersonResearchBundle): void {
   const anchors = personAnchors(bundle);
   const aff = bundle.person.affiliation;
   if (bundle.corporateAffiliations) {
-    const kept = bundle.corporateAffiliations.filter((a) => tiedToPerson(a.companyName, anchors, aff));
-    const dropped = bundle.corporateAffiliations.length - kept.length;
+    // One row per company and position: officer records repeat across
+    // filings (Oct 27 handoff, fix 8).
+    const seen = new Set<string>();
+    const unique = bundle.corporateAffiliations.filter((a) => {
+      const key = `${nameWords(a.companyName).join(" ")}|${(a.position ?? "").trim().toLowerCase()}`;
+      return !seen.has(key) && !!seen.add(key);
+    });
+    const kept = unique.filter((a) => tiedToPerson(a.companyName, anchors, aff));
+    const dropped = unique.length - kept.length;
     if (dropped) console.log(`[consistency] "${bundle.person.name}": ${dropped} officer record(s) dropped, no tie to ${anchors.join(", ") || "a known employer"}`);
     bundle.corporateAffiliations = kept.length ? kept : undefined;
   }

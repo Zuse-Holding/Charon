@@ -4,6 +4,7 @@ import { mentionsCompany, mentionsPerson, normalizeWords } from "./news-noise.js
 import { hostOf } from "./entities/subject.js";
 import { mentionsAffiliation } from "./entities/affiliation.js";
 import { looksLikePersonName } from "./nlp.js";
+import { namesOrg } from "./person-checks.js";
 
 /**
  * Candidate step (Fix 1 item 3, Fix 5): before a report runs, list the
@@ -35,7 +36,7 @@ export interface CandidateResult {
 
 // Directories, social and reference sites: they list a business, they
 // aren't one, so they never become a candidate's website.
-const NOT_A_BUSINESS_SITE = /(^|\.)(linkedin|facebook|instagram|twitter|x|youtube|tiktok|yelp|wikipedia|bbb|bloomberg|crunchbase|zoominfo|dnb|opencorporates|bizapedia|manta|mapquest|yellowpages|indeed|glassdoor|reddit|pinterest|google|apple|amazon|tripadvisor|doordash|ubereats|grubhub|healthgrades|zocdoc|vitals)\.[a-z.]+$/i;
+export const NOT_A_BUSINESS_SITE = /(^|\.)(linkedin|facebook|instagram|twitter|x|youtube|tiktok|yelp|wikipedia|bbb|bloomberg|crunchbase|zoominfo|dnb|opencorporates|bizapedia|manta|mapquest|yellowpages|indeed|glassdoor|reddit|pinterest|google|apple|amazon|tripadvisor|doordash|ubereats|grubhub|healthgrades|zocdoc|vitals)\.[a-z.]+$/i;
 
 const BUSINESS_WORD = /&|\b(windows?|doors?|systems?|industries|investments?|robotics|electric(al)?|engineered|engineering|holdings?|group|company|corp(oration)?|inc|llc|ltd|services?|solutions|supply|construction|foods?|cookies?|bakery|restaurants?|cafe|clinic|dental|health|motors|auto(motive)?|homes?|realty|properties|capital|partners|labs?|technolog(y|ies)|software|studios?|design|center|stores?|shop|market|manufacturing|products|brands?|aba|therapy)\b/i;
 
@@ -51,7 +52,7 @@ const GENERIC_NAME_WORDS = new Set(["the", "and", "inc", "llc", "co", "company",
 
 /** The domain carries the company's name ("zuseholdings.com" for Zuse
  *  Holdings): its own site, not a directory or news page about it. */
-function ownSite(host: string, name: string): boolean {
+export function ownSite(host: string, name: string): boolean {
   const label = host.split(".").slice(0, -1).join("").replace(/[^a-z0-9]/g, "");
   const words = normalizeWords(name).trim().split(" ").filter((w) => w.length >= 3);
   const distinctive = words.filter((w) => !GENERIC_NAME_WORDS.has(w));
@@ -196,6 +197,7 @@ export async function personCandidates(name: string, context: string | undefined
   const results = await searchName(searcher, name, context ? ` ${context}` : "");
   const out: Candidate[] = [];
   const seen = new Set<string>();
+  const orgsSeen: string[] = [];
   let namesFound = false;
   for (const r of results) {
     const text = `${r.title} ${r.snippet ?? ""}`;
@@ -212,6 +214,9 @@ export async function personCandidates(name: string, context: string | undefined
     const key = normalizeWords(context ? `${org} ${r.url}` : org);
     if (seen.has(key)) continue;
     seen.add(key);
+    // "Limbach" and "Limbach Holdings, Inc." are one match (Oct 27 handoff, fix 8).
+    if (!context && orgsSeen.some((o) => namesOrg(o, org) || namesOrg(org, o))) continue;
+    orgsSeen.push(org);
     const shown = context ? (orgFromTitle(r.title, name) ?? context) : org;
     out.push({
       label: `${name} — ${shown}`,

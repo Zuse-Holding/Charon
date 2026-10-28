@@ -636,11 +636,13 @@ export class ResearchOrchestrator {
    *   e.g. "csun" from "Daniel Olmos csun". `personName` here is always
    *   the clean name; OpenCorporates/MuckRock search by legal name only,
    *   so affiliation is passed to the people agent alone.
-   * @param proAccess 7/20 public-record fusion sources (sanctions
-   *   screening, ProPublica nonprofit lookup, LittleSis power-mapping) —
-   *   gated to Pro/Team/internal via TierConfig.publicRecordsAccess,
-   *   checked by the caller. No Wayback for person research — see
-   *   wayback-agent's doc comment for why.
+   * @param proAccess 7/20 public-record fusion sources (ProPublica
+   *   nonprofit lookup, LittleSis power-mapping) — gated to
+   *   Pro/Team/internal via TierConfig.publicRecordsAccess, checked by the
+   *   caller. Sanctions screening runs on every person report (Oct 27
+   *   handoff, fix 7: it was missing on Mazzarella and Boyle, and it's
+   *   one of Metis's clearest advantages). No Wayback for person
+   *   research — see wayback-agent's doc comment for why.
    */
   async researchPerson(personName: string, deep = false, affiliation?: string, proAccess = false, options: { onProgress?: ProgressListener } = {}): Promise<{
     bundle: PersonResearchBundle;
@@ -664,7 +666,7 @@ export class ResearchOrchestrator {
     littleSisRelationships?: LittleSisRelationshipEntry[];
   }> {
     if (!deep) for (const id of ["opencorporates", "muckrock"]) cov.skip(id, "Searched automatically on the Charon plan.");
-    if (!proAccess) for (const id of ["sanctions", "nonprofits", "littlesis"]) cov.skip(id, "Included with Pro.");
+    if (!proAccess) for (const id of ["nonprofits", "littlesis"]) cov.skip(id, "Included with Pro.");
     const [result, corporateResult, foiaResult, sanctionsResult, nonprofitResult, littleSisResult] = await Promise.all([
       cov.run("people", () => this.peopleAgent.run(personName, deep, affiliation),
         { person: { name: personName }, careerHistory: [], news: [], sources: [] },
@@ -675,9 +677,8 @@ export class ResearchOrchestrator {
       deep
         ? cov.run("muckrock", () => this.muckRockAgent.run(personName), { requests: [], sources: [] }, (r) => r.requests.length)
         : Promise.resolve({ requests: [], sources: [] }),
-      proAccess
-        ? cov.run("sanctions", () => this.sanctionsAgent.run(personName), { matches: [], sources: [], unavailable: true }, (r) => r.matches.length)
-        : Promise.resolve({ matches: [], sources: [], unavailable: false }),
+      cov.run("sanctions", () => this.sanctionsAgent.run(personName), { matches: [], sources: [], unavailable: true }, (r) => r.matches.length)
+        .catch(() => ({ matches: [], sources: [], unavailable: true })),
       proAccess
         ? cov.run("nonprofits", () => this.nonprofitAgent.run(personName), { organizations: [], sources: [] }, (r) => r.organizations.length)
         : Promise.resolve({ organizations: [], sources: [] }),
@@ -699,9 +700,11 @@ export class ResearchOrchestrator {
       ],
       corporateAffiliations: corporateResult.affiliations.length > 0 ? corporateResult.affiliations : undefined,
       foiaRequests: foiaResult.requests.length > 0 ? foiaResult.requests : undefined,
+      boardSeats: result.boardSeats,
+      companyNews: result.companyNews,
       sanctionsMatches: sanctionsResult.matches.length > 0 ? sanctionsResult.matches : undefined,
       sanctionsUnavailable: sanctionsResult.unavailable || undefined,
-      sanctionsScreened: (proAccess && !sanctionsResult.unavailable) || undefined,
+      sanctionsScreened: !sanctionsResult.unavailable || undefined,
       sanctionsRuledOut: "ruledOut" in sanctionsResult && sanctionsResult.ruledOut ? sanctionsResult.ruledOut : undefined,
       nonprofitFilings: nonprofitResult.organizations.length > 0 ? nonprofitResult.organizations : undefined,
       powerMapConnections: littleSisResult.matches.length > 0 ? littleSisResult.matches : undefined,

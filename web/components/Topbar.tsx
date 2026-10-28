@@ -218,7 +218,10 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
     setStatus(`Researching "${subject}"...`);
     setQuery("");
     setAnchor("");
-    setTypeManuallySet(false);
+    // The next search keeps this one's type (Oct 27 handoff, fix 1):
+    // auto-detect read the next person's name as a company.
+    setType(researchType);
+    setTypeManuallySet(true);
 
     startResearch(subject, researchType as "company" | "person" | "product");
     onResearchStart?.(subject, researchType);

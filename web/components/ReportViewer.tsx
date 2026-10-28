@@ -643,13 +643,14 @@ function renderSection(section: Section, onRetry?: () => void) {
           // inside names/titles themselves (e.g. "Evinyan-Iknoian",
           // "Co-Founder"), splitting mid-word and leaving a stray "**"
           // and the real separator stuck onto the title half.
-          const match = item.match(/^(.+?)\s+[—–]\s+(.+)/);
+          // "_(low confidence: ...)_" or a role's dates ("_(since 2012)_")
+          // at the end: shown on its own line.
+          const noteMatch = item.match(/\s*_\((.+)\)_\s*$/);
+          const main = noteMatch ? item.slice(0, noteMatch.index).trim() : item;
+          const match = main.match(/^(.+?)\s+[—–]\s+(.+)/);
           const clean = (s: string) => s.replace(/\*\*/g, "").trim();
-          const name  = match ? clean(match[1]) : clean(item);
-          const rawRole = match ? clean(match[2]) : "";
-          // "_(low confidence: ...)_" after the title: shown on its own line.
-          const noteMatch = rawRole.match(/\s*_\((.+)\)_\s*$/);
-          const role = noteMatch ? rawRole.slice(0, noteMatch.index).trim() : rawRole;
+          const name  = match ? clean(match[1]) : clean(main);
+          const role = match ? clean(match[2]) : "";
           const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
           return (
             <div key={i} className={styles.personCard}>
@@ -713,8 +714,8 @@ function renderSection(section: Section, onRetry?: () => void) {
     );
   }
 
-  // Recent News
-  if (title === "Recent News") {
+  // Recent News, and the person's employer's news ("Gecko Robotics News")
+  if (title === "Recent News" || title.endsWith(" News")) {
     const links = parseLinkItems(content);
     if (links.length === 0) return <div className={styles.placeholder}>No recent news found.</div>;
     return (

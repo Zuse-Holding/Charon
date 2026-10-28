@@ -160,6 +160,9 @@ export function buildPersonProvenance(b: PersonResearchBundle, snapshots: Snapsh
     const claim = [a.companyName, a.position, a.jurisdiction].filter(Boolean).join(", ");
     c.push({ section: "Corporate Affiliations", claim, terms: [a.companyName], method: "api", recordUrl: a.companyUrl, sourceName: "OpenCorporates" });
   }
+  for (const s of b.boardSeats ?? []) {
+    c.push({ section: "Board Seats", claim: [s.organization, s.role].filter(Boolean).join(", "), terms: [s.organization], method: "ai_extracted" });
+  }
   for (const f of b.foiaRequests ?? []) {
     c.push({ section: "FOIA Requests", claim: clean(f.title), terms: [f.title], method: "api", recordUrl: f.url, sourceName: "MuckRock" });
   }

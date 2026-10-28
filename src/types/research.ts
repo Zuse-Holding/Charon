@@ -244,12 +244,29 @@ export interface PersonProfile {
   netWorth?: string;
   knownFor?: string;
   nationality?: string;
+  /** An announced but not yet effective departure, with its date. */
+  announcedDeparture?: string;
 }
 
 export interface CareerEntry {
   title: string;
   company?: string;
   note?: string;
+  /** "Mar 2023" or "2019", as the source states it. */
+  start?: string;
+  end?: string;
+  /** false when a source says the role ended, even with no end date. */
+  current?: boolean;
+}
+
+/** A seat on another organization's board, from its board page, the
+ *  person's official bio or a proxy statement. */
+export interface BoardSeatEntry {
+  organization: string;
+  role?: string;
+  start?: string;
+  end?: string;
+  url?: string;
 }
 
 // Charon Person Research (Round 3) — corporate officer/directorship
@@ -297,6 +314,9 @@ export interface PersonAgentResult {
   sources: Source[];
   corporateAffiliations?: CorporateAffiliationEntry[];
   foiaRequests?: FoiaRequestEntry[];
+  boardSeats?: BoardSeatEntry[];
+  /** Top recent news about the person's employer. */
+  companyNews?: NewsEntry[];
 }
 
 export interface PersonResearchBundle {
@@ -308,6 +328,8 @@ export interface PersonResearchBundle {
   sources: Source[];
   corporateAffiliations?: CorporateAffiliationEntry[];
   foiaRequests?: FoiaRequestEntry[];
+  boardSeats?: BoardSeatEntry[];
+  companyNews?: NewsEntry[];
   // 7/20 public-record fusion sources — Pro/Team+ only (publicRecordsAccess).
   sanctionsMatches?: SanctionsMatch[];
   /** The Consolidated Screening List couldn't be checked on this run. */

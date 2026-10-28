@@ -6,6 +6,7 @@ import { pushRelatedSection } from "../related-entities-agent/render.js";
 import { CreatorResearchBundle, PersonResearchBundle, PoliticalResearchBundle, ProductResearchBundle, ResearchBundle, Source } from "../../types/research.js";
 import type { Form4Entry } from "../../types/research.js";
 import { saleValue } from "../../lib/insiders.js";
+import { roleDates } from "../../lib/person-sources.js";
 
 /**
  * Report Agent
@@ -534,6 +535,10 @@ export class ReportAgent {
         : `_No summary data found for ${bundle.person.name}._`
     );
     lines.push(``);
+    if (bundle.person.announcedDeparture) {
+      lines.push(`**Announced departure:** ${bundle.person.announcedDeparture}`);
+      lines.push(``);
+    }
     this.pushSectionSources(lines, bundle.sources, ["bio"]);
     pushCoverageSection(lines, bundle.coverage);
 
@@ -564,12 +569,28 @@ export class ReportAgent {
     if (bundle.careerHistory.length === 0) {
       lines.push(`_No career history collected in this pass._`);
     } else {
+      // Dates shown as the source gives them; an ended role never reads
+      // as current (fix 6).
       for (const c of bundle.careerHistory) {
-        lines.push(`- ${c.title}${c.company ? ` at ${c.company}` : ""}`);
+        const dates = roleDates(c);
+        lines.push(`- ${c.title}${c.company ? ` at ${c.company}` : ""}${dates ? ` _(${dates})_` : ""}`);
       }
     }
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["bio", "background"]);
+
+    // Other organizations' boards (fix 4), each from a source that ties
+    // the seat to this person.
+    if (bundle.boardSeats && bundle.boardSeats.length > 0) {
+      lines.push(`## Board Seats`);
+      for (const b of bundle.boardSeats) {
+        const dates = roleDates({ start: b.start, end: b.end });
+        const org = b.url ? `[**${b.organization}**](${b.url})` : `**${b.organization}**`;
+        lines.push(`- ${org}${b.role ? ` — ${b.role}` : ""}${dates ? ` _(${dates})_` : ""}`);
+      }
+      lines.push(``);
+      this.pushSectionSources(lines, bundle.sources, ["board-seats"]);
+    }
 
     // Charon Person Research (Round 3) — only present on deep/internal-tier
     // runs, so this section is omitted entirely rather than shown empty
@@ -614,6 +635,16 @@ export class ReportAgent {
     }
     lines.push(``);
     this.pushSectionSources(lines, bundle.sources, ["news"]);
+
+    if (bundle.companyNews && bundle.companyNews.length > 0) {
+      lines.push(`## ${bundle.person.affiliation ?? "Company"} News`);
+      for (const n of bundle.companyNews) {
+        const meta = [n.outlet, n.date].filter(Boolean).join(" · ");
+        lines.push(`- [${n.headline}](${n.url ?? "#"})${meta ? ` — ${meta}` : ""}`);
+      }
+      lines.push(``);
+      this.pushSectionSources(lines, bundle.sources, ["company-news"]);
+    }
 
     this.pushPublicRecordsSection(lines, bundle);
     pushProvenanceSection(lines, bundle.provenance);
