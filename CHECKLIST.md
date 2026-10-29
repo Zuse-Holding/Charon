@@ -16,6 +16,22 @@ env var *names* (values not read). Ordered by what hurts most if missed.
   `kg_decide_match` stays callable by signed-in users on purpose: it checks
   `auth.uid()` owns the review.
 - Still zero Stripe customers and zero webhook events: no live purchase yet.
+- **Stripe webhook URL will fail.** Vercel 308-redirects `metisanalytic.com`
+  to `www.metisanalytic.com`, and the live endpoint (`we_1UILdp3AVejqlt1Pbg5syUdc`,
+  below) is registered on the bare domain. Stripe doesn't follow redirects,
+  so a paid checkout would never flip the tier. Change the endpoint URL to
+  `https://www.metisanalytic.com/api/stripe/webhook` (the signing secret
+  stays the same) before the test purchase.
+- Regression set ran on the deployed server 2026-10-25, all succeeded:
+  ACCO 25s, Promise ABA 28s, MJW 31s. No "before" times: those runs were
+  in the deleted database.
+- Password reset: Supabase only keeps a day of auth logs, and the Oct 15
+  attempt was on the old database, so the cause is still unconfirmed. Next
+  try: request the link on `www.metisanalytic.com` in a private window,
+  open it in that same window, and note the time. Also check Supabase →
+  Authentication → URL Configuration on the new project: Site URL
+  `https://www.metisanalytic.com` and `https://www.metisanalytic.com/**`
+  in Redirect URLs (the reset email redirects to `<origin>/login`).
 - The new database has one account (Nick's, `internal`). Intended: Nick
   confirmed 2026-10-29 that no other accounts needed to move. The old
   Metis Diligence project (`xfivegdjuqrcongrpmhf`) still shows in
@@ -97,7 +113,7 @@ env var *names* (values not read). Ordered by what hurts most if missed.
   Stripe`, copy `reports/stripe.md` to `web/content/sample-reports/`, and
   update the landing excerpt's competitor sources to match (the current one
   still cites reddit.com, paddle.com, memberful.com and similar).
-- [ ] **Re-run the regression set** (Promise ABA, ACCO, MJW) on the deployed
+- [x] **Re-run the regression set** (done 2026-10-25, times in the Oct 29 note above) (Promise ABA, ACCO, MJW) on the deployed
   agent server and log before/after run times. The new sources (NPPES, NLRB,
   CourtListener, Form D, state records, UEI matching) were built against
   their documented APIs and fixture-tested; this sandbox couldn't reach them.
