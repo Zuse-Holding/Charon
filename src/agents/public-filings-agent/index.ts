@@ -308,14 +308,16 @@ interface EftsResponse {
 }
 
 /** Form D's offering and amount sold, from the filing's primary_doc.xml. */
-export function parseFormD(xml: string): { offered?: string; sold?: string; issuer?: string } {
+export function parseFormD(xml: string): { offered?: string; sold?: string; issuer?: string; state?: string } {
   const tag = (t: string) => xml.match(new RegExp(`<${t}>\\s*([^<]+?)\\s*</${t}>`, "i"))?.[1];
   const money = (v: string | undefined) => {
     if (!v) return undefined;
     const n = Number(v);
     return Number.isFinite(n) ? `$${n.toLocaleString("en-US")}` : v;
   };
-  return { offered: money(tag("totalOfferingAmount")), sold: money(tag("totalAmountSold")), issuer: tag("entityName") };
+  const address = xml.match(/<issuerAddress>([\s\S]*?)<\/issuerAddress>/i)?.[1] ?? "";
+  const state = address.match(/<stateOrCountry>\s*([^<]+?)\s*<\/stateOrCountry>/i)?.[1];
+  return { offered: money(tag("totalOfferingAmount")), sold: money(tag("totalAmountSold")), issuer: tag("entityName"), ...(state ? { state } : {}) };
 }
 
 /** Franchise Disclosure Document figures, as published (launch fix 29). */
@@ -420,8 +422,10 @@ Omit anything not stated. Never estimate.`,
   }
 
   /** @param prefix The company's short name: its funds file as "<prefix> ... Fund I, LLC"
-   *  (launch fix 47: MJW's funds), searched once as a plain word. */
-  async formDFilings(names: string[], prefix?: string): Promise<{ funding: FundingEntry[]; sources: Source[] }> {
+   *  (launch fix 47: MJW's funds), searched once as a plain word.
+   *  @param state The company's home state: a same-named issuer elsewhere is
+   *  another company (Oct 29: three small "Stripe, Inc." filings). */
+  async formDFilings(names: string[], prefix?: string, state?: string): Promise<{ funding: FundingEntry[]; sources: Source[] }> {
     const funding: FundingEntry[] = [];
     const sources: Source[] = [];
     const seen = new Set<string>();
@@ -447,6 +451,7 @@ Omit anything not stated. Never estimate.`,
         const d = xml ? parseFormD(xml) : {};
         const issuer = d.issuer ?? s?.display_names?.[0]?.replace(/\s*\(CIK.*$/, "") ?? name;
         if (!issuerIsCompany(issuer, names, prefix)) { console.log(`[form-d] skipped "${issuer}": not the company as issuer`); continue; }
+        if (state && d.state && d.state.toUpperCase() !== state.toUpperCase()) { console.log(`[form-d] skipped "${issuer}": filed from ${d.state}, not ${state}`); continue; }
         funding.push({
           round: `Form D: ${issuer}`,
           amount: d.sold ? `${d.sold} sold${d.offered ? ` of ${d.offered} offered` : ""}` : d.offered ? `${d.offered} offered` : undefined,

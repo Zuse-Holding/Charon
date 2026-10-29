@@ -297,7 +297,7 @@ export class ResearchOrchestrator {
         : cov.run("state-records", () => filings.stateFormation(siteResult.company.legalName ?? companyName, recordState), { record: undefined, sources: [] }, (r) => (r.record ? 1 : 0)),
       franchisor ? cov.run("fdd", () => filings.fddFigures(companyName), { fdd: undefined, sources: [] }, (r) => (r.fdd ? 1 : 0))
         : Promise.resolve({ fdd: undefined, sources: [] }),
-      proAccess && secOn ? cov.run("formd", () => filings.formDFilings([...new Set([...entityNames.filter((n) => n !== alias), ...nameVariants(companyName), ...fundNames(fundTexts, companyName)])], sponsor ? companyName.split(/\s+/)[0] : undefined), { funding: [], sources: [] }, (r) => r.funding.length)
+      proAccess && secOn ? cov.run("formd", () => filings.formDFilings([...new Set([...entityNames.filter((n) => n !== alias), ...nameVariants(companyName), ...fundNames(fundTexts, companyName)])], sponsor ? companyName.split(/\s+/)[0] : undefined, stateCode), { funding: [], sources: [] }, (r) => r.funding.length)
         : Promise.resolve({ funding: [], sources: [] }),
     ]);
 

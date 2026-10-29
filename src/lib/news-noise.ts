@@ -153,8 +153,13 @@ const PHRASE_BREAK = /(?<!\b[A-Z])[.!?;:]\s+|[|•·()[\]"“”]|\s[-–—]\s/
  * JUICE equity" is another company's equity, not Juice Equity (round 2,
  * Fix 3).
  */
+const raw1 = (part: string) => part.split(/[^A-Za-z0-9'’&]+/).filter(Boolean);
+
 function namedAsProperNoun(part: string, words: string[]): boolean {
-  if (words.length < 2 || !/[A-Z]/.test(part)) return true;
+  // A one-word name is a name only capitalized (Oct 29: Stripe matched
+  // "loses black stripe" and "highway stripe painting").
+  if (words.length < 2) return raw1(part).some((t) => normalizeWords(t).trim() === words[0] && /^[A-Z0-9]/.test(t));
+  if (!/[A-Z]/.test(part)) return true;
   // A bare "&" is no word (launch fix 79: "Andersen Windows & Doors"
   // never matched itself, so the name found nothing).
   const raw = part.split(/[^A-Za-z0-9'’&]+/).filter((t) => normalizeWords(t).trim());
@@ -330,6 +335,14 @@ const COMPANY_FILING_TITLE = /\b(10-K|10-Q|8-K|S-1(\/A)?|S-4|DEF ?14A|20-F|Form 
 const ENFORCEMENT_PATH = /\/(litigation|enforcement|enforce|litreleases|admin|complaints|cases|citations?)(\/|-|$)|\/(opa|usao-[a-z]+|usao)\/pr\//i;
 const ENFORCEMENT_ACTION = /\b(United States|U\.S\.|SEC|FTC|EEOC|EPA|People|State of [A-Z][a-z]+) v\.\s|\b(charg(e|es|ed|ing)|indict(ed|ment)|plead(s|ed)? guilty|pleaded guilty|sentenced|convicted|settle(s|d|ment)?|consent (order|decree|judgment)|conciliation agreement|complaint against|civil penalt(y|ies)|penalt(y|ies)|fined|agrees? to pay|ordered to pay|to resolve (allegations|claims)|false claims act|litigation release|administrative proceeding|cease[- ]and[- ]desist|cited for|citations? (to|against)|sues|sued|lawsuit against)\b/i;
 
+const PERSON_DEFENDANT = /\b(man|woman|men|women|resident|residents|teen|teenager|couple|brothers?|sisters?|husband|wife|mother|father|son|daughter|individuals?|doctor|nurse|pharmacist|accountant|attorney|lawyer|former)\b/i;
+
+/** The establishment's name begins with the company's, legal suffix aside. */
+function startsWithName(establishment: string, name: string): boolean {
+  const core = normalizeWords(name).replace(LEGAL_SUFFIX, " ").trim();
+  return !!core && ` ${normalizeWords(establishment).trim()} `.startsWith(` ${core} `);
+}
+
 const OSHA_INSPECTION = /^https?:\/\/(www\.)?osha\.gov\/(ords\/imis\/|pls\/imis\/)?establishment|osha\.gov\/.*inspection_detail/i;
 
 export function isEnforcementAction(r: { title: string; snippet?: string; url: string }, names: string[]): boolean {
@@ -341,9 +354,18 @@ export function isEnforcementAction(r: { title: string; snippet?: string; url: s
   const named = (text: string) => names.some((n) => !!n && mentionsCompany(text, n) && namesItself(text, n));
   // An OSHA inspection record naming the establishment is one (launch fix
   // 78: ACCO lost its three inspections to the stricter check).
-  if (OSHA_INSPECTION.test(r.url)) return named(`${r.title} ${r.snippet ?? ""}`);
+  // The inspected establishment must be the company, not one whose page
+  // mentions it (Oct 29: "Double O Seal & Stripe", a car wash, for Stripe).
+  if (OSHA_INSPECTION.test(r.url)) {
+    const establishment = r.title.match(/^Inspection:\s*[\d.]+\s*-\s*(.+)$/i)?.[1];
+    if (establishment) return names.some((n) => !!n && startsWithName(establishment, n));
+    return named(`${r.title} ${r.snippet ?? ""}`);
+  }
   const titleAction = ENFORCEMENT_ACTION.test(r.title);
   if (!titleAction && !(ENFORCEMENT_PATH.test(path) && ENFORCEMENT_ACTION.test(r.snippet ?? ""))) return false;
   // The company must be named as itself (a party), not a namesake or a place.
-  return named(r.title) || (titleAction && named(r.snippet ?? ""));
+  if (named(r.title)) return true;
+  // A release about a person names the company only as something they used
+  // (Oct 29: "Gastonia man indicted for laundering" became a charge against Stripe).
+  return titleAction && !PERSON_DEFENDANT.test(r.title) && named(r.snippet ?? "");
 }
