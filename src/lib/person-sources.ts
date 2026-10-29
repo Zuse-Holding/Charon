@@ -424,6 +424,11 @@ export function otherCeoOf(texts: string[], org: string, personName: string): st
  * past CEO role keeps it), the fullest title the sources give wins, and
  * the current role leads the career history with its start date.
  */
+/** A model's text without control characters (Oct 29: "\u001d" inside Mazzarella's title). */
+export function stripControl(text: string): string {
+  return text.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s{2,}/g, " ").trim();
+}
+
 // A model's placeholder for a title it didn't find ("Role at i.TV").
 const PLACEHOLDER_TITLE = /^(role|position|title|job|employee|staff|member|n\/a|na|unknown|various|not specified|unspecified)$/i;
 
@@ -434,8 +439,9 @@ const PLACEHOLDER_TITLE = /^(role|position|title|job|employee|staff|member|n\/a|
  */
 export function cleanCareer(careerHistory: CareerEntry[]): CareerEntry[] {
   const out: CareerEntry[] = [];
-  for (const c of careerHistory) {
-    if (!c.title.trim() || PLACEHOLDER_TITLE.test(c.title.trim())) continue;
+  for (const raw of careerHistory) {
+    const c = { ...raw, title: stripControl(raw.title), ...(raw.company ? { company: stripControl(raw.company) } : {}) };
+    if (!c.title || PLACEHOLDER_TITLE.test(c.title)) continue;
     const key = (x: CareerEntry) => [...titleWords(x.title)].sort().join(" ");
     const i = out.findIndex((o) => key(o) === key(c) && (sameOrg(o.company, c.company) || (!o.company && !c.company)));
     const dates = (x: CareerEntry) => (x.start ? 1 : 0) + (x.end ? 1 : 0);
@@ -539,6 +545,8 @@ export function settleTitles(
 ): { careerHistory: CareerEntry[]; officerConflicts: { org: string; ceo: string }[]; notes: string[] } {
   const notes: string[] = [];
   const officerConflicts: { org: string; ceo: string }[] = [];
+  if (person.currentRole) person.currentRole = stripControl(person.currentRole) || undefined;
+  if (person.currentCompany) person.currentCompany = stripControl(person.currentCompany) || undefined;
   let career = cleanCareer(careerHistory);
   if (texts.dated) {
     const checked = statedDates(career, texts.dated, person.name);
@@ -565,6 +573,7 @@ export function settleTitles(
   const conflictHere = officerConflicts.some((c) => sameOrg(c.org, person.currentCompany));
   const fuller = fullerTitle(person, career, [texts.summary ?? "", ...texts.snippets], conflictHere);
   if (fuller) notes.push(fuller);
+  notes.push(...closeSuperseded(person, career));
   return { careerHistory: orderCareer(person, career), officerConflicts, notes };
 }
 
@@ -623,6 +632,45 @@ export function fullerTitle(person: PersonProfile, careerHistory: CareerEntry[],
   return `current title "${was}" -> "${best}"`;
 }
 
+// Board wording in a title at the person's own company: "Chairman of Graybar board of directors" is "Chairman".
+const BOARD_WORDS = new Set(["board", "directors"]);
+
+/** The current title holds this row's role at the same company, read without the company's name or board wording. */
+function heldBy(role: string, title: string, company: string | undefined): boolean {
+  const own = company ? titleWords(company) : new Set<string>();
+  const core = [...titleWords(title)].filter((w) => !BOARD_WORDS.has(w) && !own.has(w));
+  const big = titleWords(role);
+  return core.length > 0 && core.every((w) => big.has(w));
+}
+
+const FOUNDER = /\b(co-?)?founder\b/i;
+
+/**
+ * A role ends when a newer one at the same company starts (Oct 29: Darway's
+ * "EVP, Construction, 2023 – end date not stated" ended in Oct 2026 when he
+ * became President, his "EVP, Corporate Operations" in 2023). Never a role
+ * the current title holds, one the newer title holds, a board seat or a
+ * founding, and never across a gap of more than five years: roles the
+ * sources don't list may lie between (Mazzarella's 1980 customer service
+ * job didn't last until she became CEO in 2012).
+ */
+export function closeSuperseded(person: PersonProfile, career: CareerEntry[]): string[] {
+  const notes: string[] = [];
+  for (const c of career) {
+    const start = startValue(c.start);
+    if (c.end || start === undefined || BOARD_TITLE.test(c.title) || FOUNDER.test(c.title)) continue;
+    if (person.currentRole && sameOrg(c.company, person.currentCompany) && heldBy(person.currentRole, c.title, c.company)) continue;
+    const next = career
+      .filter((n) => n !== c && sameOrg(n.company, c.company) && !BOARD_TITLE.test(n.title) && (startValue(n.start) ?? 0) > start && !covers(n.title, c.title))
+      .sort((a, b) => startValue(a.start)! - startValue(b.start)!)[0];
+    if (!next || Math.floor(startValue(next.start)! / 400) - Math.floor(start / 400) > 5) continue;
+    c.end = next.start;
+    c.current = false;
+    notes.push(`${c.title}, ${c.company}: ended ${next.start}, when ${next.title} began`);
+  }
+  return notes;
+}
+
 /**
  * Career history with the current role first, dated as its sources date it
  * (Oct 28). Roles at the same company that the current title holds
@@ -655,8 +703,9 @@ export function orderCareer(person: PersonProfile, careerHistory: CareerEntry[])
   };
   const rest = careerHistory.filter((_, j) => j !== exact).map((c): CareerEntry => {
     if (c.end) return c;
-    // Part of the current title: still held, whatever the model guessed.
-    if (same(c) && covers(role, c.title)) return { ...c, current: true };
+    // Part of the current title: still held, whatever the model guessed
+    // (Oct 29: "Chairman of Graybar board of directors" read as a past role).
+    if (same(c) && heldBy(role, c.title, c.company ?? person.currentCompany)) return { ...c, current: true };
     if (c.current === true && BOARD_TITLE.test(c.title) && !same(c)) return c;
     return { ...c, current: false };
   });
@@ -750,4 +799,106 @@ export function isHomepage(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** A degree's level from the entry's first part; undefined when it names none. */
+function degreeLevel(entry: string): string | undefined {
+  const d = entry.split(/\s*,\s*/)[0];
+  if (/\b(doctor\w*|Ph\.?\s?D|Ed\.?D|J\.?D)\b/i.test(d)) return "doctorate";
+  if (/\b(master\w*|M\.?B\.?A|M\.?S|M\.?A|M\.?Div|LL\.?M)\b/i.test(d)) return "master";
+  if (/\b(bachelor\w*|B\.?S\.?\w*|B\.?A\.?\w*)\b/i.test(d)) return "bachelor";
+  return undefined;
+}
+
+/**
+ * Education only from text naming the person and the picked organization,
+ * or an employer such text names alongside it (Oct 29: a namesake's
+ * "electrical engineering, University of Louisiana at Lafayette" on
+ * Darway, whose ACCO board release says B.S. Mechanical Engineering, Cal
+ * Poly). What the organization says itself (its site, its press releases,
+ * a board page, an SEC filing) wins; another source adds only a degree of
+ * a level the official word doesn't give.
+ */
+export function educationFor(
+  extracted: string | undefined,
+  texts: (TiedText & { vouched?: boolean })[],
+  personName: string,
+  org: string | undefined,
+  employers: string[],
+): string | undefined {
+  const named = texts.filter((t) => mentionsPerson(t.text, personName));
+  const orgTied = org ? named.filter((t) => tiedToOrg(t.text, personName, org)) : [];
+  // An employer counts only when text tied to the picked organization names it too.
+  const anchors = org ? [org, ...employers.filter((e) => orgTied.some((t) => namesOrgLoose(t.text, e)))] : employers;
+  const eligible = anchors.length ? named.filter((t) => anchors.some((a) => tiedToOrg(t.text, personName, a))) : named;
+  const read = (ts: TiedText[]) => {
+    const plain = ts.map((t) => t.text);
+    return mergeEducation(extracted ? verifyEducation(extracted, plain, personName) : undefined, educationFrom(plain, personName));
+  };
+  const official = eligible.filter((t) => {
+    const host = hostOf(t.url);
+    return t.vouched || (!!host && !!org && (orgSite(host, org) || WIRE_HOST.test(host)));
+  });
+  const fromOfficial = official.length ? read(official) : undefined;
+  const all = read(eligible);
+  if (!fromOfficial) return all;
+  const have = fromOfficial.split(/\s*;\s*/);
+  const levels = new Set(have.map(degreeLevel));
+  const extra = (all ?? "").split(/\s*;\s*/).filter((e) => {
+    const level = degreeLevel(e);
+    return !!e && !!level && !levels.has(level);
+  });
+  return mergeEducation(fromOfficial, extra.join("; ") || undefined);
+}
+
+// An organization's name as written: capitalized words, with "&", "of" and "for" inside.
+const ORG_RUN = "((?:The\\s+)?[A-Z][\\w&'’.-]*(?:\\s+(?:&|of|for|the|[A-Z][\\w&'’.-]*)){0,7})";
+const SEAT_LIST = /\b(?:serves?|served|serving|sits?|sat)\s+(?:also\s+)?on\s+the\s+[Bb]oards?(?:\s+of\s+[Dd]irectors)?\s+(?:of|for|at)\s+([^.;]{3,240})/g;
+const SEAT_CHAIR = new RegExp(`\\b((?:[Nn]on-?[Ee]xecutive\\s+|[Ii]ndependent\\s+)?[Cc]hair(?:man|woman|person)?)(?:\\s+of\\s+the\\s+[Bb]oard)?(?:\\s+of\\s+[Dd]irectors)?\\s+(?:of|at)\\s+(?:the\\s+)?${ORG_RUN}`, "g");
+const NOT_AN_ORG = /^(The|Board|Directors?|Trustees?|Companies|Several|Various)$/;
+const orgName = (raw: string) => raw.replace(/\s+(?:of|for|the|&)$/i, "").replace(/[.,]+$/, "").trim();
+
+/**
+ * Board seats as the text says them, in sentences about the person ("She
+ * serves on the boards of The Cigna Group, Core & Main and WM (non-
+ * executive chair)", "named 2026 chair of the National Association of
+ * Wholesaler-Distributors"): the same every run, where the model's list
+ * wasn't (Oct 29: Mazzarella's WM, Cigna, Core & Main and NAW all missing).
+ * Each still needs a vouching source (confirmBoardSeats).
+ */
+export function boardsNamed(texts: string[], personName: string): BoardSeatEntry[] {
+  const last = surnameOf(personName);
+  const out: BoardSeatEntry[] = [];
+  const add = (organization: string, role: string) => {
+    const o = orgName(organization);
+    if (o.length < 2 || NOT_AN_ORG.test(o) || mentionsPerson(o, personName)) return;
+    if (!out.some((x) => namesOrgLoose(x.organization, o) || namesOrgLoose(o, x.organization))) out.push({ organization: o, role });
+  };
+  for (const t of texts) {
+    for (const sentence of t.split(/(?<=[.;!?])\s+/)) {
+      if (!new RegExp(`\\b${last}\\b`, "i").test(normalizeWords(sentence)) && !/^(She|He|They)\b/.test(sentence)) continue;
+      for (const m of sentence.matchAll(SEAT_LIST)) {
+        for (const item of m[1].matchAll(new RegExp(`${ORG_RUN}(?:\\s*\\(([^)]*)\\))?`, "g"))) {
+          const note = item[2]?.trim();
+          add(item[1], note && /chair|director|trustee/i.test(note) ? note : "Director");
+        }
+      }
+      for (const m of sentence.matchAll(SEAT_CHAIR)) add(m[2], m[1].trim());
+    }
+  }
+  return out;
+}
+
+/**
+ * A board page on an organization's own site is a seat on its board
+ * ("Kathleen M. Mazzarella - Board of Directors - The Cigna Group" on
+ * thecignagroup.com), named as the page's title names it.
+ */
+export function seatsFromBoardPages(pages: { url: string; title: string }[], personName: string): BoardSeatEntry[] {
+  return pages.flatMap((p) => {
+    const host = hostOf(p.url);
+    const org = host ? p.title.split(/\s+[-–—|:·]\s+/).map((s) => s.trim())
+      .find((s) => s && !BOARD_WORD.test(s) && !mentionsPerson(s, personName) && orgSite(host, s)) : undefined;
+    return org ? [{ organization: org, role: "Director" }] : [];
+  });
 }

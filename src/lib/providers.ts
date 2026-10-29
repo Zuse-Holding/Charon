@@ -15,6 +15,7 @@
 
 import { isRefreshRun, recordSearchCall } from "./cost-tracking.js";
 import { secText } from "./sec-http.js";
+import { BUILD_ID } from "./build.js";
 
 const isSecHost = (url: string) => { try { return /(^|\.)sec\.gov$/i.test(new URL(url).hostname); } catch { return false; } };
 
@@ -22,7 +23,8 @@ const isSecHost = (url: string) => { try { return /(^|\.)sec\.gov$/i.test(new UR
  * Source cache (Fix 3): reruns within the window read the same search
  * results and pages, so the same company gives the same facts. A run
  * marked refresh (the user's "Run again") skips it. Only non-empty
- * results are kept, so a failed call is retried next time.
+ * results are kept, so a failed call is retried next time. Keys carry the
+ * build, so a new deploy starts fresh.
  */
 const CACHE_TTL_MS = Number(process.env.SOURCE_CACHE_HOURS ?? 72) * 3.6e6;
 
@@ -31,14 +33,14 @@ class TtlCache<V> {
   constructor(private max: number) {}
   get(key: string): V | undefined {
     if (isRefreshRun()) return undefined;
-    const hit = this.map.get(key);
+    const hit = this.map.get(`${BUILD_ID}|${key}`);
     if (!hit) return undefined;
-    if (Date.now() - hit.at > CACHE_TTL_MS) { this.map.delete(key); return undefined; }
+    if (Date.now() - hit.at > CACHE_TTL_MS) { this.map.delete(`${BUILD_ID}|${key}`); return undefined; }
     return hit.value;
   }
   set(key: string, value: V): void {
     if (this.map.size >= this.max) this.map.delete(this.map.keys().next().value as string);
-    this.map.set(key, { at: Date.now(), value });
+    this.map.set(`${BUILD_ID}|${key}`, { at: Date.now(), value });
   }
 }
 

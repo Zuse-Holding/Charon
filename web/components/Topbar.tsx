@@ -31,7 +31,7 @@ interface Picker {
 
 interface TopbarProps {
   onResearchStart?: (subject: string, type: ResearchType) => void;
-  onResearchComplete?: () => void;
+  onResearchComplete?: (runId?: string) => void;
 }
 
 export default function Topbar({ onResearchStart, onResearchComplete }: TopbarProps) {
@@ -236,7 +236,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
       if (res.ok) {
         setStatus(`✓ Done — "${subject}" added to feed`);
         completeResearch();
-        onResearchComplete?.();
+        onResearchComplete?.(typeof data.runId === "string" ? data.runId : undefined);
         router.refresh();
         setTimeout(() => setStatus(""), 4000);
       } else {

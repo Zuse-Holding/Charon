@@ -1,6 +1,7 @@
 import { z } from "zod";
 import Groq from "groq-sdk";
 import { recordLlmFailure, recordLlmUsage, recordLlmProblem } from "./cost-tracking.js";
+import { BUILD_ID } from "./build.js";
 
 /**
  * Unified LLM extraction layer.
@@ -56,7 +57,8 @@ const MAX_CACHE_SIZE = 100;
 const extractionCache = new Map<string, unknown>();
 
 function cacheKey(systemPrompt: string, userContent: string): string {
-  const str = `${systemPrompt}|||${userContent}`;
+  // The build too: a new deploy never answers from an earlier one's extraction.
+  const str = `${BUILD_ID}|||${systemPrompt}|||${userContent}`;
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0;

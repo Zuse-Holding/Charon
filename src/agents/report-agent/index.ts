@@ -8,6 +8,7 @@ import type { Form4Entry } from "../../types/research.js";
 import { saleValue } from "../../lib/insiders.js";
 import { affiliationDates, roleDates } from "../../lib/person-sources.js";
 import { namesOrg } from "../../lib/person-checks.js";
+import { BUILD_ID } from "../../lib/build.js";
 
 /**
  * Report Agent
@@ -519,7 +520,8 @@ export class ReportAgent {
 
     lines.push(`# ${bundle.person.name} — Person Research Report`);
     lines.push(``);
-    lines.push(`*Generated ${bundle.generatedAt}*`);
+    // The build that wrote it, so a retest can tell an old report from a new one (Oct 29).
+    lines.push(`*Generated ${bundle.generatedAt} · build ${BUILD_ID}*`);
     // Affiliation typed alongside the name at search time (e.g. "csun"
     // in "Daniel Olmos csun") — shown here so it's clear why this
     // particular "Daniel Olmos" was researched among however many share

@@ -15,7 +15,7 @@ import { applyRoleChange, personNews, roleFromNews, summaryFromSnippet } from ".
 import {
   bioExcerpt, clearEndedRole, confirmBoardSeats, isBoardPage, isProfilePage, officialBioPages, secPersonExcerpts,
   sourceOf, surnameOf, tiedToOrg, type SecExcerpt, type TiedText,
-  anchorCurrentRole, educationFrom, isHomepage, mergeEducation, recentEnough, settleTitles, verifyEducation, within,
+  anchorCurrentRole, boardsNamed, educationFor, isHomepage, recentEnough, seatsFromBoardPages, settleTitles, within,
 } from "../../lib/person-sources.js";
 import { hostOf, newsAboutSubject } from "../../lib/entities/subject.js";
 import { isRoleTitle, namesOrg } from "../../lib/person-checks.js";
@@ -116,7 +116,11 @@ export class PeopleAgent {
       org ? this.searcher.search(appendDomainExclusions(`"${personName}" ${org}`, override), 10) : none,
       org ? this.searcher.search(`${personName} ${org} leadership bio`, resultCount) : none,
       // With the organization: the bare name fanned out across namesakes' boards.
-      org ? this.searcher.search(appendDomainExclusions(`"${personName}" ${org} board of directors`, override), resultCount * 2) : none,
+      // Other boards' own pages name the employer in the bio, not always in the snippet the org query needs.
+      org ? Promise.all([
+        this.searcher.search(appendDomainExclusions(`"${personName}" ${org} board of directors`, override), resultCount * 2),
+        this.searcher.search(appendDomainExclusions(`"${personName}" "board of directors"`, override), resultCount),
+      ]).then(([a, b]) => [...a, ...b.filter((r) => !a.some((x) => x.url === r.url))]) : none,
       org ? secPersonExcerpts(personName, org).catch((err): SecExcerpt[] => {
         console.warn(`[people-agent] SEC lookup failed for "${personName}":`, err instanceof Error ? err.message : err);
         return [];
@@ -305,7 +309,12 @@ RULES:
           ...secExcerpts.map((e) => ({ url: e.url, text: e.text })),
         ];
         boardSeats = confirmBoardSeats(
-          llmResult.boardSeats.filter((b) => !isPlaceholderOrg(b.organization)),
+          [
+            ...llmResult.boardSeats.filter((b) => !isPlaceholderOrg(b.organization)),
+            // As the texts say them, whatever the model listed (Oct 29).
+            ...boardsNamed([...vouched, ...boardPages, ...tiedSources].map((t) => t.text), personName),
+            ...seatsFromBoardPages(boardPages.map((b) => ({ url: b.url, title: boardCandidates.find((r) => r.url === b.url)!.title })), personName),
+          ],
           { boardPages, vouched, tied: tiedSources },
           [org, person.currentCompany].filter((e): e is string => !!e),
         );
@@ -346,20 +355,22 @@ RULES:
     // "Edwards School" in Loosararian's report).
     const snippetsOf = (rs: { title: string; snippet?: string }[]) => rs.map((r) => `${r.title}. ${r.snippet ?? ""}`);
     const allSnippets = snippetsOf([...bioResults, ...backgroundResults, ...profileResults]);
-    // Education from text naming the person and the picked organization or
-    // any employer in their career (Boyle's Jesuit bio names his schools, not
-    // always Homeboy): the model's degrees as those texts word them, plus the
-    // degrees read straight from them, one entry per school (Oct 28).
-    const anchors = [org, person.currentCompany, ...careerHistory.map((c) => c.company)].filter((a): a is string => !!a && !isPlaceholderOrg(a));
-    const eduTexts = [
-      ...(officialExcerpt ? [officialExcerpt] : []),
-      ...boardPages.map((b) => b.text),
-      ...secExcerpts.map((e) => e.text),
-      ...fetchedBios.filter((t): t is string => !!t),
-      ...allSnippets,
-    ].filter((t) => mentionsPerson(t, personName) && (anchors.length === 0 || anchors.some((a) => tiedToOrg(t, personName, a))));
+    // Education from text naming the person and the picked organization, or
+    // an employer that text names too (Boyle's Jesuit bio names his schools,
+    // not always Homeboy); the organization's own word first (Oct 29: a
+    // namesake's degree on Darway). The model's degrees as those texts word
+    // them, plus the degrees read straight from them.
+    const withUrls = (rs: { url: string; title: string; snippet?: string }[]) => rs.map((r) => ({ url: r.url, text: `${r.title}. ${r.snippet ?? ""}` }));
+    const eduSources = [
+      ...(officialExcerpt && officialBio ? [{ url: officialBio.url, text: officialExcerpt, vouched: true }] : []),
+      ...boardPages.map((b) => ({ ...b, vouched: true })),
+      ...secExcerpts.map((e) => ({ url: e.url, text: e.text, vouched: true })),
+      ...fetchedBios.flatMap((t, i) => (t ? [{ url: bioResults[i].url, text: t }] : [])),
+      ...withUrls([...bioResults, ...backgroundResults, ...profileResults]),
+    ];
+    const employers = [person.currentCompany, ...careerHistory.map((c) => c.company)].filter((a): a is string => !!a && !isPlaceholderOrg(a));
     const before = person.education;
-    person.education = mergeEducation(before ? verifyEducation(before, eduTexts, personName) : undefined, educationFrom(eduTexts, personName));
+    person.education = educationFor(before, eduSources, personName, org, employers);
     if (person.education !== before) console.log(`[people-agent] "${personName}": education "${before ?? "none"}" -> "${person.education ?? "none"}"`);
     if (!person.education) delete person.education;
 

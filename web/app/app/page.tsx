@@ -185,7 +185,7 @@ function Dashboard() {
     setDeepDive(null);
     setLoading(true);
     try {
-      const reportUrl = `/api/report?path=${encodeURIComponent(run.reportPath)}&subject=${encodeURIComponent(run.subject)}`;
+      const reportUrl = `/api/report?id=${encodeURIComponent(run.id)}&path=${encodeURIComponent(run.reportPath)}&subject=${encodeURIComponent(run.subject)}`;
       const reportRes = await fetch(reportUrl);
       if (reportRes.ok) setReport(await reportRes.text());
       else setReport(`_Report not available. Re-run to generate._`);
@@ -263,10 +263,11 @@ function Dashboard() {
             setPending({ subject, type });
             showPending();
           }}
-          onResearchComplete={async () => {
+          onResearchComplete={async (runId?: string) => {
             setPending(null);
             await new Promise(r => setTimeout(r, 1500));
-            await finishPending();
+            // The run this search made, never an earlier report (Oct 29).
+            await finishPending(runId ? (r) => r.id === runId : undefined);
           }}
         />
 

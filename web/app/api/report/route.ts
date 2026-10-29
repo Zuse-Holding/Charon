@@ -16,6 +16,9 @@ function localReport(path: string | null): string | null {
 export async function GET(req: NextRequest) {
   const path = req.nextUrl.searchParams.get("path");
   const subject = req.nextUrl.searchParams.get("subject");
+  // The run itself, when known: by subject, a newer or older run of the
+  // same search could answer instead (Oct 29).
+  const id = req.nextUrl.searchParams.get("id");
 
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -36,7 +39,9 @@ export async function GET(req: NextRequest) {
       .order("generated_at", { ascending: false })
       .limit(1);
 
-    if (subject) {
+    if (id) {
+      query.eq("id", id);
+    } else if (subject) {
       query.ilike("subject", subject);
     } else if (path) {
       // Extract subject from path slug
