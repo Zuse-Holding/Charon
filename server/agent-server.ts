@@ -765,7 +765,8 @@ app.post("/research", async (req, res) => {
     return rateLimited(res, `You're researching faster than your plan allows. Try again in ${Math.ceil(accountLimit.resetInMs / 60000)} minutes.`, { userId, cap: "hourly_research_account" });
   }
   const ip = clientIp(req);
-  const ipLimit = ip ? checkHourlyBucket(`research:ip:${ip}`, RATE_LIMIT_PER_IP_PER_HOUR) : { allowed: true, resetInMs: 0 };
+  // Internal is exempt, as from every other limit in this file.
+  const ipLimit = ip && tier !== "internal" ? checkHourlyBucket(`research:ip:${ip}`, RATE_LIMIT_PER_IP_PER_HOUR) : { allowed: true, resetInMs: 0 };
   if (!ipLimit.allowed) {
     return rateLimited(res, `Too many requests from this network. Try again in ${Math.ceil(ipLimit.resetInMs / 60000)} minutes.`, { userId, cap: "hourly_research_ip" });
   }
