@@ -38,7 +38,8 @@ describe("round twenty-two: person search from the Oct 28 handoff", () => {
     ], { boardPages, vouched }, ["Graybar"]);
     assert.deepEqual(seats.map((s) => [s.organization, s.url]), [
       ["The Cigna Group", "https://investors.thecignagroup.com/board-of-directors/person-details"],
-      ["WM", "https://investors.wm.com/board"],
+      // "Waste Management" and "WM" are one seat, listed under the first name given.
+      ["Waste Management", "https://investors.wm.com/board"],
       ["Core & Main", "https://www.graybar.com/mazzarella"],
     ]);
     assert.equal(orgSite("investors.wm.com", "WM"), true);

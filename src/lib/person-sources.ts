@@ -126,7 +126,8 @@ export function namesOrgLoose(text: string, org: string): boolean {
     const re = new RegExp(`\\b${acronym.split("").map((c) => `${c}[a-z]+`).join("\\s+")}\\b`);
     return re.test(text);
   }
-  const all = nameWords(org);
+  // "National Association of Wholesaler-Distributors" is NAW: a hyphenated word counts once.
+  const all = org.split(/\s+/).filter((w) => /^[A-Za-z]/.test(w) && nameWords(w).length > 0);
   const initials = all.map((w) => w[0]).join("").toUpperCase();
   return all.length >= 2 && initials.length <= 5 && new RegExp(`\\b${initials}\\b`).test(text);
 }
@@ -153,13 +154,15 @@ export function confirmBoardSeats(
   const out: BoardSeatEntry[] = [];
   for (const s of seats) {
     if (employers.some((e) => namesOrg(e, s.organization) || namesOrg(s.organization, e))) continue;
-    if (out.some((o) => namesOrg(o.organization, s.organization) || namesOrg(s.organization, o.organization))) continue;
+    // "Waste Management" and "WM" are one board.
+    if (out.some((o) => namesOrgLoose(o.organization, s.organization) || namesOrgLoose(s.organization, o.organization))) continue;
     const official = sources.boardPages.find((t) => {
       const host = hostOf(t.url);
       return !!host && (orgSite(host, s.organization) || WIRE_HOST.test(host)) && namesOrgLoose(t.text, s.organization);
     });
     const source = official ?? sources.vouched.find((t) => namesOrgLoose(t.text, s.organization))
-      ?? (sources.tied ?? []).find((t) => boardNear(t.text, s.organization));
+      // A tied board page names their other boards too (Cigna's bio lists WM and Core & Main).
+      ?? [...sources.boardPages, ...(sources.tied ?? [])].find((t) => boardNear(t.text, s.organization));
     if (!source) continue;
     out.push({ ...s, url: source.url });
   }
@@ -459,6 +462,53 @@ export function startValue(date: string | undefined): number | undefined {
  * Construction, since 2023"). The older role ends when the newer starts,
  * unless the newer title holds it (Mazzarella's Chairman, President and CEO).
  */
+// A date stated as a start or an end, not an article's publication date.
+const START_BEFORE = /\b(since|joined|joins|named|appointed|became|become|becomes|elected|promoted|took over|takes over|assumed|began|begins|started|starts|effective|hired|founded|co-founded|cofounded|launched)\b[^.;]{0,50}$|\b(?:in|from)\s+(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(?:\d{1,2},?\s+)?)?$/i;
+const START_AFTER = /^\s*(?:[-–—]|to)\s*(?:(?:19|20)\d{2}|present|today|now)\b|^[^.;]{0,15}\b(?:she|he|they|was|were|is)\b[^.;]{0,15}\b(named|appointed|became|elected|promoted|joined|hired)\b/i;
+const END_BEFORE = /(?:\b(?:19|20)\d{2}\s*(?:[-–—]|to)\s*|\b(until|through|stepped down|steps down|left|retired|departed|resigned|ended|before)\b[^.;]{0,50})$/i;
+
+/** The year appears near the person's name, worded as a start or an end. */
+function stated(date: string, texts: string[], personName: string, kind: "start" | "end"): boolean {
+  const year = date.match(/\b(19|20)\d{2}\b/)?.[0];
+  if (!year) return false;
+  const last = surnameOf(personName);
+  for (const t of texts) {
+    for (const m of t.matchAll(new RegExp(`\\b${last}\\b`, "gi"))) {
+      const w = t.slice(Math.max(0, m.index! - 700), m.index! + 700);
+      for (const y of w.matchAll(new RegExp(`\\b${year}\\b`, "g"))) {
+        const before = w.slice(Math.max(0, y.index! - 70), y.index!);
+        const after = w.slice(y.index! + 4, y.index! + 60);
+        if (kind === "start" ? START_BEFORE.test(before) || START_AFTER.test(after) : END_BEFORE.test(before)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Role dates only as the sources state them (Oct 28: a 2026 article using
+ * Mazzarella's full title became a "Chairman, President & CEO, since 2026"
+ * row that closed her 2012 role). A start must be worded as one ("since",
+ * "joined", "named ... in", "effective"), an end as one ("until", "stepped
+ * down", "2012–2014"); a year that's only an article's date is dropped.
+ */
+export function statedDates(careerHistory: CareerEntry[], texts: string[], personName: string): { careerHistory: CareerEntry[]; notes: string[] } {
+  const notes: string[] = [];
+  const out = careerHistory.map((c) => {
+    const next = { ...c };
+    if (c.start && !stated(c.start, texts, personName, "start")) {
+      delete next.start;
+      notes.push(`${c.title}, ${c.company ?? "?"}: start "${c.start}" not stated as a start in any source, dropped`);
+    }
+    if (c.end && !stated(c.end, texts, personName, "end")) {
+      delete next.end;
+      notes.push(`${c.title}, ${c.company ?? "?"}: end "${c.end}" not stated as an end in any source, dropped`);
+    }
+    return next;
+  });
+  return { careerHistory: out, notes };
+}
+
 export function promoteNewestRole(person: PersonProfile, careerHistory: CareerEntry[]): string | undefined {
   const company = person.currentCompany;
   if (!company) return undefined;
@@ -485,11 +535,16 @@ export function settleTitles(
   person: PersonProfile,
   careerHistory: CareerEntry[],
   orgs: string[],
-  texts: { snippets: string[]; summary?: string },
+  texts: { snippets: string[]; summary?: string; dated?: string[] },
 ): { careerHistory: CareerEntry[]; officerConflicts: { org: string; ceo: string }[]; notes: string[] } {
   const notes: string[] = [];
   const officerConflicts: { org: string; ceo: string }[] = [];
   let career = cleanCareer(careerHistory);
+  if (texts.dated) {
+    const checked = statedDates(career, texts.dated, person.name);
+    career = checked.careerHistory;
+    notes.push(...checked.notes);
+  }
   for (const o of new Set(orgs)) {
     const ceo = otherCeoOf(texts.snippets, o, person.name);
     if (!ceo) continue;
@@ -580,10 +635,18 @@ export function orderCareer(person: PersonProfile, careerHistory: CareerEntry[])
   const role = person.currentRole;
   if (!role) return careerHistory;
   const same = (c: CareerEntry) => sameOrg(c.company, person.currentCompany) || (!c.company && !person.currentCompany);
-  const exact = careerHistory.findIndex((c) => same(c) && c.title.toLowerCase() === role.toLowerCase());
-  const within = careerHistory.findIndex((c) => same(c) && !c.end && covers(role, c.title) && !!c.start);
-  const i = exact >= 0 ? exact : within;
-  const match = i >= 0 ? careerHistory[i] : undefined;
+  // The current role's own row, "&" or "and": its start is the role's
+  // start. A composite title ("Chairman, President and CEO") with no row of
+  // its own borrows no date: its parts keep theirs (Mazzarella: President
+  // and CEO since Jun 2012, Chairman since Jan 2013).
+  const sameTitle = (a: string, b: string) => covers(a, b) && covers(b, a);
+  const exact = careerHistory.findIndex((c) => same(c) && sameTitle(c.title, role));
+  const single = careerHistory.filter((c) => same(c) && !c.end && covers(role, c.title) && !!c.start);
+  let match = exact >= 0 ? careerHistory[exact] : single.length === 1 && sameTitle(single[0].title, role) ? single[0] : undefined;
+  // The combined title's row dated after parts it holds: that's when it was
+  // reported, not when it began (Oct 28: Mazzarella "since 2026").
+  const parts = careerHistory.filter((c, j) => j !== exact && same(c) && !c.end && covers(role, c.title) && !sameTitle(c.title, role) && startValue(c.start) !== undefined);
+  if (match?.start && parts.some((c) => startValue(c.start)! < startValue(match!.start)!)) match = { ...match, start: undefined };
   const first: CareerEntry = {
     title: role,
     ...(person.currentCompany ?? match?.company ? { company: person.currentCompany ?? match?.company } : {}),
@@ -592,7 +655,8 @@ export function orderCareer(person: PersonProfile, careerHistory: CareerEntry[])
   };
   const rest = careerHistory.filter((_, j) => j !== exact).map((c): CareerEntry => {
     if (c.end) return c;
-    if (same(c) && covers(role, c.title) && c.current !== false) return { ...c, current: true };
+    // Part of the current title: still held, whatever the model guessed.
+    if (same(c) && covers(role, c.title)) return { ...c, current: true };
     if (c.current === true && BOARD_TITLE.test(c.title) && !same(c)) return c;
     return { ...c, current: false };
   });

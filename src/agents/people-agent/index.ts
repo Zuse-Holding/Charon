@@ -306,9 +306,7 @@ RULES:
         ];
         boardSeats = confirmBoardSeats(
           llmResult.boardSeats.filter((b) => !isPlaceholderOrg(b.organization)),
-          // A board page tied to the person names their other boards too
-          // (Cigna's bio lists WM and Core & Main).
-          { boardPages, vouched, tied: [...boardPages, ...tiedSources] },
+          { boardPages, vouched, tied: tiedSources },
           [org, person.currentCompany].filter((e): e is string => !!e),
         );
       }
@@ -392,6 +390,11 @@ RULES:
     const settled = settleTitles(person, careerHistory, [org, person.currentCompany].filter((x): x is string => !!x), {
       snippets: [...allSnippets, ...snippetsOf(newsResultsRaw), ...(officialExcerpt ? [officialExcerpt] : [])],
       summary: person.summary,
+      // Every text the model read, for the dates it gave.
+      dated: [
+        ...(officialExcerpt ? [officialExcerpt] : []), ...secExcerpts.map((e) => e.text), ...boardPages.map((b) => b.text),
+        ...fetchedBios.filter((t): t is string => !!t), ...allSnippets, ...snippetsOf(newsResultsRaw),
+      ],
     });
     careerHistory = settled.careerHistory;
     const officerConflicts = settled.officerConflicts;
