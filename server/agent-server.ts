@@ -39,6 +39,7 @@ import { trackEvent } from "../src/lib/analytics.js";
 import { sendEmail } from "../src/lib/email/send.js";
 import { welcomeEmail, capReachedEmail } from "../src/lib/email/copy.js";
 import { createClient } from "@supabase/supabase-js";
+import { BUILD_ID } from "../src/lib/build.js";
 
 const app  = express();
 const PORT = process.env.PORT ?? process.env.AGENT_PORT ?? 4000;
@@ -1791,7 +1792,8 @@ app.post("/admin/statewide-executives/refresh", async (req, res) => {
   res.json({ ok: true, upserted: result.upserted });
 });
 
-app.get("/health", (_, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));
+// The deployed commit, to confirm a redeploy is live.
+app.get("/health", (_, res) => res.json({ ok: true, build: BUILD_ID, timestamp: new Date().toISOString() }));
 
 registerExclusionRoutes(app, { supabase, authCheck, getUserTier, checkHourlyBucket, frontendUrl: ALLOWED_ORIGIN });
 
