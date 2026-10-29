@@ -1,8 +1,7 @@
 name: CI
 
-# Typecheck and test on every pull request and every push to main.
-# Vercel's build skips type checking (web/next.config.ts ignoreBuildErrors),
-# so this is the check that catches type errors before they ship.
+# Typecheck and test on every pull request and every push to main. Vercel's
+# build also type-checks the web app now; this covers src/ and the tests.
 on:
   pull_request:
   push:

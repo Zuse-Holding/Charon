@@ -66,7 +66,7 @@ const SAMPLE_REPORT = {
 // What has actually shipped lives on /changelog.
 const WHATS_NEXT = [
   { title: "Team workspace and API", desc: "Shared reports and watchlists for a team, and an API to run reports from your own tools." },
-  { title: "Journalism tools", desc: "Research for reporters, built on public records, with every claim tied to its source." },
+  { title: "Journalism tools", desc: "Research for reporters, built on public records, with every section listing the sources it came from." },
   { title: "Creator search", desc: "Find and vet creators with the same sourced reports." },
 ];
 

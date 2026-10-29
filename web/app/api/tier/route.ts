@@ -39,6 +39,7 @@ export async function GET() {
         exportAccess: false,
         charonProtocol: false,
         personResearchAccess: false,
+        personSearchAccess: false,
         muckrockAccess: false,
         adminAccess: false,
         monthlyResearchLimit: -1,
