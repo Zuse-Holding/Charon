@@ -20,7 +20,8 @@ const posthogOrigin = process.env.NEXT_PUBLIC_POSTHOG_KEY
 
 const CSP = [
   `default-src 'self'`,
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval'`,
+  // 'unsafe-eval' only for next dev's hot reload; production doesn't need it.
+  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
   `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
   `font-src 'self' https://fonts.gstatic.com`,
   `img-src 'self' data: https:`,
@@ -47,7 +48,7 @@ const SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   serverExternalPackages: ["compromise"],
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   eslint: {
     ignoreDuringBuilds: true,

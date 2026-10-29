@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
   const { error: claimError } = await service
     .from("stripe_webhook_events")
     .insert({ id: event.id, type: event.type });
+  const claimed = !claimError;
 
   if (claimError) {
     if (claimError.code === "23505") {
@@ -175,8 +176,15 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     console.error(`[stripe/webhook] failed handling ${event.type}:`, err);
-    // Still 200 — a 4xx/5xx here makes Stripe retry, which won't fix a
-    // bug in our handler and just delays visibility into it.
+    // Release the claim and return 5xx so Stripe retries (red team S4).
+    // Swallowing this lost paid checkouts to a transient Stripe or
+    // Supabase error: the customer paid and stayed on Free. Every write
+    // here is an idempotent overwrite, so a retry is safe.
+    if (claimed) {
+      const { error: releaseError } = await service.from("stripe_webhook_events").delete().eq("id", event.id);
+      if (releaseError) console.error("[stripe/webhook] releasing the claim failed; the retry will be deduped:", releaseError);
+    }
+    return NextResponse.json({ error: "Handler failed" }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });
@@ -198,7 +206,9 @@ async function resolveUserIdByCustomer(
     .eq("stripe_customer_id", customerId)
     .single();
 
-  if (error || !data) {
+  // A lookup error is retried; only a genuinely unknown customer is skipped.
+  if (error && error.code !== "PGRST116") throw new Error(`profile lookup failed: ${error.message}`);
+  if (!data) {
     console.error("[stripe/webhook] no profile found for stripe_customer_id", customerId);
     return null;
   }
@@ -210,7 +220,8 @@ async function resolveUserIdByCustomer(
 }
 
 async function hasProtectedTier(service: ReturnType<typeof createServiceClient>, userId: string): Promise<boolean> {
-  const { data } = await service.from("profiles").select("tier").eq("id", userId).single();
+  const { data, error } = await service.from("profiles").select("tier").eq("id", userId).single();
+  if (error && error.code !== "PGRST116") throw new Error(`profile lookup failed: ${error.message}`);
   if (data && PROTECTED_TIERS.has(data.tier)) {
     console.warn("[stripe/webhook] skipping write for protected-tier account", userId, data.tier);
     return true;
@@ -242,5 +253,6 @@ async function writeSubscriptionState(
   const { error } = await service.from("profiles").update(update).eq("id", userId);
   if (error) {
     console.error("[stripe/webhook] profiles update failed:", error, { userId, update });
+    throw new Error(`profiles update failed: ${error.message}`);
   }
 }

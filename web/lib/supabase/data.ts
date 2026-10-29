@@ -52,30 +52,6 @@ export async function getPendingRunForUser() {
   };
 }
 
-export async function recordRunForUser(run: {
-  id: string;
-  type: string;
-  subject: string;
-  generatedAt: string;
-  reportPath: string;
-  bundle: unknown;
-}) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
-  const { error } = await supabase.from("research_runs").insert({
-    id: run.id,
-    user_id: user.id,
-    type: run.type,
-    subject: run.subject,
-    generated_at: run.generatedAt,
-    report_path: run.reportPath,
-    bundle: run.bundle,
-  });
-  if (error) throw error;
-}
-
 export async function deleteRunForUser(id: string) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -94,15 +70,33 @@ export async function deleteRunForUser(id: string) {
   await supabase.from("kg_relationships").delete().eq("user_id", user.id).eq("source_run_id", id);
   await supabase.from("kg_entities").delete().eq("user_id", user.id).eq("source_run_id", id);
 
-  const { data: deleted, error } = await supabase
+  // The owner can't write research_runs (plan caps are counted from it),
+  // so the service role tombstones the row: the report is cleared and the
+  // row hidden by RLS, but it still counts toward the plan. Scoped to the
+  // caller's user_id, so it can only ever touch their own run.
+  // A partial run's flag is kept, since partial runs don't count.
+  const service = createServiceClient();
+  const { data: run } = await service
     .from("research_runs")
-    .delete()
+    .select("partial:bundle->>partial")
     .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const bundle = String((run as { partial?: unknown } | null)?.partial) === "true" ? { partial: true } : null;
+  const { data: deleted, error } = await service
+    .from("research_runs")
+    .update({ deleted_at: new Date().toISOString(), subject: "(deleted)", bundle, report_path: null, error: null })
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
     .select("id");
   if (error) throw error;
-  // findings/source_snapshots rows cascade with the run; the raw responses
-  // they point to live in storage and are removed here.
-  if (deleted && deleted.length > 0) await removeRunSnapshots(user.id, id);
+  if (!deleted || deleted.length === 0) return;
+  // Findings cascade with their snapshots; the raw responses they point to
+  // live in storage and are removed here.
+  const { error: snapError } = await service.from("source_snapshots").delete().eq("run_id", id).eq("user_id", user.id);
+  if (snapError) console.error("[provenance] snapshot rows cleanup failed:", snapError.message);
+  await removeRunSnapshots(user.id, id);
 }
 
 /** Best-effort: a leftover object is unreachable (the bucket has no client
@@ -287,35 +281,6 @@ export async function updateWatchlistRefreshForUser(id: string) {
 }
 
 // --- Deep dives ---
-
-export async function saveDeepDiveForUser(bundle: {
-  id: string;
-  company: string;
-  generatedAt: string;
-  durationMs: number;
-  sections: unknown[];
-}) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
-  // Replace existing
-  await supabase
-    .from("deep_dives")
-    .delete()
-    .eq("user_id", user.id)
-    .ilike("company", bundle.company);
-
-  const { error } = await supabase.from("deep_dives").insert({
-    id: bundle.id,
-    user_id: user.id,
-    company: bundle.company,
-    generated_at: bundle.generatedAt,
-    duration_ms: bundle.durationMs,
-    sections: bundle.sections,
-  });
-  if (error) throw error;
-}
 
 export async function getDeepDiveForUser(company: string) {
   const supabase = await createServerSupabaseClient();

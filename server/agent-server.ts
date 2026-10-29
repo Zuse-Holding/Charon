@@ -5,7 +5,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ResearchOrchestrator } from "../src/agents/orchestrator/index.js";
@@ -68,7 +68,9 @@ const AGENT_SECRET = process.env.AGENT_SECRET;
 
 function authCheck(req: express.Request, res: express.Response): boolean {
   const secret = req.headers["x-agent-secret"];
-  if (secret !== AGENT_SECRET) {
+  const given = Buffer.from(typeof secret === "string" ? secret : "");
+  const expected = Buffer.from(AGENT_SECRET);
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
     res.status(401).json({ error: "Unauthorized" });
     return false;
   }
@@ -273,15 +275,59 @@ async function getUsageWindow(userId: string): Promise<UsageWindow> {
       : await supabase.from(table).select("generated_at").eq("user_id", userId).gte("generated_at", since);
     if (error) {
       console.error(`[usage-window] ${table} fetch error:`, JSON.stringify(error));
-      return [];
+      throw new UsageCheckError();
     }
     return (data ?? [])
       .filter((r) => (r as { status?: string }).status !== "failed" && String((r as { partial?: unknown }).partial) !== "true")
       .map((r) => new Date((r as { generated_at: string }).generated_at));
   };
   const [research, deepDives] = await Promise.all([times("research_runs"), times("deep_dives")]);
-  return currentWindow(research, deepDives);
+  // A Deep Dive's row is written when it finishes; one still running counts from its start.
+  return currentWindow(research, [...deepDives, ...(deepDivesInFlight.get(userId) ?? [])]);
 }
+
+/**
+ * Plan-usage checks fail closed (red team S2): a counter that can't be
+ * read denies the run instead of reading as zero.
+ */
+class UsageCheckError extends Error {
+  constructor() { super("usage check failed"); }
+}
+
+function usageCheckFailed(res: express.Response) {
+  res.status(503).json({ error: "usage_check_failed", message: "Couldn't check your plan usage just now. Try again in a minute." });
+}
+
+/**
+ * Serializes each account's check-then-reserve, so parallel requests at a
+ * cap can't all pass the check before any of them is counted (red team
+ * S2). In-process, which holds because the agent server runs as a single
+ * instance (the hourly limiter below relies on the same); running
+ * several replicas would need this moved into a Postgres function.
+ */
+const userLocks = new Map<string, Promise<void>>();
+
+async function withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = userLocks.get(userId) ?? Promise.resolve();
+  let release!: () => void;
+  const held = prev.then(() => new Promise<void>((r) => { release = r; }));
+  userLocks.set(userId, held);
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (userLocks.get(userId) === held) userLocks.delete(userId);
+  }
+}
+
+/** Start times of each account's running Deep Dives, counted until their row is written. */
+const deepDivesInFlight = new Map<string, Date[]>();
+
+/** research_runs rows that count toward a plan are not failed and not
+ *  partial (launch fix 53): `.neq("status", "failed").or(NOT_PARTIAL)`.
+ *  Pending rows count, so a run in flight holds its place. */
+const NOT_PARTIAL = "bundle->>partial.is.null,bundle->>partial.neq.true";
 
 /**
  * Person-search monthly limit — 25/month, separate from the work-window research
@@ -295,15 +341,21 @@ async function getMonthlyPersonSearchCount(userId: string): Promise<number> {
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
+  // Counted from research_runs, not person_search_audit: the audit row is
+  // written after a run finishes, so runs in flight were invisible to the
+  // cap (red team S2). Users can't write research_runs.
   const { count, error } = await supabase
-    .from("person_search_audit")
+    .from("research_runs")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
-    .gte("created_at", startOfMonth.toISOString());
+    .eq("type", "person")
+    .gte("generated_at", startOfMonth.toISOString())
+    .neq("status", "failed")
+    .or(NOT_PARTIAL);
 
   if (error) {
-    console.error("[person-search-audit] count error:", JSON.stringify(error));
-    return 0;
+    console.error("[person-search] count error:", JSON.stringify(error));
+    throw new UsageCheckError();
   }
   return count ?? 0;
 }
@@ -423,31 +475,47 @@ async function getMonthlyResearchUsage(userId: string, periodStart: Date): Promi
     .from("research_runs")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
-    .gte("generated_at", periodStart.toISOString());
+    .gte("generated_at", periodStart.toISOString())
+    .neq("status", "failed")
+    .or(NOT_PARTIAL);
   if (error) {
     console.error("[monthly-research-usage] count error:", JSON.stringify(error));
-    return 0;
+    throw new UsageCheckError();
   }
   return count ?? 0;
 }
 
-/** Free tier's one-time cap (task 1.6) — total research_runs ever, no
- *  date filter, as opposed to every other usage counter in this file
- *  which is scoped to a rolling window. */
-async function getLifetimeResearchUsage(userId: string): Promise<number> {
+/** Free tier's one-time cap (task 1.6) — research_runs ever, no date
+ *  filter, as opposed to every other usage counter in this file which is
+ *  scoped to a rolling window. Only runs made on Free count, so a paying
+ *  customer who cancels isn't locked out by reports they paid for. */
+async function getLifetimeFreeResearchUsage(userId: string): Promise<number> {
   const { count, error } = await supabase
     .from("research_runs")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("tier", "free")
+    .neq("status", "failed")
+    .or(NOT_PARTIAL);
   if (error) {
     console.error("[lifetime-research-usage] count error:", JSON.stringify(error));
-    return 0;
+    throw new UsageCheckError();
   }
   return count ?? 0;
 }
 
+/** For the first_research_run event only; fails open since it gates nothing. */
+async function hasAnyResearchRun(userId: string): Promise<boolean> {
+  const { count } = await supabase
+    .from("research_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  return (count ?? 0) > 0;
+}
+
 /** Pro's monthly Deep Dive fair-use cap (task 1.6) — mirrors
- *  getMonthlyResearchUsage's shape but against deep_dives. */
+ *  getMonthlyResearchUsage's shape but against deep_dives, plus any
+ *  Deep Dives still running. */
 async function getMonthlyDeepDiveUsage(userId: string, periodStart: Date): Promise<number> {
   const { count, error } = await supabase
     .from("deep_dives")
@@ -456,9 +524,9 @@ async function getMonthlyDeepDiveUsage(userId: string, periodStart: Date): Promi
     .gte("generated_at", periodStart.toISOString());
   if (error) {
     console.error("[monthly-deep-dive-usage] count error:", JSON.stringify(error));
-    return 0;
+    throw new UsageCheckError();
   }
-  return count ?? 0;
+  return (count ?? 0) + (deepDivesInFlight.get(userId)?.length ?? 0);
 }
 
 // Task 4.2 — cooldown on the cap-reached email, not a one-time flag: a
@@ -553,10 +621,17 @@ function checkHourlyBucket(key: string, max: number): { allowed: boolean; resetI
   return { allowed: true, resetInMs: entry.resetAt - now };
 }
 
-function clientIp(req: express.Request): string {
-  const forwarded = req.headers["x-forwarded-for"];
-  const first = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0];
-  return first?.trim() ?? req.socket.remoteAddress ?? "unknown";
+/**
+ * The end user's IP, as forwarded by the web app in x-client-ip (red team
+ * S3). Trusted only because every route that reads it has passed
+ * authCheck, so the header came from our own Vercel layer. Never the raw
+ * x-forwarded-for: here that's Vercel's egress address, shared by every
+ * customer. Undefined when the web app didn't send one.
+ */
+function clientIp(req: express.Request): string | undefined {
+  const header = req.headers["x-client-ip"];
+  const ip = (Array.isArray(header) ? header[0] : header)?.trim();
+  return ip && ip.length <= 64 ? ip : undefined;
 }
 
 const REPORTS_DIR = join(process.cwd(), "reports");
@@ -683,7 +758,7 @@ app.post("/research", async (req, res) => {
     return rateLimited(res, `You're researching faster than your plan allows. Try again in ${Math.ceil(accountLimit.resetInMs / 60000)} minutes.`, { userId, cap: "hourly_research_account" });
   }
   const ip = clientIp(req);
-  const ipLimit = checkHourlyBucket(`research:ip:${ip}`, RATE_LIMIT_PER_IP_PER_HOUR);
+  const ipLimit = ip ? checkHourlyBucket(`research:ip:${ip}`, RATE_LIMIT_PER_IP_PER_HOUR) : { allowed: true, resetInMs: 0 };
   if (!ipLimit.allowed) {
     return rateLimited(res, `Too many requests from this network. Try again in ${Math.ceil(ipLimit.resetInMs / 60000)} minutes.`, { userId, cap: "hourly_research_ip" });
   }
@@ -710,64 +785,6 @@ app.post("/research", async (req, res) => {
     return tierDenied(res, "Creator research isn't available on your plan.", undefined, { userId, cap: "charon_creator_research" });
   }
 
-  if (config.windowResearchLimit !== -1) {
-    const window = await getUsageWindow(userId);
-    if (window.resetsAt && window.research >= config.windowResearchLimit) {
-      return tierDenied(
-        res,
-        `You've used all ${config.windowResearchLimit} quick profiles for this ${WINDOW_HOURS}-hour window. It resets in ${timeUntil(window.resetsAt)}.`,
-        tier === "basic" ? "Pro raises it to 50 per window." : tier === "pro" ? "Team raises it to 200 per window: email support@metisanalytic.com." : undefined,
-        { userId, cap: "window_research_limit" }
-      );
-    }
-  }
-
-  // Person-search specific monthly cap + audit trail. Internal tier bypasses
-  // this entirely, same as every other limit.
-  if (type === "person" && tier !== "internal") {
-    const monthlyCount = await getMonthlyPersonSearchCount(userId);
-    if (monthlyCount >= PERSON_SEARCH_MONTHLY_LIMIT) {
-      return tierDenied(res, `Monthly person-research limit of ${PERSON_SEARCH_MONTHLY_LIMIT} reached.`, undefined, { userId, cap: "monthly_person_search_limit" });
-    }
-  }
-
-  // 7/17 weekend list #1 — Basic-tier hard cap of 25 quick profiles/month
-  // across all research types, resetting on the account's billing
-  // anniversary (see getBillingPeriodStart). Separate from, and stacks
-  // with, the person-only cap above — a Basic user doing person research
-  // can still be blocked by whichever limit they hit first.
-  // Free tier's one-time lifetime cap (task 1.6) — checked before the
-  // monthly cap below since it's a harder, non-recurring ceiling. Also
-  // used by task 4.1's first_research_run event below regardless of tier,
-  // so this is computed unconditionally rather than only when the free
-  // tier's cap applies.
-  const priorLifetimeUsage = await getLifetimeResearchUsage(userId);
-  if (config.lifetimeResearchLimit !== -1) {
-    if (priorLifetimeUsage >= config.lifetimeResearchLimit) {
-      return tierDenied(
-        res,
-        `You've used all ${config.lifetimeResearchLimit} free research profiles.`,
-        "Upgrade to Basic or Pro to keep researching — see metisanalytic.com/pricing.",
-        { userId, cap: "lifetime_research_limit", capEmail: "free research limit" }
-      );
-    }
-  }
-
-  if (config.monthlyResearchLimit !== -1) {
-    const periodStart = await getBillingPeriodStart(userId);
-    const monthlyUsage = await getMonthlyResearchUsage(userId, periodStart);
-    if (monthlyUsage >= config.monthlyResearchLimit) {
-      return tierDenied(
-        res,
-        `Monthly limit of ${config.monthlyResearchLimit} quick profiles reached. Resets ${new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toLocaleDateString()}.`,
-        tier === "basic"
-          ? `Upgrade to Pro for up to ${PRO_MONTHLY_RESEARCH_LIMIT} quick profiles a month.`
-          : "Contact support@metisanalytic.com if you need a higher limit.",
-        { userId, cap: "monthly_research_limit", capEmail: "monthly quick-profile limit" }
-      );
-    }
-  }
-
   // Person reports need a second anchor (Fix 5): where they work, or a
   // profile. A name alone, or a name and a city, has blended strangers
   // into one profile. Internal (admin) runs are exempt for testing.
@@ -779,30 +796,101 @@ app.post("/research", async (req, res) => {
     return;
   }
 
-  // Background-persistent search — insert the row up front, before any
-  // research runs, so its existence (status: 'pending') survives even if
-  // this request's client disconnects. The research itself keeps running
-  // regardless (nothing here aborts on client disconnect); this just makes
-  // that in-progress state visible so the web app can resume showing
-  // progress after a reload instead of losing track of it. Best-effort —
-  // a failed insert here shouldn't block the actual research request.
+  // Task 4.1 — first_research_run fires when this is the account's first run ever.
+  const isFirstRun = !(await hasAnyResearchRun(userId));
+
+  // Plan caps are checked and the run reserved in one step per account
+  // (red team S2): the pending row inserted at the end is what the next
+  // request's check counts, so parallel requests can't all pass at a cap.
+  // Any counter that can't be read denies the run.
   const runId = randomUUID();
   const startedAt = Date.now();
-  const { error: pendingError } = await supabase.from("research_runs").insert({
-    id: runId,
-    user_id: userId,
-    type,
-    subject,
-    generated_at: new Date().toISOString(),
-    status: "pending",
-    // Tier at the time of the run, not a live join to profiles.tier —
-    // stays accurate for duration-by-plan analysis even after an
-    // upgrade/downgrade (task 2.3).
-    tier,
-  });
-  if (pendingError) {
-    console.error("[research] Failed to insert pending run:", JSON.stringify(pendingError));
+  let reserved: boolean;
+  try {
+    reserved = await withUserLock(userId, async () => {
+      if (config.windowResearchLimit !== -1) {
+        const window = await getUsageWindow(userId);
+        if (window.resetsAt && window.research >= config.windowResearchLimit) {
+          tierDenied(
+            res,
+            `You've used all ${config.windowResearchLimit} quick profiles for this ${WINDOW_HOURS}-hour window. It resets in ${timeUntil(window.resetsAt)}.`,
+            tier === "basic" ? "Pro raises it to 50 per window." : tier === "pro" ? "Team raises it to 200 per window: email support@metisanalytic.com." : undefined,
+            { userId, cap: "window_research_limit" }
+          );
+          return false;
+        }
+      }
+
+      // Person-search specific monthly cap. Internal tier bypasses this
+      // entirely, same as every other limit.
+      if (type === "person" && tier !== "internal") {
+        const monthlyCount = await getMonthlyPersonSearchCount(userId);
+        if (monthlyCount >= PERSON_SEARCH_MONTHLY_LIMIT) {
+          tierDenied(res, `Monthly person-research limit of ${PERSON_SEARCH_MONTHLY_LIMIT} reached.`, undefined, { userId, cap: "monthly_person_search_limit" });
+          return false;
+        }
+      }
+
+      // Free tier's one-time lifetime cap (task 1.6) — checked before the
+      // monthly cap below since it's a harder, non-recurring ceiling.
+      if (config.lifetimeResearchLimit !== -1) {
+        if (await getLifetimeFreeResearchUsage(userId) >= config.lifetimeResearchLimit) {
+          tierDenied(
+            res,
+            `You've used all ${config.lifetimeResearchLimit} free research profiles.`,
+            "Upgrade to Basic or Pro to keep researching — see metisanalytic.com/pricing.",
+            { userId, cap: "lifetime_research_limit", capEmail: "free research limit" }
+          );
+          return false;
+        }
+      }
+
+      // 7/17 weekend list #1 — monthly cap across all research types,
+      // resetting on the account's billing period (see
+      // getBillingPeriodStart). Stacks with the person-only cap above.
+      if (config.monthlyResearchLimit !== -1) {
+        const periodStart = await getBillingPeriodStart(userId);
+        const monthlyUsage = await getMonthlyResearchUsage(userId, periodStart);
+        if (monthlyUsage >= config.monthlyResearchLimit) {
+          tierDenied(
+            res,
+            `Monthly limit of ${config.monthlyResearchLimit} quick profiles reached. Resets ${new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toLocaleDateString()}.`,
+            tier === "basic"
+              ? `Upgrade to Pro for up to ${PRO_MONTHLY_RESEARCH_LIMIT} quick profiles a month.`
+              : "Contact support@metisanalytic.com if you need a higher limit.",
+            { userId, cap: "monthly_research_limit", capEmail: "monthly quick-profile limit" }
+          );
+          return false;
+        }
+      }
+
+      // The pending row is the reservation, and also lets the web app
+      // resume showing progress after a reload (the research keeps running
+      // regardless of client disconnect). Without it the run would go
+      // uncounted, so a failed insert stops the run.
+      const { error: pendingError } = await supabase.from("research_runs").insert({
+        id: runId,
+        user_id: userId,
+        type,
+        subject,
+        generated_at: new Date().toISOString(),
+        status: "pending",
+        // Tier at the time of the run, not a live join to profiles.tier —
+        // stays accurate for duration-by-plan analysis even after an
+        // upgrade/downgrade (task 2.3), and scopes Free's lifetime cap.
+        tier,
+      });
+      if (pendingError) {
+        console.error("[research] Failed to insert pending run:", JSON.stringify(pendingError));
+        throw new UsageCheckError();
+      }
+      return true;
+    });
+  } catch (err) {
+    if (!(err instanceof UsageCheckError)) console.error("[research] usage check failed:", err);
+    return usageCheckFailed(res);
   }
+  if (!reserved) return;
 
   // P1-9 — live per-source progress for the run screen. Stored in the
   // pending row's bundle (replaced wholesale when the run completes), at
@@ -942,8 +1030,7 @@ app.post("/research", async (req, res) => {
     // Log person-search audit trail only after a successful run, and only
     // for non-internal users (internal bypasses the cap so no need to track).
     if (type === "person" && tier !== "internal") {
-      const ipAddress = (req.headers["x-forwarded-for"] as string) ?? req.socket.remoteAddress;
-      logPersonSearch(userId, subject, ipAddress).catch((err) =>
+      logPersonSearch(userId, subject, ip).catch((err) =>
         console.error("[person-search-audit] failed:", err)
       );
     }
@@ -959,11 +1046,9 @@ app.post("/research", async (req, res) => {
         .catch((err) => console.error(`[provenance] run ${runId}: storing failed:`, err instanceof Error ? err.message : err));
     }
 
-    // Task 4.1 — priorLifetimeUsage was read before this run's row existed,
-    // so 0 here means this run is the account's first ever (not just first
-    // today/this month).
+    // Task 4.1 — isFirstRun was read before this run's row existed.
     trackEvent(userId, "research_run", { entity_type: type });
-    if (priorLifetimeUsage === 0) {
+    if (isFirstRun) {
       trackEvent(userId, "first_research_run", { entity_type: type });
     }
 
@@ -1279,33 +1364,56 @@ app.post("/deep-dive", async (req, res) => {
     return tierDenied(res, "Deep Dive requires Pro or higher.", undefined, { userId, cap: "deep_dive_access", capEmail: "Deep Dive access" });
   }
 
-  if (config.windowDeepDiveLimit !== -1) {
-    const window = await getUsageWindow(userId);
-    if (window.resetsAt && window.deepDives >= config.windowDeepDiveLimit) {
-      return tierDenied(
-        res,
-        `You've used all ${config.windowDeepDiveLimit} Deep Dives for this ${WINDOW_HOURS}-hour window. It resets in ${timeUntil(window.resetsAt)}.`,
-        undefined,
-        { userId, cap: "window_deep_dive_limit" }
-      );
-    }
-  }
+  // Checked and reserved in one step per account (red team S2): a Deep
+  // Dive's row is written only when it finishes, so the running one is
+  // held in deepDivesInFlight until then. Counter errors deny the run.
+  const startedAt = new Date();
+  let reserved: boolean;
+  try {
+    reserved = await withUserLock(userId, async () => {
+      if (config.windowDeepDiveLimit !== -1) {
+        const window = await getUsageWindow(userId);
+        if (window.resetsAt && window.deepDives >= config.windowDeepDiveLimit) {
+          tierDenied(
+            res,
+            `You've used all ${config.windowDeepDiveLimit} Deep Dives for this ${WINDOW_HOURS}-hour window. It resets in ${timeUntil(window.resetsAt)}.`,
+            undefined,
+            { userId, cap: "window_deep_dive_limit" }
+          );
+          return false;
+        }
+      }
 
-  // Pro's monthly fair-use soft cap (task 1.6) — windowDeepDiveLimit is -1
-  // for Pro, so this is the binding check for that tier; other tiers that
-  // still use monthlyDeepDiveLimit: -1 skip this entirely.
-  if (config.monthlyDeepDiveLimit !== -1) {
-    const periodStart = await getBillingPeriodStart(userId);
-    const usage = await getMonthlyDeepDiveUsage(userId, periodStart);
-    if (usage >= config.monthlyDeepDiveLimit) {
-      return tierDenied(
-        res,
-        `Monthly Deep Dive limit of ${config.monthlyDeepDiveLimit} reached. Resets ${new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toLocaleDateString()}.`,
-        "Contact support@metisanalytic.com if you need a higher limit.",
-        { userId, cap: "monthly_deep_dive_limit", capEmail: "monthly Deep Dive limit" }
-      );
-    }
+      // Pro's monthly fair-use soft cap (task 1.6) — windowDeepDiveLimit is -1
+      // for Pro, so this is the binding check for that tier; other tiers that
+      // still use monthlyDeepDiveLimit: -1 skip this entirely.
+      if (config.monthlyDeepDiveLimit !== -1) {
+        const periodStart = await getBillingPeriodStart(userId);
+        const usage = await getMonthlyDeepDiveUsage(userId, periodStart);
+        if (usage >= config.monthlyDeepDiveLimit) {
+          tierDenied(
+            res,
+            `Monthly Deep Dive limit of ${config.monthlyDeepDiveLimit} reached. Resets ${new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate()).toLocaleDateString()}.`,
+            "Contact support@metisanalytic.com if you need a higher limit.",
+            { userId, cap: "monthly_deep_dive_limit", capEmail: "monthly Deep Dive limit" }
+          );
+          return false;
+        }
+      }
+
+      deepDivesInFlight.set(userId, [...(deepDivesInFlight.get(userId) ?? []), startedAt]);
+      return true;
+    });
+  } catch (err) {
+    if (!(err instanceof UsageCheckError)) console.error("[deep-dive] usage check failed:", err);
+    return usageCheckFailed(res);
   }
+  if (!reserved) return;
+  const releaseInFlight = () => {
+    const left = (deepDivesInFlight.get(userId) ?? []).filter((t) => t !== startedAt);
+    if (left.length > 0) deepDivesInFlight.set(userId, left);
+    else deepDivesInFlight.delete(userId);
+  };
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -1321,7 +1429,7 @@ app.post("/deep-dive", async (req, res) => {
     const agent = new DeepDiveAgent(fetcher, searcher);
     const { result: bundle, totalCostUsd, modelCostUsd, searchCalls } = await withCostTracking(() => agent.run(company, send));
 
-    await writeWithCostSplit(
+    const { error: saveError } = await writeWithCostSplit(
       { model_cost_usd: totalCostUsd === null ? null : modelCostUsd, search_calls: searchCalls },
       (split) => supabase.from("deep_dives").upsert({
         id: bundle.id,
@@ -1334,12 +1442,16 @@ app.post("/deep-dive", async (req, res) => {
         ...split,
       }));
     void checkSpend(supabase, { kind: "deep dive", subject: bundle.company, costUsd: totalCostUsd });
+    if (saveError) console.error("[deep-dive] save failed:", JSON.stringify(saveError));
+    else send({ type: "saved", id: bundle.id });
 
     trackEvent(userId, "deep_dive_run", { entity_type: "company" });
     res.end();
   } catch (err) {
     send({ type: "error", error: String(err), totalSections: 10 });
     res.end();
+  } finally {
+    releaseInFlight();
   }
 });
 
@@ -1554,7 +1666,7 @@ app.get("/export/:userId", async (req, res) => {
 
   const [runsRes, watchlistRes, entitiesRes, relationshipsRes] = await Promise.all([
     supabase.from("research_runs").select("id, type, subject, generated_at, report_path, bundle")
-      .eq("user_id", userId).eq("status", "completed").order("generated_at", { ascending: false }),
+      .eq("user_id", userId).eq("status", "completed").is("deleted_at", null).order("generated_at", { ascending: false }),
     supabase.from("watchlist").select("id, type, subject, added_at, last_refreshed_at, refresh_interval_days")
       .eq("user_id", userId).order("added_at", { ascending: false }),
     supabase.from("kg_entities").select("id, name, type, first_seen_at")

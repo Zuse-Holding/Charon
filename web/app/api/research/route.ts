@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import { createServerSupabaseClient, createServiceClient } from "../../../lib/supabase/server";
 import { getAgentSecret } from "../../../lib/agent-secret";
 import { randomUUID } from "node:crypto";
 
@@ -27,6 +27,10 @@ function getReportPath(subject: string, type: string): string {
   if (type === "political") return join(root, "reports", "political", `${slugify(subject)}.md`);
   if (type === "creator") return join(root, "reports", "creators", `${slugify(subject)}.md`);
   return join(root, "reports", `${slugify(subject)}.md`);
+}
+
+function clientIp(req: NextRequest): string | undefined {
+  return req.headers.get("x-real-ip")?.trim() || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || undefined;
 }
 
 export async function POST(req: NextRequest) {
@@ -58,11 +62,16 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
+    const ip = clientIp(req);
     const res = await fetch(`${agentUrl}/research`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-agent-secret": getAgentSecret(),
+        // The caller's IP for the agent server's per-IP limit and the
+        // person-search audit (red team S3). Vercel sets these headers
+        // itself, so the client can't spoof them.
+        ...(ip ? { "x-client-ip": ip } : {}),
       },
       body: JSON.stringify({ subject: sanitizedSubject, type, userId: user.id, refresh }),
     });
@@ -86,13 +95,15 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const PROJECT_ROOT = join(process.cwd(), "..");
+  // Users can't write research_runs (plan caps are counted from it).
+  const db = createServiceClient();
 
   // Background-persistent search — same pending/completed/failed pattern
   // as server/agent-server.ts's production path, so a reload during a
   // locally-run research call also has a row to resume from.
   const runId = randomUUID();
   try {
-    await supabase.from("research_runs").insert({
+    await db.from("research_runs").insert({
       id: runId,
       user_id: user.id,
       type,
@@ -113,7 +124,7 @@ export async function POST(req: NextRequest) {
 
     try {
       const reportPath = getReportPath(sanitizedSubject, type);
-      await supabase
+      await db
         .from("research_runs")
         .update({
           generated_at: new Date().toISOString(),
@@ -129,7 +140,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, runId, output: stdout + stderr });
   } catch (err: unknown) {
     const error = err as { message?: string; stdout?: string; stderr?: string };
-    await supabase
+    await db
       .from("research_runs")
       .update({ status: "failed", error: error.message ?? "Unknown error" })
       .eq("id", runId);

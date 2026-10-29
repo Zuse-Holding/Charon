@@ -788,3 +788,34 @@ CREATE TABLE IF NOT EXISTS company_profiles (
 
 ALTER TABLE company_profiles ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON company_profiles FROM anon, authenticated;
+
+-- ============================================================
+-- Plan usage can't be edited from the browser (red team S1)
+-- Every plan cap is a count over research_runs / deep_dives. With the
+-- old FOR ALL policies a signed-in user could delete or edit their own
+-- rows with the public anon key and reset every counter. Both tables are
+-- now read-only for their owner; only the service role (agent server,
+-- web API routes) writes. Deleting a report tombstones the row instead
+-- of removing it, so it still counts toward the plan: the report content
+-- is cleared and the row is hidden from the owner.
+-- Apply this block BEFORE deploying the code that writes deleted_at.
+-- ============================================================
+
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+DROP POLICY IF EXISTS "Users manage own research runs" ON research_runs;
+DROP POLICY IF EXISTS "Users read own research runs" ON research_runs;
+CREATE POLICY "Users read own research runs"
+  ON research_runs FOR SELECT
+  USING (auth.uid() = user_id AND deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Users manage own deep dives" ON deep_dives;
+DROP POLICY IF EXISTS "Users read own deep dives" ON deep_dives;
+CREATE POLICY "Users read own deep dives"
+  ON deep_dives FOR SELECT
+  USING (auth.uid() = user_id);
+
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON research_runs FROM anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON deep_dives    FROM anon, authenticated;
+REVOKE ALL ON research_runs FROM anon;
+REVOKE ALL ON deep_dives    FROM anon;

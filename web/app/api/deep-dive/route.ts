@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { exec } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import { createServerSupabaseClient, createServiceClient } from "../../../lib/supabase/server";
 import { getAgentSecret } from "../../../lib/agent-secret";
 
 const execAsync = promisify(exec);
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
           const bundle = JSON.parse(stdout);
 
           // Save to Supabase
-          await supabase.from("deep_dives").upsert({
+          await createServiceClient().from("deep_dives").upsert({
             id: bundle.id,
             user_id: user.id,
             company: bundle.company,

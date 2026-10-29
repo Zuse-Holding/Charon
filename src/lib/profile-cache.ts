@@ -149,7 +149,7 @@ export async function loadEarlierRuns(domain: string | undefined, now = Date.now
   try {
     const { data, error } = await db.from("research_runs")
       .select("leadership:bundle->leadership, products:bundle->products, funding:bundle->funding, corporateActions:bundle->corporateActions, courtCases:bundle->courtCases, competitors:bundle->competitors, news:bundle->news")
-      .eq("status", "completed").ilike("subject", `%· ${domain}`)
+      .eq("status", "completed").is("deleted_at", null).ilike("subject", `%· ${domain}`)
       .gte("generated_at", new Date(now - CARRY_DAYS * 86_400_000).toISOString())
       .order("generated_at", { ascending: false }).limit(CARRY_RUNS);
     if (error) { console.error("[profile-cache] earlier runs:", error.message); return []; }
