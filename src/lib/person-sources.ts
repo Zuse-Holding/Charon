@@ -106,7 +106,7 @@ export function tiedToOrg(text: string, personName: string, org: string): boolea
 
 export interface TiedText { url: string; text: string }
 
-const BOARD_WORD = /\b(board|directors?|chair\w*|trustees?|governance)\b/i;
+const BOARD_WORD = /\b(boards?|directors?|chair\w*|trustees?|governance)\b/i;
 
 /** The organization is named within a sentence's reach of a board word. */
 function boardNear(text: string, org: string): boolean {
@@ -130,6 +130,34 @@ export function namesOrgLoose(text: string, org: string): boolean {
   const all = org.split(/\s+/).filter((w) => /^[A-Za-z]/.test(w) && nameWords(w).length > 0);
   const initials = all.map((w) => w[0]).join("").toUpperCase();
   return all.length >= 2 && initials.length <= 5 && new RegExp(`\\b${initials}\\b`).test(text);
+}
+
+const LEGAL_SUFFIX = /^(Inc|Corp|Corporation|Co|Company|LLC|Ltd|Limited|Group|Holdings|plc|Incorporated|LP|L\.P)\b/;
+
+/**
+ * The name is only ever a piece of a longer one in the texts (Oct 29
+ * holdout: "Global Semicond", "Cata", "Great" as affiliations): cut off
+ * by an ellipsis or mid-word, or one word followed by more of a name. A name the
+ * texts never write out (initials) isn't judged here.
+ */
+export function cutShort(texts: string[], org: string): boolean {
+  const name = org.replace(/^the\s+/i, "").trim();
+  if (!name) return true;
+  const re = new RegExp(`(?<![\\w])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+")}`, "gi");
+  let seen = false;
+  for (const t of texts) {
+    for (const m of t.matchAll(re)) {
+      seen = true;
+      const rest = t.slice(m.index! + m[0].length, m.index! + m[0].length + 40);
+      const cut = /^\w/.test(rest) || /^\s*(?:…|\.\.\.)/.test(rest);
+      // One plain word followed by another capitalized one: "Great" of "Great Hearts".
+      const next = rest.match(/^\s+([A-Z][a-z][\w'’-]*)/)?.[1];
+      const longer = !/\s/.test(name) && !/^[A-Z0-9&]+$/.test(name) && !!next
+        && !LEGAL_SUFFIX.test(next) && !BOARD_WORD.test(next) && !TITLE_WORD.test(next);
+      if (!cut && !longer) return false;
+    }
+  }
+  return seen;
 }
 
 // Wire services carry a company's own press releases.
@@ -156,6 +184,7 @@ export function confirmBoardSeats(
     if (employers.some((e) => namesOrg(e, s.organization) || namesOrg(s.organization, e))) continue;
     // "Waste Management" and "WM" are one board.
     if (out.some((o) => namesOrgLoose(o.organization, s.organization) || namesOrgLoose(s.organization, o.organization))) continue;
+    if (cutShort([...sources.boardPages, ...sources.vouched, ...(sources.tied ?? [])].map((t) => t.text), s.organization)) continue;
     const official = sources.boardPages.find((t) => {
       const host = hostOf(t.url);
       return !!host && (orgSite(host, s.organization) || WIRE_HOST.test(host)) && namesOrgLoose(t.text, s.organization);
@@ -468,13 +497,40 @@ export function startValue(date: string | undefined): number | undefined {
  * Construction, since 2023"). The older role ends when the newer starts,
  * unless the newer title holds it (Mazzarella's Chairman, President and CEO).
  */
+const START_CUE = /\b(joined|joins|named|appointed|became|become|becomes|elected|promoted|took over|takes over|assumed|began|begins|started|starts|hired|founded|co-founded|cofounded|launched)\b/i;
 // A date stated as a start or an end, not an article's publication date.
 const START_BEFORE = /\b(since|joined|joins|named|appointed|became|become|becomes|elected|promoted|took over|takes over|assumed|began|begins|started|starts|effective|hired|founded|co-founded|cofounded|launched)\b[^.;]{0,50}$|\b(?:in|from)\s+(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(?:\d{1,2},?\s+)?)?$/i;
 const START_AFTER = /^\s*(?:[-–—]|to)\s*(?:(?:19|20)\d{2}|present|today|now)\b|^[^.;]{0,15}\b(?:she|he|they|was|were|is)\b[^.;]{0,15}\b(named|appointed|became|elected|promoted|joined|hired)\b/i;
 const END_BEFORE = /(?:\b(?:19|20)\d{2}\s*(?:[-–—]|to)\s*|\b(until|through|stepped down|steps down|left|retired|departed|resigned|ended|before)\b[^.;]{0,50})$/i;
 
-/** The year appears near the person's name, worded as a start or an end. */
-function stated(date: string, texts: string[], personName: string, kind: "start" | "end"): boolean {
+// The offices a title names, one word each ("Chairman" and "chair" alike).
+const OFFICE = new Set(["ceo", "coo", "cfo", "cto", "president", "chair", "vicechair", "evp", "svp", "vp", "founder", "cofounder", "director", "trustee"]);
+const officeWords = (t: string) => new Set([...titleWords(t)].map((w) => (/^chair(man|woman|person)$/.test(w) ? "chair" : w)).filter((w) => OFFICE.has(w)));
+
+/**
+ * The clause around a date names every office of the title (Oct 29
+ * holdout: Lisa Su's "Chair" took Oct 2014, when she became CEO; she
+ * became chair in Feb 2022). A board seat is worded as one too.
+ */
+function namesOffices(title: string, before: string, after: string): boolean {
+  const want = officeWords(title);
+  if (want.size === 0) return true;
+  // From the clause's first start word: "retired chairman of P&G, joined
+  // Delta's board in 2019" dates the board seat, not the chairmanship.
+  const lead = before.split(/[.;!?]\s+(?=[A-Z])/).pop() ?? "";
+  // "CEO since 2019" names the office before its cue; the other cues come first.
+  const cue = lead.search(START_CUE);
+  const clause = `${cue >= 0 ? lead.slice(cue) : lead} ${after.split(/[.;]|\s(?:and|while)\s/)[0]}`;
+  const have = officeWords(clause);
+  const words = titleWords(clause);
+  return [...want].every((w) => have.has(w)
+    || (w === "director" && (words.has("board") || words.has("directors")))
+    // "Founded Teach For America in 1990": the founder ran it from then (Kopp).
+    || ((w === "founder" || w === "cofounder" || w === "ceo") && [...words].some((x) => /^(co)?founded$/.test(x))));
+}
+
+/** The year appears near the person's name, worded as a start or an end, and a start next to the title's offices. */
+function stated(date: string, texts: string[], personName: string, kind: "start" | "end", title?: string): boolean {
   const year = date.match(/\b(19|20)\d{2}\b/)?.[0];
   if (!year) return false;
   const last = surnameOf(personName);
@@ -484,7 +540,8 @@ function stated(date: string, texts: string[], personName: string, kind: "start"
       for (const y of w.matchAll(new RegExp(`\\b${year}\\b`, "g"))) {
         const before = w.slice(Math.max(0, y.index! - 70), y.index!);
         const after = w.slice(y.index! + 4, y.index! + 60);
-        if (kind === "start" ? START_BEFORE.test(before) || START_AFTER.test(after) : END_BEFORE.test(before)) return true;
+        if (kind === "end" ? END_BEFORE.test(before) : (START_BEFORE.test(before) || START_AFTER.test(after))
+          && (!title || namesOffices(title, w.slice(Math.max(0, y.index! - 100), y.index!), after))) return true;
       }
     }
   }
@@ -502,7 +559,7 @@ export function statedDates(careerHistory: CareerEntry[], texts: string[], perso
   const notes: string[] = [];
   const out = careerHistory.map((c) => {
     const next = { ...c };
-    if (c.start && !stated(c.start, texts, personName, "start")) {
+    if (c.start && !stated(c.start, texts, personName, "start", c.title)) {
       delete next.start;
       notes.push(`${c.title}, ${c.company ?? "?"}: start "${c.start}" not stated as a start in any source, dropped`);
     }
@@ -513,6 +570,52 @@ export function statedDates(careerHistory: CareerEntry[], texts: string[], perso
     return next;
   });
   return { careerHistory: out, notes };
+}
+
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"];
+const yearsOf = (n: string) => (/^\d+$/.test(n) ? Number(n) : NUMBER_WORDS.indexOf(n.toLowerCase()));
+
+/**
+ * An end from a stated length (Oct 29 holdout: Kopp founded Teach For
+ * America in 1990 "and led it for 24 years", shown as "1990 – end date not
+ * stated"): a past role at another organization than the current one,
+ * when a sentence about the person names that organization and how long
+ * they led it. "Has led it for 24 years" is still going: no end.
+ */
+export function endsFromDuration(career: CareerEntry[], texts: string[], person: PersonProfile): string[] {
+  const notes: string[] = [];
+  const last = surnameOf(person.name);
+  const sentences = texts.flatMap((t) => t.split(/(?<=[.;!?])\s+/))
+    .filter((sn) => new RegExp(`\\b${last}\\b`).test(normalizeWords(sn)) || /^(She|He|They)\b/.test(sn));
+  for (const c of career) {
+    const year = startValue(c.start);
+    if (c.end || year === undefined || !c.company || sameOrg(c.company, person.currentCompany)) continue;
+    for (const sn of sentences) {
+      if (!namesOrg(sn, c.company)) continue;
+      const m = sn.match(/\b(?<!has |have )(led|ran|headed|served|spent|run|leading)\b[^.;]{0,40}?\b(?:for|over)\s+(\d{1,2}|[a-z]+)\s+years\b/i);
+      const n = m ? yearsOf(m[2]) : -1;
+      if (n <= 0) continue;
+      c.end = String(Math.floor(year / 400) + n);
+      c.current = false;
+      notes.push(`${c.title}, ${c.company}: ended ${c.end}, ${n} years after ${c.start} as a source states`);
+      break;
+    }
+  }
+  return notes;
+}
+
+/**
+ * Board seat dates as the sources state them for that seat (Oct 29
+ * holdout: Taylor's Delta "Chairman (since Aug 2019)"; Aug 2019 is when he
+ * joined the board).
+ */
+export function statedSeatDates(seats: BoardSeatEntry[], texts: string[], personName: string): BoardSeatEntry[] {
+  return seats.map((b) => {
+    const next = { ...b };
+    if (b.start && !stated(b.start, texts, personName, "start", b.role ?? "Director")) delete next.start;
+    if (b.end && !stated(b.end, texts, personName, "end")) delete next.end;
+    return next;
+  });
 }
 
 export function promoteNewestRole(person: PersonProfile, careerHistory: CareerEntry[]): string | undefined {
@@ -551,7 +654,7 @@ export function settleTitles(
   if (texts.dated) {
     const checked = statedDates(career, texts.dated, person.name);
     career = checked.careerHistory;
-    notes.push(...checked.notes);
+    notes.push(...checked.notes, ...endsFromDuration(career, [...texts.dated, texts.summary ?? ""], person));
   }
   for (const o of new Set(orgs)) {
     const ceo = otherCeoOf(texts.snippets, o, person.name);
@@ -706,7 +809,8 @@ export function orderCareer(person: PersonProfile, careerHistory: CareerEntry[])
     // Part of the current title: still held, whatever the model guessed
     // (Oct 29: "Chairman of Graybar board of directors" read as a past role).
     if (same(c) && heldBy(role, c.title, c.company ?? person.currentCompany)) return { ...c, current: true };
-    if (c.current === true && BOARD_TITLE.test(c.title) && !same(c)) return c;
+    // Another organization's seat is current only with a stated start (Oct 29 holdout).
+    if (c.current === true && BOARD_TITLE.test(c.title) && !same(c) && c.start) return c;
     return { ...c, current: false };
   });
   return [first, ...rest];

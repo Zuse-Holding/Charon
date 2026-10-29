@@ -15,7 +15,7 @@ import { applyRoleChange, personNews, roleFromNews, summaryFromSnippet } from ".
 import {
   bioExcerpt, clearEndedRole, confirmBoardSeats, isBoardPage, isProfilePage, officialBioPages, secPersonExcerpts,
   sourceOf, surnameOf, tiedToOrg, type SecExcerpt, type TiedText,
-  anchorCurrentRole, boardsNamed, educationFor, isHomepage, recentEnough, seatsFromBoardPages, settleTitles, within,
+  anchorCurrentRole, boardsNamed, educationFor, isHomepage, recentEnough, seatsFromBoardPages, settleTitles, statedSeatDates, within,
 } from "../../lib/person-sources.js";
 import { hostOf, newsAboutSubject } from "../../lib/entities/subject.js";
 import { isRoleTitle, namesOrg } from "../../lib/person-checks.js";
@@ -318,6 +318,8 @@ RULES:
           { boardPages, vouched, tied: tiedSources },
           [org, person.currentCompany].filter((e): e is string => !!e),
         );
+        // Each seat's dates as a source states them for that seat (Oct 29 holdout).
+        boardSeats = statedSeatDates(boardSeats, [...vouched, ...boardPages, ...tiedSources].map((t) => t.text), personName);
       }
     }
 

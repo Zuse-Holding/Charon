@@ -1,0 +1,10 @@
+{
+  "_note": "Person-search holdout set (Oct 29). Run these live after each round; never use them as unit-test fixtures, so a fix that only fits the fixtures shows up here. Check each date against the company's own release before trusting it. Retire a name into the tests only when replacing it with a fresh one.",
+  "people": [
+    { "subject": "Mary Barra · General Motors", "checks": ["Chair and CEO split: CEO and chair each with their own start", "board seats named by a tied source only"] },
+    { "subject": "Ed Bastian · Delta Air Lines", "checks": ["earlier Delta roles closed with stated ends", "no Delta board start date borrowed from another role"] },
+    { "subject": "Jane Fraser · Citigroup", "checks": ["CEO start from Citi's release", "earlier roles at McKinsey and Goldman Sachs not shown as current"] },
+    { "subject": "Indra Nooyi · PepsiCo", "checks": ["PepsiCo CEO shown as a past role with its end", "current role is not a PepsiCo title"] },
+    { "subject": "Ursula Burns · Xerox", "checks": ["Xerox CEO and chair roles closed", "no truncated or partial organization names in Corporate Affiliations"] }
+  ]
+}
