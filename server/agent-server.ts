@@ -121,6 +121,10 @@ interface TierConfig {
   // tuned independently later, even though all three are internal-only
   // today.
   personResearchAccess: boolean;
+  // Person reports through /research (type "person"), as opposed to the
+  // Charon-only Person Research tool above. Off on Free at launch: the
+  // red team's largest legal exposure, while Terms and Privacy are drafts.
+  personSearchAccess: boolean;
   muckrockAccess: boolean;
   adminAccess: boolean;
   // 7/17 weekend list #1: hard monthly cap on quick profiles (company/
@@ -170,23 +174,23 @@ const RATE_LIMIT_FREE_PER_HOUR = Number(process.env.RATE_LIMIT_FREE_PER_HOUR ?? 
 const RATE_LIMIT_PAID_PER_HOUR = Number(process.env.RATE_LIMIT_PAID_PER_HOUR ?? 30);
 
 const TIER_CONFIG: Record<Tier, TierConfig> = {
-  internal: { windowResearchLimit: -1, windowDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
+  internal: { windowResearchLimit: -1, windowDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: true, chatWidgetAccess: true, personResearchAccess: true, personSearchAccess: true, muckrockAccess: true, adminAccess: true, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: true },
   // Team is not sold (Phase 1 task 1.6) — left exactly as-is otherwise;
   // may be relabeled/reworked once the multi-seat workspace feature
   // (docs/team-features-scoping.md) actually exists.
-  team:     { windowResearchLimit: 200, windowDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false },
+  team:     { windowResearchLimit: 200, windowDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: true, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, personSearchAccess: true, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false },
   // Pro: quick-profile and Deep Dive caps are both monthly fair-use soft
   // caps now, not unlimited — windowDeepDiveLimit set to -1 since
   // monthlyDeepDiveLimit replaces it for this tier specifically.
-  pro:      { windowResearchLimit: 50, windowDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: PRO_MONTHLY_RESEARCH_LIMIT, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: PRO_MONTHLY_DEEP_DIVE_LIMIT, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false },
+  pro:      { windowResearchLimit: 50, windowDeepDiveLimit: -1, deepDiveAccess: true, politicalAccess: true, watchlistLimit: -1, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, personSearchAccess: true, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: PRO_MONTHLY_RESEARCH_LIMIT, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: PRO_MONTHLY_DEEP_DIVE_LIMIT, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: true, creatorAccess: false },
   // Basic: PDF export added (Phase 1 task 1.6 — was withheld before).
-  basic:    { windowResearchLimit: 10, windowDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: true, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: false, creatorAccess: false },
+  basic:    { windowResearchLimit: 10, windowDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 5, knowledgeGraphAccess: false, exportAccess: true, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, personSearchAccess: true, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: 25, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_PAID_PER_HOUR, publicRecordsAccess: false, creatorAccess: false },
   // Free (Phase 1): the real default for new signups now (see getUserTier
   // below) — 3 quick profiles LIFETIME, not recurring, hence
   // windowResearchLimit/monthlyResearchLimit both -1 here and the cap
   // living entirely in lifetimeResearchLimit. 1 watchlist entity, no
   // Deep Dive, no export.
-  free:     { windowResearchLimit: -1, windowDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 1, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: 3, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_FREE_PER_HOUR, publicRecordsAccess: false, creatorAccess: false },
+  free:     { windowResearchLimit: -1, windowDeepDiveLimit: 0, deepDiveAccess: false, politicalAccess: false, watchlistLimit: 1, knowledgeGraphAccess: false, exportAccess: false, charonProtocol: false, chatWidgetAccess: false, personResearchAccess: false, personSearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: 3, monthlyDeepDiveLimit: -1, hourlyResearchLimit: RATE_LIMIT_FREE_PER_HOUR, publicRecordsAccess: false, creatorAccess: false },
   // Time-boxed tier for external demo/partner accounts (limited partners,
   // investor trials, etc). Deliberately mirrors "team" limits and features
   // so the demo shows the platform at full strength — the ONLY things it
@@ -194,7 +198,7 @@ const TIER_CONFIG: Record<Tier, TierConfig> = {
   // which stay off regardless of what tier
   // gets requested for these accounts. Expiry enforced via
   // profiles.trial_expires_at, checked in getUserTier below.
-  trial:    { windowResearchLimit: 200, windowDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false },
+  trial:    { windowResearchLimit: 200, windowDeepDiveLimit: 20, deepDiveAccess: true, politicalAccess: false, watchlistLimit: 50, knowledgeGraphAccess: true, exportAccess: true, charonProtocol: false, chatWidgetAccess: true, personResearchAccess: false, personSearchAccess: true, muckrockAccess: false, adminAccess: false, monthlyResearchLimit: -1, lifetimeResearchLimit: -1, monthlyDeepDiveLimit: -1, hourlyResearchLimit: -1, publicRecordsAccess: true, creatorAccess: false },
 };
 
 /**
@@ -246,7 +250,7 @@ const EXPIRED_CONFIG: TierConfig = {
   windowResearchLimit: 0, windowDeepDiveLimit: 0, deepDiveAccess: false,
   politicalAccess: false, watchlistLimit: 0, knowledgeGraphAccess: false,
   exportAccess: false, charonProtocol: false, chatWidgetAccess: false,
-  personResearchAccess: false, muckrockAccess: false, adminAccess: false,
+  personResearchAccess: false, personSearchAccess: false, muckrockAccess: false, adminAccess: false,
   monthlyResearchLimit: 0, lifetimeResearchLimit: 0, monthlyDeepDiveLimit: 0,
   hourlyResearchLimit: 0,
   publicRecordsAccess: false, creatorAccess: false,
@@ -687,6 +691,9 @@ app.post("/candidates", async (req, res) => {
     res.status(403).json({ error: "Your trial has ended. Contact us to continue using Metis." });
     return;
   }
+  if (type === "person" && !getTierConfig(tier).personSearchAccess) {
+    return tierDenied(res, "Person search isn't on the Free plan.", "Basic and Pro include it: metisanalytic.com/pricing.", { userId, cap: "person_search_access" });
+  }
   const limit = checkHourlyBucket(`candidates:user:${userId}`, Math.max(30, getTierConfig(tier).hourlyResearchLimit * 3));
   if (!limit.allowed) {
     return rateLimited(res, `You're searching faster than your plan allows. Try again in ${Math.ceil(limit.resetInMs / 60000)} minutes.`, { userId, cap: "hourly_candidates" });
@@ -783,6 +790,10 @@ app.post("/research", async (req, res) => {
     // no upgradeHint pointing at a paid tier, since paying for Pro/Team
     // wouldn't actually unlock this yet.
     return tierDenied(res, "Creator research isn't available on your plan.", undefined, { userId, cap: "charon_creator_research" });
+  }
+
+  if (type === "person" && !config.personSearchAccess) {
+    return tierDenied(res, "Person search isn't on the Free plan.", "Basic and Pro include it: metisanalytic.com/pricing.", { userId, cap: "person_search_access" });
   }
 
   // Person reports need a second anchor (Fix 5): where they work, or a

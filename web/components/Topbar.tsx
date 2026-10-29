@@ -69,7 +69,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
   // hiding it also cuts down the pill count for the vast majority of users.
   const availableTypes: { value: ResearchType; label: string; gated?: boolean }[] = [
     { value: "company",   label: "CO" },
-    { value: "person",    label: "PERSON" },
+    { value: "person",    label: "PERSON", gated: !can("personSearchAccess") },
     { value: "product",   label: "PRODUCT" },
     { value: "political", label: "POL", gated: !can("politicalAccess") },
     ...(isInternal ? [{ value: "creator" as const, label: "CREATOR" }] : []),
@@ -81,6 +81,12 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
     // Gate political research on the frontend too
     if (type === "political" && !can("politicalAccess")) {
       setStatus("✗ Political research requires Pro or higher");
+      setTimeout(() => setStatus(""), 4000);
+      return;
+    }
+
+    if (type === "person" && !can("personSearchAccess")) {
+      setStatus("✗ Person search is on Basic and Pro");
       setTimeout(() => setStatus(""), 4000);
       return;
     }
@@ -317,7 +323,7 @@ export default function Topbar({ onResearchStart, onResearchComplete }: TopbarPr
               key={t.value}
               className={`${styles.pill} ${type === t.value ? styles.active : ""} ${t.gated ? styles.gated ?? "" : ""}`}
               onClick={() => { if (!t.gated) { setType(t.value); setTypeManuallySet(true); } }}
-              title={t.gated ? `Upgrade to Pro to unlock ${t.value} research` : undefined}
+              title={t.gated ? `Upgrade to ${t.value === "person" ? "Basic" : "Pro"} to unlock ${t.value} research` : undefined}
               style={t.gated ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
             >
               {t.label}

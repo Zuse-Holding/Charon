@@ -19,6 +19,9 @@ export interface TierConfig {
   // Charon-only UI buttons — separate flags so each can be tuned
   // independently later, even though all three are internal-tier-only today.
   personResearchAccess: boolean;
+  // Person reports from the search bar (separate from the Charon tool
+  // above). Off on Free; see server/agent-server.ts's TierConfig.
+  personSearchAccess: boolean;
   muckrockAccess: boolean;
   adminAccess: boolean;
   // 7/17 weekend list #1 — hard monthly cap on quick profiles (all research
@@ -116,6 +119,7 @@ const DEFAULT_CONFIG: TierConfig = {
   exportAccess: false,
   charonProtocol: false,
   personResearchAccess: false,
+  personSearchAccess: false,
   muckrockAccess: false,
   adminAccess: false,
   monthlyResearchLimit: -1,
