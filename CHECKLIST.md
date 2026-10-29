@@ -16,9 +16,10 @@ env var *names* (values not read). Ordered by what hurts most if missed.
   `kg_decide_match` stays callable by signed-in users on purpose: it checks
   `auth.uid()` owns the review.
 - Still zero Stripe customers and zero webhook events: no live purchase yet.
-- **The new database has one account (Nick's, `internal`).** The old
-  Metis Diligence project is paused. If anyone else had an account or a
-  subscription there, it didn't move; confirm that's intended.
+- The new database has one account (Nick's, `internal`). Intended: Nick
+  confirmed 2026-10-29 that no other accounts needed to move. The old
+  Metis Diligence project (`xfivegdjuqrcongrpmhf`) still shows in
+  Supabase as paused, not deleted, as of that day.
 - Leaked-password protection still off; `POSTHOG_KEY` and
   `NEXT_PUBLIC_POSTHOG_KEY` still not on Vercel; `LEGAL_PAGES_FINAL` still
   `false`; the Stripe sample still cites reddit.com, paddle.com and
