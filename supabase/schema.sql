@@ -223,6 +223,9 @@ BEGIN
 END;
 $$;
 
+-- Trigger-only: the trigger fires without EXECUTE, so nobody calls it via /rpc.
+REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authenticated;
+
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users

@@ -8,6 +8,25 @@ tracked here as they come up rather than left buried in commit messages.
 Pulled together from this checklist plus a check of Vercel's production
 env var *names* (values not read). Ordered by what hurts most if missed.
 
+**Re-checked 2026-10-29** (Vercel, Metis Intelligence database, repo):
+- Fixed: `public.handle_new_user()` was callable by `anon` and
+  `authenticated` through `/rest/v1/rpc` (Supabase advisor, SECURITY
+  DEFINER). Execute revoked on the live database and in `schema.sql`; a
+  rolled-back test insert into `auth.users` still created the profile.
+  `kg_decide_match` stays callable by signed-in users on purpose: it checks
+  `auth.uid()` owns the review.
+- Still zero Stripe customers and zero webhook events: no live purchase yet.
+- **The new database has one account (Nick's, `internal`).** The old
+  Metis Diligence project is paused. If anyone else had an account or a
+  subscription there, it didn't move; confirm that's intended.
+- Leaked-password protection still off; `POSTHOG_KEY` and
+  `NEXT_PUBLIC_POSTHOG_KEY` still not on Vercel; `LEGAL_PAGES_FINAL` still
+  `false`; the Stripe sample still cites reddit.com, paddle.com and
+  memberful.com.
+- Fine: production runs `main` at the latest commit; typecheck clean and
+  510/510 tests pass; Vercel's Supabase vars were updated 2026-10-23,
+  after the move; cost columns filled on 68 of 74 runs in the last week.
+
 - [ ] **Run one real live-mode purchase end to end.** Stripe has had no
   activity since the live key was created, so checkout has never run with
   real money (re-checked 2026-10-22: zero live checkout sessions and zero
