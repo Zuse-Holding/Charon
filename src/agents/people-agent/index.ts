@@ -15,7 +15,7 @@ import { applyRoleChange, personNews, roleFromNews, summaryFromSnippet } from ".
 import {
   bioExcerpt, clearEndedRole, confirmBoardSeats, isBoardPage, isProfilePage, officialBioPages, secPersonExcerpts,
   sourceOf, surnameOf, tiedToOrg, type SecExcerpt, type TiedText,
-  anchorCurrentRole, recentEnough, settleTitles, verifyEducation, verifyNetWorth, within,
+  anchorCurrentRole, educationFrom, isHomepage, mergeEducation, recentEnough, settleTitles, verifyEducation, within,
 } from "../../lib/person-sources.js";
 import { hostOf, newsAboutSubject } from "../../lib/entities/subject.js";
 import { isRoleTitle, namesOrg } from "../../lib/person-checks.js";
@@ -112,7 +112,7 @@ export class PeopleAgent {
       this.searcher.search(appendDomainExclusions(`${searchSubject} current role position ${currentYear}`, override), resultCount),
       // Twice the results needed: social, forum and tag-index pages are dropped below.
       this.searcher.search(appendDomainExclusions(`${searchSubject} news ${currentYear}`, override), resultCount * 2),
-      this.searcher.search(appendDomainExclusions(`${searchSubject} education net worth background biography`, override), bgResultCount),
+      this.searcher.search(appendDomainExclusions(`${searchSubject} education background biography`, override), bgResultCount),
       org ? this.searcher.search(appendDomainExclusions(`"${personName}" ${org}`, override), 10) : none,
       org ? this.searcher.search(`${personName} ${org} leadership bio`, resultCount) : none,
       // With the organization: the bare name fanned out across namesakes' boards.
@@ -138,7 +138,7 @@ export class PeopleAgent {
     // is worse than no news item.
     // Profile, bio and board pages say who someone is; they aren't news.
     const newsResults = newsResultsRaw
-      .filter((r) => !isRejectedDomain(r.url, override) && !isNewsNoise(r.url) && !isProfilePage(r.url))
+      .filter((r) => !isRejectedDomain(r.url, override) && !isNewsNoise(r.url) && !isProfilePage(r.url) && !isHomepage(r.url))
       .filter((r) => isUsableHeadline(r.title) && aboutThisPerson(r))
       .slice(0, resultCount);
     const backgroundResults = backgroundResultsRaw.filter((r) => !isRejectedDomain(r.url, override) && aboutThisPerson(r));
@@ -232,7 +232,7 @@ export class PeopleAgent {
       ...boardPages.map((b) => `BOARD PAGE (${b.url}):\n${b.text}`),
       `CAREER SNIPPETS:\n${snippetText}`,
       profileText ? `PROFILE SNIPPETS:\n${profileText}` : "",
-      `BACKGROUND & NET WORTH:\n${backgroundText}`,
+      `BACKGROUND:\n${backgroundText}`,
     ].filter(Boolean).join("\n\n").slice(0, 18_000) || snippetText;
 
     // Pages and snippets that name this person and the picked organization:
@@ -257,7 +257,6 @@ Extract these fields:
 - currentCompany: the organization they currently work for
 - education: every degree stated, with school and year when given, separated by semicolons (e.g. "B.S. in Mechanical Engineering, Worcester Polytechnic Institute; MBA, Drexel University"). Word each degree exactly as the text does; never turn it into an abbreviation or another degree name. Check the OFFICIAL BIO and BOARD PAGE text for it first.
 - founding: one sentence on the company they founded, when the text states it: the year, every co-founder named and any accelerator or program (e.g. "Y Combinator, Winter 2016")
-- netWorth: estimated net worth if publicly available (e.g. "$4.5B as of 2024")
 - knownFor: one sentence on what they're most notable for (invention, company, achievement, controversy)
 - nationality: their nationality or country of origin if mentioned
 - careerHistory: array of {title, company, start, end, current} in reverse chronological order (most recent first), every role the text mentions, past ones included. start and end: the month and year when the text states them ("Mar 2023"), else the year; omit a date the text doesn't give. current: false when the text says the role ended or calls it former or previous; true only when the text says they hold it now. A board seat at their own employer (e.g. Chairman) is a careerHistory entry.
@@ -284,7 +283,8 @@ RULES:
         if (llmResult.currentRole)    person.currentRole    = llmResult.currentRole;
         if (llmResult.currentCompany && !isPlaceholderOrg(llmResult.currentCompany)) person.currentCompany = llmResult.currentCompany;
         if (llmResult.education)      person.education      = llmResult.education;
-        if (llmResult.netWorth)       person.netWorth       = llmResult.netWorth;
+        // No net worth: the figures are celebrity-site guesses with no
+        // citable basis (Oct 28: McCann's "$9 M $", McGowan's "$150M–$500M").
         if (llmResult.knownFor)       person.knownFor       = llmResult.knownFor;
         if (llmResult.nationality)    person.nationality    = llmResult.nationality;
         if (llmResult.announcedDeparture) person.announcedDeparture = llmResult.announcedDeparture;
@@ -306,7 +306,9 @@ RULES:
         ];
         boardSeats = confirmBoardSeats(
           llmResult.boardSeats.filter((b) => !isPlaceholderOrg(b.organization)),
-          { boardPages, vouched, tied: tiedSources },
+          // A board page tied to the person names their other boards too
+          // (Cigna's bio lists WM and Core & Main).
+          { boardPages, vouched, tied: [...boardPages, ...tiedSources] },
           [org, person.currentCompany].filter((e): e is string => !!e),
         );
       }
@@ -346,17 +348,22 @@ RULES:
     // "Edwards School" in Loosararian's report).
     const snippetsOf = (rs: { title: string; snippet?: string }[]) => rs.map((r) => `${r.title}. ${r.snippet ?? ""}`);
     const allSnippets = snippetsOf([...bioResults, ...backgroundResults, ...profileResults]);
-    if (org && person.education) {
-      const tied = [
-        ...(officialExcerpt ? [officialExcerpt] : []),
-        ...boardPages.map((b) => b.text),
-        ...secExcerpts.map((e) => e.text),
-        ...tiedSources.map((t) => t.text),
-      ];
-      const verified = verifyEducation(person.education, tied, personName);
-      if (verified !== person.education) console.log(`[people-agent] "${personName}": education "${person.education}" -> "${verified ?? "none"}" (only what a source tied to ${org} states)`);
-      if (verified) person.education = verified; else delete person.education;
-    }
+    // Education from text naming the person and the picked organization or
+    // any employer in their career (Boyle's Jesuit bio names his schools, not
+    // always Homeboy): the model's degrees as those texts word them, plus the
+    // degrees read straight from them, one entry per school (Oct 28).
+    const anchors = [org, person.currentCompany, ...careerHistory.map((c) => c.company)].filter((a): a is string => !!a && !isPlaceholderOrg(a));
+    const eduTexts = [
+      ...(officialExcerpt ? [officialExcerpt] : []),
+      ...boardPages.map((b) => b.text),
+      ...secExcerpts.map((e) => e.text),
+      ...fetchedBios.filter((t): t is string => !!t),
+      ...allSnippets,
+    ].filter((t) => mentionsPerson(t, personName) && (anchors.length === 0 || anchors.some((a) => tiedToOrg(t, personName, a))));
+    const before = person.education;
+    person.education = mergeEducation(before ? verifyEducation(before, eduTexts, personName) : undefined, educationFrom(eduTexts, personName));
+    if (person.education !== before) console.log(`[people-agent] "${personName}": education "${before ?? "none"}" -> "${person.education ?? "none"}"`);
+    if (!person.education) delete person.education;
 
     // Dated and newest first, as company news is (round 20). An undated
     // item (speaker pages) can't be placed in time: dropped.
@@ -390,14 +397,6 @@ RULES:
     const officerConflicts = settled.officerConflicts;
     for (const n of settled.notes) console.log(`[people-agent] "${personName}": ${n}`);
 
-    // A net worth no source states isn't shown (Oct 28: McCann's "$9M").
-    if (person.netWorth) {
-      const stated = verifyNetWorth(person.netWorth, [...allSnippets, ...snippetsOf(newsResultsRaw), ...fetchedBios.filter((t): t is string => !!t), ...(officialExcerpt ? [officialExcerpt] : [])], personName);
-      if (!stated) {
-        console.log(`[people-agent] "${personName}": net worth "${person.netWorth}" dropped, no source states it`);
-        delete person.netWorth;
-      }
-    }
 
     // The employer's top stories (Gecko's Navy contract) and the person's
     // own Form 4 filings when it's listed, in parallel with what time is
@@ -414,7 +413,7 @@ RULES:
       : [];
     const companyNews: NewsEntry[] = subject
       ? personNews(companyNewsRaw
-        .filter((r) => !seenNews.has(r.url) && !isNewsNoise(r.url) && !isProfilePage(r.url))
+        .filter((r) => !seenNews.has(r.url) && !isNewsNoise(r.url) && !isProfilePage(r.url) && !isHomepage(r.url))
         .filter((r) => isUsableHeadline(r.title) && newsAboutSubject(`${r.title}. ${r.snippet ?? ""}`, r.url, subject)), employer!)
         .filter((n) => recentEnough(n.date)).slice(0, 3)
       : [];

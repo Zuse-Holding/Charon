@@ -151,7 +151,6 @@ export function buildPersonProvenance(b: PersonResearchBundle, snapshots: Snapsh
     c.push({ section: "Current Role", claim, terms: p.currentCompany ? [p.currentCompany] : [p.currentRole!], method: "ai_extracted" });
   }
   if (p.education) c.push({ section: "About", claim: `Education: ${clean(p.education)}`, terms: [p.education], method: "ai_extracted" });
-  if (p.netWorth) c.push({ section: "About", claim: `Net worth: ${clean(p.netWorth)}`, terms: numericTerms(p.netWorth), method: "ai_extracted" });
   for (const e of b.careerHistory) {
     const claim = [e.title, e.company].filter(Boolean).join(", ");
     c.push({ section: "Career History", claim, terms: e.company ? [e.company] : [e.title], method: "ai_extracted" });

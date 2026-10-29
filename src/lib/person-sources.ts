@@ -4,7 +4,7 @@ import { NOT_A_BUSINESS_SITE, ownSite } from "./candidates.js";
 import { hostOf } from "./entities/subject.js";
 import { mentionsAffiliation } from "./entities/affiliation.js";
 import { isNewsNoise, mentionsPerson, normalizeWords } from "./news-noise.js";
-import { distinctiveWords } from "./name-match.js";
+import { distinctiveWords, nameWords } from "./name-match.js";
 import { namesOrg } from "./person-checks.js";
 import { secEnabled, secJson, secText } from "./sec-http.js";
 
@@ -110,7 +110,25 @@ const BOARD_WORD = /\b(board|directors?|chair\w*|trustees?|governance)\b/i;
 
 /** The organization is named within a sentence's reach of a board word. */
 function boardNear(text: string, org: string): boolean {
-  return text.split(/(?<=[.;!?])\s+/).some((sn) => BOARD_WORD.test(sn) && namesOrg(sn, org));
+  return text.split(/(?<=[.;!?])\s+/).some((sn) => BOARD_WORD.test(sn) && namesOrgLoose(sn, org));
+}
+
+/**
+ * The text names the organization, by its initials as well (Oct 28: the
+ * model called it "WM" where Cigna's bio says "Waste Management", or the
+ * other way round).
+ */
+export function namesOrgLoose(text: string, org: string): boolean {
+  if (namesOrg(text, org)) return true;
+  const acronym = org.replace(/[^A-Za-z]/g, "");
+  if (/^[A-Z]{2,5}$/.test(acronym) && acronym === org.replace(/[\s.&]/g, "")) {
+    // "WM" in the text as "Waste Management".
+    const re = new RegExp(`\\b${acronym.split("").map((c) => `${c}[a-z]+`).join("\\s+")}\\b`);
+    return re.test(text);
+  }
+  const all = nameWords(org);
+  const initials = all.map((w) => w[0]).join("").toUpperCase();
+  return all.length >= 2 && initials.length <= 5 && new RegExp(`\\b${initials}\\b`).test(text);
 }
 
 // Wire services carry a company's own press releases.
@@ -138,9 +156,9 @@ export function confirmBoardSeats(
     if (out.some((o) => namesOrg(o.organization, s.organization) || namesOrg(s.organization, o.organization))) continue;
     const official = sources.boardPages.find((t) => {
       const host = hostOf(t.url);
-      return !!host && (orgSite(host, s.organization) || WIRE_HOST.test(host)) && namesOrg(t.text, s.organization);
+      return !!host && (orgSite(host, s.organization) || WIRE_HOST.test(host)) && namesOrgLoose(t.text, s.organization);
     });
-    const source = official ?? sources.vouched.find((t) => namesOrg(t.text, s.organization))
+    const source = official ?? sources.vouched.find((t) => namesOrgLoose(t.text, s.organization))
       ?? (sources.tied ?? []).find((t) => boardNear(t.text, s.organization));
     if (!source) continue;
     out.push({ ...s, url: source.url });
@@ -288,6 +306,10 @@ export function anchorCurrentRole(person: PersonProfile, careerHistory: CareerEn
 
 const SCHOOL_WORD = /\b(university|college|institute|school|academy|polytechnic|conservatory|seminary)\b/i;
 
+const NOT_A_SCHOOL = /\b(self|taught|degree|bachelor|master|doctorate|diploma|honorary|high school diploma|ged|n\/a|unknown|various)\b/i;
+/** "Gonzaga" or "Drexel" with no "University": a capitalized name, not a degree or a note. */
+const looksLikeSchool = (part: string) => /^[A-Z][\w’'&.-]*(\s+[A-Z][\w’'&.-]*)*$/.test(part.trim()) && !ABBREVIATION.test(part.trim()) && !NOT_A_SCHOOL.test(part);
+
 const FILLER = /^(in|of|and|&|the)$/i;
 // "B.S.", "BSME", "MBA", "B.A.Sc.", "Ph.D.": a degree's letters.
 const ABBREVIATION = /^(?:[A-Z][a-z]?\.){1,4}[A-Za-z]{0,3}\.?$|^[A-Z]{2,5}[a-z]?$/;
@@ -326,6 +348,8 @@ export function verifyEducation(education: string, tied: string[], personName: s
     const parts = entry.split(/\s*,\s*/);
     const schoolAt = parts.findIndex((p) => SCHOOL_WORD.test(p));
     const school = schoolAt >= 0 ? parts[schoolAt] : parts[parts.length - 1];
+    // No school, no entry: "Self-taught", a bare "BA" (Oct 28: McGowan, Mazzarella).
+    if (schoolAt < 0 && !looksLikeSchool(school)) continue;
     const initials = distinctiveWords(school).map((w) => w[0]).join("");
     const window = near.find((w) => namesOrg(w, school) || (initials.length >= 3 && new RegExp(`\\b${initials}\\b`, "i").test(w)));
     if (!window) continue;
@@ -397,6 +421,66 @@ export function otherCeoOf(texts: string[], org: string, personName: string): st
  * past CEO role keeps it), the fullest title the sources give wins, and
  * the current role leads the career history with its start date.
  */
+// A model's placeholder for a title it didn't find ("Role at i.TV").
+const PLACEHOLDER_TITLE = /^(role|position|title|job|employee|staff|member|n\/a|na|unknown|various|not specified|unspecified)$/i;
+
+/**
+ * Career rows without placeholder titles, one row per title and company
+ * (Oct 28: "Role at i.TV"; Boyle's duplicate Founder rows). Of two rows for
+ * one role, the one with more dates stays.
+ */
+export function cleanCareer(careerHistory: CareerEntry[]): CareerEntry[] {
+  const out: CareerEntry[] = [];
+  for (const c of careerHistory) {
+    if (!c.title.trim() || PLACEHOLDER_TITLE.test(c.title.trim())) continue;
+    const key = (x: CareerEntry) => [...titleWords(x.title)].sort().join(" ");
+    const i = out.findIndex((o) => key(o) === key(c) && (sameOrg(o.company, c.company) || (!o.company && !c.company)));
+    const dates = (x: CareerEntry) => (x.start ? 1 : 0) + (x.end ? 1 : 0);
+    if (i < 0) out.push({ ...c });
+    else if (dates(c) > dates(out[i])) out[i] = { ...c };
+  }
+  return out;
+}
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/** "Oct 2026", "Mar 29, 2023", "2023" as a sortable number; undefined without a year. */
+export function startValue(date: string | undefined): number | undefined {
+  const year = date?.match(/\b(19|20)\d{2}\b/)?.[0];
+  if (!year) return undefined;
+  const month = MONTHS.findIndex((m) => new RegExp(`\\b${m}`, "i").test(date!));
+  const day = Number(date!.replace(year, "").match(/\b([0-2]?\d|3[01])\b/)?.[1] ?? 0);
+  return Number(year) * 400 + (month + 1) * 32 + day;
+}
+
+/**
+ * The newest of two or more open roles at the current company is the
+ * current role (Oct 28: Darway's "President, since Oct 2026" lost to "EVP,
+ * Construction, since 2023"). The older role ends when the newer starts,
+ * unless the newer title holds it (Mazzarella's Chairman, President and CEO).
+ */
+export function promoteNewestRole(person: PersonProfile, careerHistory: CareerEntry[]): string | undefined {
+  const company = person.currentCompany;
+  if (!company) return undefined;
+  const open = careerHistory.filter((c) => sameOrg(c.company, company) && !c.end && c.current !== false
+    && !BOARD_TITLE.test(c.title) && startValue(c.start) !== undefined);
+  if (open.length === 0) return undefined;
+  const newest = open.reduce((a, b) => (startValue(b.start)! > startValue(a.start)! ? b : a));
+  const role = person.currentRole;
+  if (role && covers(role, newest.title)) return undefined;
+  const own = role ? careerHistory.find((c) => sameOrg(c.company, company) && c.title.toLowerCase() === role.toLowerCase()) : undefined;
+  const ownStart = startValue(own?.start);
+  // Only a role known to be older gives way: one with no dated row may be the newest.
+  if (role && (ownStart === undefined || ownStart >= startValue(newest.start)!)) return undefined;
+  for (const c of open) {
+    if (c === newest || covers(newest.title, c.title)) continue;
+    c.end = newest.start;
+    c.current = false;
+  }
+  person.currentRole = newest.title;
+  return `current role "${role ?? "none"}" -> "${newest.title}", the newest open role at ${company} (since ${newest.start})`;
+}
+
 export function settleTitles(
   person: PersonProfile,
   careerHistory: CareerEntry[],
@@ -405,7 +489,7 @@ export function settleTitles(
 ): { careerHistory: CareerEntry[]; officerConflicts: { org: string; ceo: string }[]; notes: string[] } {
   const notes: string[] = [];
   const officerConflicts: { org: string; ceo: string }[] = [];
-  let career = careerHistory;
+  let career = cleanCareer(careerHistory);
   for (const o of new Set(orgs)) {
     const ceo = otherCeoOf(texts.snippets, o, person.name);
     if (!ceo) continue;
@@ -421,6 +505,8 @@ export function settleTitles(
     }
     notes.push(`${ceo} is named as ${o}'s CEO; dropped the CEO title there`);
   }
+  const newest = promoteNewestRole(person, career);
+  if (newest) notes.push(newest);
   const conflictHere = officerConflicts.some((c) => sameOrg(c.org, person.currentCompany));
   const fuller = fullerTitle(person, career, [texts.summary ?? "", ...texts.snippets], conflictHere);
   if (fuller) notes.push(fuller);
@@ -435,7 +521,18 @@ export function withoutCeo(title: string): string {
 
 const ROLE_TOKEN = "(?:[A-Z][\\w’'-]*|founder|co-founder|cofounder|chairman|chairwoman|chair|president|chief|executive|operating|financial|technology|officer|director|managing|partner|owner|vice|senior|ceo|coo|cfo|cto|and|&)";
 const TITLE_WORD = /\b(chair\w*|president|ceo|coo|cfo|cto|chief|founder|co-founder|cofounder|director|officer|executive|partner|owner)\b/i;
-const titleWords = (t: string) => new Set(normalizeWords(t.replace(/&/g, " and ")).trim().split(" ").filter((w) => w && w !== "and" && w !== "of" && w !== "the"));
+// One word per office, so "Executive Vice President" never holds "President" (Oct 28: Darway).
+const OFFICES: [RegExp, string][] = [
+  [/\bexecutive vice president\b/g, "evp"], [/\bsenior vice president\b/g, "svp"], [/\bvice president\b/g, "vp"],
+  [/\bchief executive officer\b|\bchief executive\b/g, "ceo"], [/\bchief operating officer\b/g, "coo"],
+  [/\bchief financial officer\b/g, "cfo"], [/\bchief technology officer\b/g, "cto"],
+  [/\bvice chair(man|woman|person)?\b/g, "vicechair"], [/\bco-?founder\b/g, "cofounder"],
+];
+const titleWords = (t: string) => {
+  let x = normalizeWords(t.replace(/&/g, " and ").replace(/co-founder/gi, "cofounder")).trim();
+  for (const [re, w] of OFFICES) x = x.replace(re, w);
+  return new Set(x.split(" ").filter((w) => w && w !== "and" && w !== "of" && w !== "the"));
+};
 const covers = (big: string, small: string) => [...titleWords(small)].every((w) => titleWords(big).has(w));
 const titleCase = (t: string) => t.replace(/\b([a-z])([\w’'-]*)/g, (m, a: string, b: string) => (/^(and|of|the)$/.test(m) ? m : a.toUpperCase() + b));
 
@@ -502,16 +599,6 @@ export function orderCareer(person: PersonProfile, careerHistory: CareerEntry[])
   return [first, ...rest];
 }
 
-/**
- * A net worth kept only when a text naming the person states the figure
- * (Oct 28: McCann's "$9M" had no visible source).
- */
-export function verifyNetWorth(netWorth: string, texts: string[], personName: string): string | undefined {
-  const figure = netWorth.match(/\d+(?:[.,]\d+)?/)?.[0];
-  if (!figure) return undefined;
-  return texts.some((t) => mentionsPerson(t, personName) && /net worth|worth an estimated|is worth/i.test(t) && t.includes(figure)) ? netWorth : undefined;
-}
-
 /** Dated within the last two years (Oct 28: a Dec 2011 story in Mazzarella's Recent News). */
 export function recentEnough(date: string | undefined, now = new Date()): boolean {
   const t = Date.parse(date ?? "");
@@ -533,4 +620,70 @@ export function affiliationDates(org: string, position: string | undefined, star
     end: end ?? c?.end,
     current: end || c?.end ? false : c?.current,
   });
+}
+
+const DEGREE = "(?:honorary doctorate|(?:bachelor|master)['’]?s?(?: degree)?|doctorate|doctoral degree|B\\.?A\\.?(?:Sc\\.?)?|B\\.?S\\.?(?:E\\.?|M\\.?E\\.?|E\\.?E\\.?)?|M\\.?A\\.?|M\\.?S\\.?|M\\.?B\\.?A\\.?|M\\.?Div\\.?|J\\.?D\\.?|Ph\\.?\\s?D\\.?|Ed\\.?D\\.?|LL\\.?M\\.?)";
+const FIELD = "(?:\\s+(?:in|of)\\s+([A-Za-z][\\w-]*(?:\\s+(?!from\\b|at\\b|with\\b)(?:[A-Za-z][\\w-]*|and|&)){0,4}))?";
+const SCHOOL = "((?:the\\s+)?(?:[A-Z][\\w.'’&-]*\\s+){0,5}(?:University|College|Institute|Seminary|Academy|Polytechnic|School of [A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)(?:\\s+of\\s+[A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,2})?)";
+
+/**
+ * Degrees read straight from text naming the person, near their name
+ * ("a B.S. in Electrical Engineering from Grove City College", "M.Div.
+ * from Weston Jesuit School of Theology"): the same every run, where the
+ * model's answer wasn't (Oct 28: Gellert's section came and went, Boyle
+ * lost Gonzaga and Weston).
+ */
+export function educationFrom(texts: string[], personName: string): string | undefined {
+  const last = surnameOf(personName);
+  const found: string[] = [];
+  const degreeFirst = new RegExp(`\\b(${DEGREE})${FIELD},?\\s+(?:degree\\s+)?(?:from|at)\\s+${SCHOOL}`, "g");
+  const schoolFirst = new RegExp(`\\bgraduated?\\s+(?:from\\s+)?${SCHOOL}(?:\\s+with\\s+(?:a\\s+|an\\s+)?(${DEGREE})${FIELD})?`, "g");
+  for (const t of texts) {
+    for (const m of t.matchAll(new RegExp(`\\b${last}\\b`, "gi"))) {
+      const w = t.slice(Math.max(0, m.index! - 600), m.index! + 800);
+      for (const d of w.matchAll(degreeFirst)) found.push(entryOf(d[1], d[2], d[3]));
+      for (const d of w.matchAll(schoolFirst)) found.push(entryOf(d[2], d[3], d[1]));
+    }
+  }
+  return mergeEducation(found.join("; "), undefined);
+}
+
+function entryOf(degree: string | undefined, field: string | undefined, school: string): string {
+  const deg = degree?.replace(/^(a|an)\s+/i, "").trim();
+  const d = deg ? deg[0].toUpperCase() + deg.slice(1) : "";
+  const f = field?.replace(/\s+(and|&)$/i, "").trim();
+  const sch = school.replace(/^the\s+/i, "").replace(/[.,]+$/, "").trim();
+  return [d && f ? `${d} in ${f}` : d || (f ?? ""), sch].filter(Boolean).join(", ");
+}
+
+/**
+ * Two education lines as one, one entry per school: the entry with more
+ * to it (degree and field) wins (Oct 28: "keep every degree a source
+ * names, with school and major").
+ */
+export function mergeEducation(a: string | undefined, b: string | undefined): string | undefined {
+  const entries = [a, b].flatMap((x) => (x ? x.split(/\s*;\s*/) : [])).map((e) => e.trim()).filter(Boolean);
+  const schoolOf = (e: string) => e.split(/\s*,\s*/).find((p) => SCHOOL_WORD.test(p)) ?? e.split(/\s*,\s*/).pop()!;
+  const out: string[] = [];
+  for (const e of entries) {
+    const i = out.findIndex((o) => {
+      const so = schoolOf(o), se = schoolOf(e);
+      if (!(namesOrg(so, se) || namesOrg(se, so))) return false;
+      // Two degrees from one school are two entries.
+      const dego = o.split(/\s*,\s*/)[0].toLowerCase(), dege = e.split(/\s*,\s*/)[0].toLowerCase();
+      return dego === so.toLowerCase() || dege === se.toLowerCase() || dego.slice(0, 3) === dege.slice(0, 3);
+    });
+    if (i < 0) out.push(e);
+    else if (e.length > out[i].length) out[i] = e;
+  }
+  return out.length ? out.join("; ") : undefined;
+}
+
+/** A site's home page ("crumbl.com/"): not a news item (Oct 28: McGowan). */
+export function isHomepage(url: string): boolean {
+  try {
+    return /^\/(?:index\.html?|home\/?|[a-z]{2}(?:-[a-z]{2})?\/?)?$/i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
 }

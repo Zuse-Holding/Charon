@@ -552,7 +552,6 @@ export class ReportAgent {
     const facts: string[] = [];
     if (bundle.person.founding)    facts.push(`**Founded:** ${bundle.person.founding}`);
     if (bundle.person.nationality) facts.push(`**Nationality:** ${bundle.person.nationality}`);
-    if (bundle.person.netWorth)    facts.push(`**Net Worth:** ${bundle.person.netWorth}`);
     if (bundle.person.knownFor)    facts.push(`**Known For:** ${bundle.person.knownFor}`);
     if (facts.length > 0) {
       for (const f of facts) lines.push(`- ${f}`);

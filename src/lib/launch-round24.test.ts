@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
-  confirmBoardSeats, fullerTitle, orderCareer, otherCeoOf, recentEnough, roleDates, verifyEducation, verifyNetWorth,
+  confirmBoardSeats, fullerTitle, orderCareer, otherCeoOf, recentEnough, roleDates, verifyEducation,
 } from "./person-sources.js";
 import { applyPersonConsistency } from "./consistency.js";
 import { ReportAgent } from "../agents/report-agent/index.js";
@@ -122,9 +122,12 @@ describe("round twenty-four: Oct 28 deploy regressions", () => {
       assert.equal(verifyEducation("Electrical Engineering, Grove City College", tied, "Jake Loosararian"), "Electrical Engineering, Grove City College");
     });
 
-    it("a net worth no source states is dropped", () => {
-      assert.equal(verifyNetWorth("$9M", ["Michael McCann is CEO of Limbach Holdings."], "Michael McCann"), undefined);
-      assert.equal(verifyNetWorth("$9M", ["Michael McCann's net worth is estimated at $9 million, based on his Limbach stock."], "Michael McCann"), "$9M");
+    it("net worth is never shown (Oct 28 follow-up: drop it)", () => {
+      const md = new ReportAgent().generatePerson(personOf({
+        person: { name: "Michael McCann", netWorth: "$9 M $", summary: "CEO of Limbach." },
+        sources: [{ url: "https://example.com/bio", title: "Bio", retrievedAt: "2026-10-29", usedFor: ["bio"] }],
+      }));
+      assert.doesNotMatch(md, /Net Worth/i);
     });
   });
 
