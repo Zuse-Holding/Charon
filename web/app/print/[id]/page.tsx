@@ -55,7 +55,14 @@ export default async function PrintPage({ params }: { params: Promise<{ id: stri
 
   if (!run) notFound();
 
-  const bundle = run.bundle as DeepDiveBundle;
+  // deep_dives stores the bundle's fields as columns (there is no bundle column).
+  const bundle = {
+    id: run.id,
+    company: run.company,
+    generatedAt: run.generated_at,
+    durationMs: run.duration_ms,
+    sections: run.sections ?? [],
+  } as DeepDiveBundle;
   const sections = bundle?.sections ?? [];
   const generatedDate = new Date(bundle.generatedAt).toLocaleDateString("en-US", {
     year: "numeric", month: "long", day: "numeric"

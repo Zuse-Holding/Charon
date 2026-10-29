@@ -27,20 +27,16 @@ function formatDuration(ms: number) {
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
-// Simple inline markdown renderer for prose content
+// Simple inline markdown renderer for prose content. Model output is
+// built from scraped pages, so it's rendered as text: only **bold** is
+// turned into markup, never raw HTML (red team S5).
 function renderContent(content: string) {
   const lines = content.split("\n").filter(l => l.trim());
-  return lines.map((line, i) => {
-    // Bold text
-    const withBold = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-    return (
-      <p
-        key={i}
-        className={styles.prose}
-        dangerouslySetInnerHTML={{ __html: withBold }}
-      />
-    );
-  });
+  return lines.map((line, i) => (
+    <p key={i} className={styles.prose}>
+      {line.split(/\*\*(.*?)\*\*/g).map((part, j) => (j % 2 === 1 ? <strong key={j}>{part}</strong> : part))}
+    </p>
+  ));
 }
 
 const SECTION_ICONS: Record<string, string> = {

@@ -16,6 +16,9 @@
 import { isRefreshRun, recordSearchCall } from "./cost-tracking.js";
 import { secText } from "./sec-http.js";
 import { BUILD_ID } from "./build.js";
+import { unsafeUrlReason } from "./public-url.js";
+
+const MAX_REDIRECTS = 5;
 
 const isSecHost = (url: string) => { try { return /(^|\.)sec\.gov$/i.test(new URL(url).hostname); } catch { return false; } };
 
@@ -164,7 +167,7 @@ export class DirectFetchProvider implements FetchProvider {
     }
     const template = process.env.RENDER_URL_TEMPLATE;
     if (template) {
-      const rendered = await this.fetchDirect(template.replace("{url}", encodeURIComponent(url)), { timeoutMs: 30_000 });
+      const rendered = await this.fetchDirect(template.replace("{url}", encodeURIComponent(url)), { timeoutMs: 30_000, trusted: true });
       if (rendered.html) return { html: rendered.html, via: "rendered" };
     }
     const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -174,21 +177,38 @@ export class DirectFetchProvider implements FetchProvider {
     return direct;
   }
 
-  private async fetchDirect(url: string, opts: { headers?: Record<string, string>; timeoutMs?: number } = {}): Promise<FetchedPage> {
+  /** `trusted` skips the public-address check, for the operator's own render service only. */
+  private async fetchDirect(url: string, opts: { headers?: Record<string, string>; timeoutMs?: number; trusted?: boolean } = {}): Promise<FetchedPage> {
     if (isUnfetchable(url)) return { html: null, reason: "the site doesn't allow automated reading" };
     const cached = pageCache.get(url);
     if (cached !== undefined) return { html: cached };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? this.timeoutMs);
     try {
-      const res = await fetch(url, {
-        signal: controller.signal,
-        headers: opts.headers ?? {
-          "User-Agent": USER_AGENT,
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.5",
-        },
-      });
+      // Redirects are followed by hand so every hop is checked against
+      // private addresses (red team S7), not only the first.
+      let res: Response | null = null;
+      let next = url;
+      for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        if (!opts.trusted) {
+          const unsafe = await unsafeUrlReason(next);
+          if (unsafe) return { html: null, reason: unsafe };
+        }
+        res = await fetch(next, {
+          signal: controller.signal,
+          redirect: "manual",
+          headers: opts.headers ?? {
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+          },
+        });
+        const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+        if (!location) break;
+        next = new URL(location, next).toString();
+        res = null;
+      }
+      if (!res) return { html: null, reason: "the site redirected too many times" };
       if (!res.ok) return { html: null, reason: `the site returned HTTP ${res.status}` };
       const contentType = res.headers.get("content-type") ?? "";
       if (!contentType.includes("text/html") && !contentType.includes("text/plain")) {

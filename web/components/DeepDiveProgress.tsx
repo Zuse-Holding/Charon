@@ -109,19 +109,12 @@ export default function DeepDiveProgress({ company, onComplete, onCancel }: Prop
                 setSecondsLeft(0);
                 setStatuses(SECTION_ORDER.map(() => "done"));
 
-                fetch("/api/deep-dives", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    company,
-                    sections: sections.current,
-                    durationMs: event.durationMs ?? 0,
-                  }),
-                }).then(r => r.json()).then(d => {
-                  if (d.id) setSavedId(d.id);
-                }).catch(() => { /* non-fatal */ });
-
                 setTimeout(() => onComplete(sections.current), 600);
+              }
+
+              // The agent server saves the Deep Dive and sends its id.
+              if (event.type === "saved" && typeof event.id === "string") {
+                setSavedId(event.id);
               }
 
               if (event.type === "error") {
