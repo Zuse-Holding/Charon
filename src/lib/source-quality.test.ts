@@ -157,3 +157,41 @@ describe("model answers shaped as a bare list (2026-10-22 Railway failure)", () 
     assert.equal(RisksOpportunitiesSchema.parse({ risks: [{ text: "A", sources: [1] }] }).risks.length, 1);
   });
 });
+
+describe("sample-report sourcing (Oct 29)", () => {
+  it("excludes directory competitor pages, LinkedIn posts, report mills and spam hosts seen in the Oct 25 runs", () => {
+    for (const url of [
+      "https://craft.co/graybar/competitors",
+      "https://www.cbinsights.com/company/gecko-robotics/alternatives-competitors",
+      "https://www.marketbeat.com/stocks/NASDAQ/LMB/competitors-and-alternatives/",
+      "https://www.linkedin.com/pulse/20141017160746-49111863-top-5-cookie-franchises-in-america",
+      "https://www.linkedin.com/posts/kbrencans_the-15-largest-hvac-companies-in-america-activity-7492912787296522241-rzkL",
+      "https://www.persistencemarketresearch.com/market-research/infrastructure-inspection-robots-market.asp",
+      "https://www.factmr.com/report/autonomous-inspection-robots-market",
+      "https://mail.floydfelines.org/article/the-hidden-wealth-of-graybar-decoding-its-net-worth-and-industry-role",
+      "https://ftp.oatlandsparkhotel.com/spark/what-the-crumbl-worth-is-in-the-market-13fjk8p",
+    ]) assert.equal(isCitable(url), false, url);
+  });
+
+  it("keeps directory profiles, LinkedIn profiles and press lists", () => {
+    assert.equal(sourceTier("https://craft.co/stripe/executives"), "directory");
+    assert.equal(sourceTier("https://www.linkedin.com/in/patrickcollison"), "reference");
+    assert.equal(sourceTier("https://www.forbes.com/lists/best-employers/"), "press");
+  });
+
+  it("drops people and products only an uncitable page names", async () => {
+    const { applyCompanyConsistency } = await import("./consistency.js");
+    const bundle = {
+      query: "Patagonia", leadership: [
+        { name: "Ryan Gellert", title: "CEO", sourceUrl: "https://ayanaelizabeth.substack.com/p/earth-is-our-only-shareholder" },
+        { name: "Jason McGowan", title: "Co-founder", sourceUrl: "https://www.facebook.com/jasonmcgowan/posts/1" },
+        { name: "Yvon Chouinard", title: "Founder", sourceUrl: "https://www.patagonia.com/company-history/" },
+      ],
+      products: [{ name: "Worn Wear", sourceUrl: "https://www.reddit.com/r/patagonia/comments/x" }, { name: "Better Sweater" }],
+      funding: [], competitors: [], news: [], sources: [], company: { name: "Patagonia" },
+    };
+    applyCompanyConsistency(bundle as never, { name: "Patagonia", domain: "patagonia.com", anchor: {} } as never);
+    assert.deepEqual(bundle.leadership.map((l) => l.name), ["Yvon Chouinard"]);
+    assert.deepEqual(bundle.products.map((p) => p.name), ["Better Sweater"]);
+  });
+});

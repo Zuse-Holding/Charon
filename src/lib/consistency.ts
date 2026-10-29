@@ -91,6 +91,10 @@ export function applyCompanyConsistency(bundle: ResearchBundle, subject: Subject
   // Forums and other vendors' marketing pages are never cited (launch P0).
   bundle.news = keep("news from uncitable pages", bundle.news, (n) => !n.url || isCitable(n.url, subject.domain));
   bundle.sources = keep("uncitable sources", bundle.sources, (src) => isCitable(src.url, subject.domain));
+  // A person or product only a forum or marketing page names has no source
+  // to show (Patagonia's CEO cited to Substack, Crumbl's founder to Facebook).
+  bundle.leadership = keep("people from uncitable pages", bundle.leadership, (l) => !l.sourceUrl || isCitable(l.sourceUrl, subject.domain));
+  bundle.products = keep("products from uncitable pages", bundle.products, (p) => !p.sourceUrl || isCitable(p.sourceUrl, subject.domain));
 
   if (bundle.nonprofitFilings) {
     bundle.nonprofitFilings = keep("nonprofit filings in another city", bundle.nonprofitFilings, (n) => namesCity(n.city));

@@ -61,7 +61,19 @@ const CONTENT_FARM_HOSTS = [
   "coolest-gadgets.com", "startupbonsai.com", "earthweb.com", "bloggingwizard.com", "financesonline.com",
   "softwaresuggest.com", "capterra.com", "g2.com", "getapp.com", "trustradius.com", "slashdot.org",
   "sourceforge.net", "alternativeto.net", "saasworthy.com", "selecthub.com", "medium.com", "substack.com",
+  // Market-report mills: competitor lists padded for search (Gecko, Graybar).
+  "persistencemarketresearch.com", "factmr.com", "marketdataforecast.com", "marketsandmarkets.com",
+  "grandviewresearch.com", "mordorintelligence.com", "fortunebusinessinsights.com", "precedenceresearch.com",
+  "alliedmarketresearch.com",
 ];
+
+// Articles served from a mail or FTP host are scraped spam (Graybar's
+// mail.floydfelines.org, Crumbl's ftp.oatlandsparkhotel.com).
+const SPAM_SUBDOMAIN = /^(mail|webmail|ftp|cpanel|smtp)\./;
+
+// LinkedIn posts and articles are anyone's; only its company and profile
+// pages are reference.
+const LINKEDIN_POST = /^\/(posts|pulse)\//;
 
 // Another business's page about the subject's market: "Stripe alternatives",
 // "X vs Y", "top 10 ...", or any vendor blog post.
@@ -80,14 +92,17 @@ export function sourceTier(url: string, subjectDomain?: string): SourceTier {
   if (!host) return "forum";
   if (subjectDomain && (host === subjectDomain || host.endsWith(`.${subjectDomain}`))) return "primary";
   if (/\.(gov|mil)$/.test(host) || /\.(state|ca|ny|tx|fl|wa)\.us$/.test(host) || hostIn(host, REGISTRY_HOSTS)) return "primary";
-  if (hostIn(host, FORUM_HOSTS) || /^(forums?|community|discussions?)\./.test(host)) return "forum";
-  if (hostIn(host, CONTENT_FARM_HOSTS)) return "marketing";
-  if (hostIn(host, DIRECTORY_HOSTS)) return "directory";
-  if (hostIn(host, PRESS_HOSTS)) return "press";
-  if (hostIn(host, REFERENCE_HOSTS)) return "reference";
   let path = "";
   try { path = new URL(url).pathname; } catch { /* host parsed, path empty */ }
+  if (hostIn(host, FORUM_HOSTS) || /^(forums?|community|discussions?)\./.test(host)) return "forum";
+  if (hostIn(host, ["linkedin.com"]) && LINKEDIN_POST.test(path)) return "forum";
+  if (hostIn(host, CONTENT_FARM_HOSTS) || SPAM_SUBDOMAIN.test(host)) return "marketing";
+  if (hostIn(host, PRESS_HOSTS)) return "press";
+  // A directory's "competitors and alternatives" page is marketing too
+  // (craft.co/graybar/competitors, cbinsights .../alternatives-competitors).
   if (MARKETING_PATH.test(path)) return "marketing";
+  if (hostIn(host, DIRECTORY_HOSTS)) return "directory";
+  if (hostIn(host, REFERENCE_HOSTS)) return "reference";
   return "unknown";
 }
 
