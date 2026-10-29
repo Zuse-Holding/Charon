@@ -92,7 +92,10 @@ const supabase = createClient(
 // until you do, this is empty and has no effect (falls back to
 // tier-only gating, same as before).
 const POLITICAL_ACCESS_USER_IDS = new Set<string>([
-  "251f3f4f-9878-4264-8335-2c191a937428", // Nick — superuser/internal account
+  // Nick — superuser/internal account. This is the account's id in the
+  // current Supabase project ("Metis Intelligence"); a rebuild into a new
+  // project gives every account a new id, so update it here after one.
+  "1a28bec8-ea78-4746-9343-d4b7b75a08ce",
 ]);
 
 function hasPoliticalAccess(userId: string, config: TierConfig): boolean {
