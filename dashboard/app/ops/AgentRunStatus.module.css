@@ -4,6 +4,15 @@
   gap: 8px;
 }
 
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover .readoutTop {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .ringWrap {
   position: relative;
   width: 26px;
