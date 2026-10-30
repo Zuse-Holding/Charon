@@ -275,7 +275,10 @@ export default function DashboardPage() {
     },
   ].filter(Boolean) as { tag: string; text: string; flag: string }[];
 
-  const platformLine = `You're on the ${tier?.toUpperCase() ?? "BASIC"} tier.${isInternal ? " Charon Protocol active." : ""}`;
+  // Never name a plan before the tier has loaded.
+  const platformLine = tier
+    ? `You're on the ${tier.toUpperCase()} tier.${isInternal ? " Charon Protocol active." : ""}`
+    : "Checking your plan…";
 
   // ── Render ──
   return (
