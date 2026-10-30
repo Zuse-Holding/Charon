@@ -62,7 +62,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && pathname === "/login") {
+  // A reset link lands on /login?code=…; the page exchanges that code for
+  // a recovery session and shows the new-password form. Sending someone
+  // who is already signed in on to /app here dropped the code, so the
+  // link just logged them in and the password was never reset.
+  if (user && pathname === "/login" && !request.nextUrl.searchParams.has("code")) {
     const url = request.nextUrl.clone();
     url.pathname = "/app";
     return NextResponse.redirect(url);
