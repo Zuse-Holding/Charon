@@ -42,7 +42,17 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    // A server-side failure (e.g. the confirmation email couldn't be sent)
+    // comes back with no usable message, which the form showed as "{}".
+    // Log the real one; show the person something they can act on.
+    const message = error.message?.trim();
+    if ((error.status ?? 500) >= 500 || !message || message === "{}") {
+      console.error("[signup] failed:", error.status, error.code, error.message);
+      return NextResponse.json({ error: "We couldn't create your account just now. Try again in a minute." }, { status: 502 });
+    }
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
   if (data.user) {
     trackEvent(data.user.id, "signup");
     sendWelcomeEmail(email, firstName).catch((err) => console.error("[signup] welcome email failed:", err));
